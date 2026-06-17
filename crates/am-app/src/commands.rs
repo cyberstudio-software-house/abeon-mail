@@ -78,7 +78,8 @@ pub async fn get_message_body(
     message_id: i64,
 ) -> Result<MessageBody, String> {
     let db: Arc<am_storage::Database> = Arc::clone(&state.db);
-    am_sync::service::get_or_fetch_body(&db, message_id)
+    let creds = Arc::clone(&state.creds);
+    am_sync::service::get_or_fetch_body(&db, message_id, creds.as_ref())
         .await
         .map_err(|_| "Failed to fetch message body".to_string())
 }
@@ -151,7 +152,8 @@ pub async fn start_reply(
         _ => return Err("Invalid reply mode".to_string()),
     };
     let db: Arc<am_storage::Database> = Arc::clone(&state.db);
-    let (_account_id, msg) = am_sync::compose::build_prefill(&db, message_id, reply_mode)
+    let creds = Arc::clone(&state.creds);
+    let (_account_id, msg) = am_sync::compose::build_prefill(&db, message_id, reply_mode, creds.as_ref())
         .await
         .map_err(|_| "Failed to build reply".to_string())?;
     Ok(msg)

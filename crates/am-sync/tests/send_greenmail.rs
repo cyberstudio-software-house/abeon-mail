@@ -208,7 +208,8 @@ async fn enqueue_and_drain_sends_and_appends_to_sent() {
     let queue_before = queue_repo::list_due(&db, account.id, now_secs()).expect("list_due failed");
     assert_eq!(queue_before.len(), 1, "expected 1 queued op before drain");
 
-    drain_outbox(&db, account.id, now_secs())
+    let creds = am_sync::auth::KeychainCredentialSource::new();
+    drain_outbox(&db, account.id, creds.as_ref(), now_secs())
         .await
         .expect("drain_outbox failed");
 
@@ -226,7 +227,7 @@ async fn enqueue_and_drain_sends_and_appends_to_sent() {
         "draft should be deleted after send, got ids: {draft_ids:?}"
     );
 
-    sync_folder(&db, account.id, sent_folder.id, |_| {})
+    sync_folder(&db, account.id, sent_folder.id, creds.as_ref(), |_| {})
         .await
         .expect("sync Sent folder failed");
 

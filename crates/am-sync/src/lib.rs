@@ -1,3 +1,4 @@
+pub mod auth;
 pub mod compose;
 pub mod engine;
 pub mod events;

@@ -5,6 +5,7 @@ use am_core::message::{MessageBody, MessageFlag, NewMessageHeader, SyncProgress}
 use am_protocols::imap::{FetchedHeader, ImapAuth, ImapConfig, ImapSession, RemoteFolder};
 use am_core::threading::{normalize_subject, parse_reference_ids};
 use am_storage::{accounts_repo, folders_repo, messages_repo, queue_repo, threads_repo, Database, StorageError};
+use crate::auth::CredentialSource;
 use crate::events::{SyncEvent, SyncEventSink};
 
 const MAX_QUEUE_ATTEMPTS: i64 = 6;
@@ -52,6 +53,8 @@ pub enum SyncError {
     InvalidSettings,
     #[error("keychain unavailable")]
     Keychain,
+    #[error("reauth required")]
+    NeedsReauth,
 }
 
 impl From<am_protocols::error::ProtocolError> for SyncError {
@@ -68,6 +71,16 @@ impl From<am_auth::AuthError> for SyncError {
         match e {
             am_auth::AuthError::NotFound => SyncError::CredentialMissing,
             am_auth::AuthError::Keychain(_) => SyncError::Keychain,
+        }
+    }
+}
+
+impl From<am_auth::oauth::OAuthError> for SyncError {
+    fn from(e: am_auth::oauth::OAuthError) -> Self {
+        match e {
+            am_auth::oauth::OAuthError::InvalidGrant => SyncError::NeedsReauth,
+            am_auth::oauth::OAuthError::Keychain => SyncError::Keychain,
+            other => SyncError::Protocol(other.to_string()),
         }
     }
 }
@@ -168,7 +181,8 @@ pub async fn add_account(db: &Database, input: AddAccountInput) -> Result<Accoun
 
     upsert_remote_folders(db, account.id, &folders)?;
 
-    sync_all_folders(db, account.id, |_| {}).await?;
+    let password_creds = crate::auth::PasswordCreds(input.password.clone());
+    sync_all_folders(db, account.id, &password_creds, |_| {}).await?;
 
     Ok(account)
 }
@@ -203,15 +217,16 @@ pub async fn sync_folder(
     db: &Database,
     account_id: i64,
     folder_id: i64,
+    creds: &dyn CredentialSource,
     progress: impl Fn(SyncProgress),
 ) -> Result<usize, SyncError> {
     let account = accounts_repo::get_account(db, account_id)?;
     let endpoints = load_endpoints(db, account_id)?;
-    let password = am_auth::credentials::load_password(&account.email)?;
     let folder = folders_repo::get_folder(db, folder_id)?;
 
+    let auth = creds.auth_for(&account).await?;
     let config = imap_config(&endpoints, &account.email);
-    let mut session = ImapSession::connect(&config, &ImapAuth::Password(password.clone())).await?;
+    let mut session = ImapSession::connect(&config, &auth.to_imap()).await?;
     let state = session.select(&folder.remote_path).await?;
     let fetched = session.fetch_recent_headers(INITIAL_SYNC_LIMIT).await?;
     session.logout().await?;
@@ -237,29 +252,31 @@ pub async fn sync_folder(
 pub async fn initial_sync_inbox(
     db: &Database,
     account_id: i64,
+    creds: &dyn CredentialSource,
     progress: impl Fn(SyncProgress),
 ) -> Result<usize, SyncError> {
     let folder = folders_repo::list_folders(db, account_id)?
         .into_iter()
         .find(|f| f.remote_path.eq_ignore_ascii_case(INBOX_PATH))
         .ok_or(SyncError::Storage(StorageError::NotFound))?;
-    sync_folder(db, account_id, folder.id, progress).await
+    sync_folder(db, account_id, folder.id, creds, progress).await
 }
 
 pub async fn sync_all_folders(
     db: &Database,
     account_id: i64,
+    creds: &dyn CredentialSource,
     progress: impl Fn(SyncProgress) + Copy,
 ) -> Result<usize, SyncError> {
     let folders = folders_repo::list_folders(db, account_id)?;
     let mut total = 0usize;
     for folder in folders {
-        total += sync_folder(db, account_id, folder.id, progress).await?;
+        total += sync_folder(db, account_id, folder.id, creds, progress).await?;
     }
     Ok(total)
 }
 
-pub async fn get_or_fetch_body(db: &Database, message_id: i64) -> Result<MessageBody, SyncError> {
+pub async fn get_or_fetch_body(db: &Database, message_id: i64, creds: &dyn CredentialSource) -> Result<MessageBody, SyncError> {
     if let Some(body) = messages_repo::get_body(db, message_id)? {
         return Ok(body);
     }
@@ -268,10 +285,10 @@ pub async fn get_or_fetch_body(db: &Database, message_id: i64) -> Result<Message
     let folder = folders_repo::get_folder(db, folder_id)?;
     let account = accounts_repo::get_account(db, folder.account_id)?;
     let endpoints = load_endpoints(db, folder.account_id)?;
-    let password = am_auth::credentials::load_password(&account.email)?;
 
+    let auth = creds.auth_for(&account).await?;
     let config = imap_config(&endpoints, &account.email);
-    let mut session = ImapSession::connect(&config, &ImapAuth::Password(password.clone())).await?;
+    let mut session = ImapSession::connect(&config, &auth.to_imap()).await?;
     session.select(&folder.remote_path).await?;
     let raw = session.fetch_body(uid).await?;
     session.logout().await?;
@@ -293,15 +310,15 @@ pub async fn get_or_fetch_body(db: &Database, message_id: i64) -> Result<Message
     Ok(body)
 }
 
-pub async fn get_or_fetch_recipients(db: &Database, message_id: i64) -> Result<(Vec<String>, Vec<String>), SyncError> {
+pub async fn get_or_fetch_recipients(db: &Database, message_id: i64, creds: &dyn CredentialSource) -> Result<(Vec<String>, Vec<String>), SyncError> {
     let (folder_id, uid) = messages_repo::message_uid(db, message_id)?;
     let folder = folders_repo::get_folder(db, folder_id)?;
     let account = accounts_repo::get_account(db, folder.account_id)?;
     let endpoints = load_endpoints(db, folder.account_id)?;
-    let password = am_auth::credentials::load_password(&account.email)?;
 
+    let auth = creds.auth_for(&account).await?;
     let config = imap_config(&endpoints, &account.email);
-    let mut session = ImapSession::connect(&config, &ImapAuth::Password(password.clone())).await?;
+    let mut session = ImapSession::connect(&config, &auth.to_imap()).await?;
     session.select(&folder.remote_path).await?;
     let raw = session.fetch_body(uid).await?;
     session.logout().await?;
@@ -314,15 +331,16 @@ pub async fn incremental_sync_folder(
     db: &Database,
     account_id: i64,
     folder_id: i64,
+    creds: &dyn CredentialSource,
     sink: &dyn SyncEventSink,
 ) -> Result<(), SyncError> {
     let account = accounts_repo::get_account(db, account_id)?;
     let endpoints = load_endpoints(db, account_id)?;
-    let password = am_auth::credentials::load_password(&account.email)?;
     let folder = folders_repo::get_folder(db, folder_id)?;
 
+    let auth = creds.auth_for(&account).await?;
     let config = imap_config(&endpoints, &account.email);
-    let mut session = ImapSession::connect(&config, &ImapAuth::Password(password.clone())).await?;
+    let mut session = ImapSession::connect(&config, &auth.to_imap()).await?;
     let state = session.select(&folder.remote_path).await?;
     let markers = folders_repo::get_sync_markers(db, folder_id)?;
 
@@ -417,7 +435,7 @@ pub fn enqueue_flag(db: &Database, message_id: i64, flag: MessageFlag, value: bo
     Ok(())
 }
 
-pub async fn drain_queue(db: &Database, account_id: i64, now: i64) -> Result<(), SyncError> {
+pub async fn drain_queue(db: &Database, account_id: i64, creds: &dyn CredentialSource, now: i64) -> Result<(), SyncError> {
     let due = queue_repo::list_due(db, account_id, now)?;
     if due.is_empty() {
         return Ok(());
@@ -425,10 +443,10 @@ pub async fn drain_queue(db: &Database, account_id: i64, now: i64) -> Result<(),
 
     let account = accounts_repo::get_account(db, account_id)?;
     let endpoints = load_endpoints(db, account_id)?;
-    let password = am_auth::credentials::load_password(&account.email)?;
+    let auth = creds.auth_for(&account).await?;
     let config = imap_config(&endpoints, &account.email);
 
-    let mut session = match ImapSession::connect(&config, &ImapAuth::Password(password.clone())).await {
+    let mut session = match ImapSession::connect(&config, &auth.to_imap()).await {
         Ok(s) => s,
         Err(_) => return Ok(()),
     };

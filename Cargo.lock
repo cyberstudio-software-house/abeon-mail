@@ -175,6 +175,7 @@ dependencies = [
  "am-protocols",
  "am-storage",
  "async-imap",
+ "async-trait",
  "keyring",
  "serde",
  "serde_json",

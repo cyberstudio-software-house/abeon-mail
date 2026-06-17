@@ -2,10 +2,11 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use am_protocols::imap::{IdleOutcome, ImapAuth, ImapSession};
+use am_protocols::imap::{IdleOutcome, ImapSession};
 use am_storage::{accounts_repo, folders_repo, Database};
 use tokio::sync::mpsc;
 
+use crate::auth::CredentialSource;
 use crate::events::SyncEventSink;
 use crate::service::{self, imap_config_pub, load_endpoints_pub};
 
@@ -16,14 +17,20 @@ const INBOX_PATH: &str = "INBOX";
 pub struct SyncEngine {
     db: Arc<Database>,
     sink: Arc<dyn SyncEventSink>,
+    creds: Arc<dyn CredentialSource>,
     workers: Mutex<HashMap<i64, mpsc::Sender<()>>>,
 }
 
 impl SyncEngine {
-    pub fn start(db: Arc<Database>, sink: Arc<dyn SyncEventSink>) -> Arc<Self> {
+    pub fn start(
+        db: Arc<Database>,
+        sink: Arc<dyn SyncEventSink>,
+        creds: Arc<dyn CredentialSource>,
+    ) -> Arc<Self> {
         let engine = Arc::new(Self {
             db,
             sink,
+            creds,
             workers: Mutex::new(HashMap::new()),
         });
         if let Ok(accounts) = accounts_repo::list_accounts(&engine.db) {
@@ -45,13 +52,14 @@ impl SyncEngine {
         }
         let db = Arc::clone(&self.db);
         let sink = Arc::clone(&self.sink);
+        let creds = Arc::clone(&self.creds);
         tokio::spawn(async move {
-            let _ = service::sync_all_folders(&db, account_id, |_| {}).await;
+            let _ = service::sync_all_folders(&db, account_id, creds.as_ref(), |_| {}).await;
             loop {
                 let now = service::now_secs();
-                let _ = service::drain_queue(&db, account_id, now).await;
-                let _ = crate::send::drain_outbox(&db, account_id, now).await;
-                let _ = crate::send::drain_draft_sync(&db, account_id, now).await;
+                let _ = service::drain_queue(&db, account_id, creds.as_ref(), now).await;
+                let _ = crate::send::drain_outbox(&db, account_id, creds.as_ref(), now).await;
+                let _ = crate::send::drain_draft_sync(&db, account_id, creds.as_ref(), now).await;
                 if let Ok(folders) = folders_repo::list_folders(&db, account_id) {
                     for folder in &folders {
                         if !folder.remote_path.eq_ignore_ascii_case(INBOX_PATH) {
@@ -59,6 +67,7 @@ impl SyncEngine {
                                 &db,
                                 account_id,
                                 folder.id,
+                                creds.as_ref(),
                                 sink.as_ref(),
                             )
                             .await;
@@ -72,10 +81,11 @@ impl SyncEngine {
                             &db,
                             account_id,
                             inbox.id,
+                            creds.as_ref(),
                             sink.as_ref(),
                         )
                         .await;
-                        let idled = idle_inbox(&db, account_id, &inbox.remote_path).await;
+                        let idled = idle_inbox(&db, account_id, &inbox.remote_path, creds.as_ref()).await;
                         if matches!(idled, Ok(true)) {
                             continue;
                         }
@@ -95,12 +105,17 @@ impl SyncEngine {
     }
 }
 
-async fn idle_inbox(db: &Database, account_id: i64, remote_path: &str) -> Result<bool, ()> {
+async fn idle_inbox(
+    db: &Database,
+    account_id: i64,
+    remote_path: &str,
+    creds: &dyn CredentialSource,
+) -> Result<bool, ()> {
     let account = accounts_repo::get_account(db, account_id).map_err(|_| ())?;
     let endpoints = load_endpoints_pub(db, account_id).map_err(|_| ())?;
-    let password = am_auth::credentials::load_password(&account.email).map_err(|_| ())?;
+    let auth = creds.auth_for(&account).await.map_err(|_| ())?;
     let config = imap_config_pub(&endpoints, &account.email);
-    let mut session = ImapSession::connect(&config, &ImapAuth::Password(password)).await.map_err(|_| ())?;
+    let mut session = ImapSession::connect(&config, &auth.to_imap()).await.map_err(|_| ())?;
     let caps = session.server_caps().await.map_err(|_| ())?;
     if !caps.idle {
         let _ = session.logout().await;

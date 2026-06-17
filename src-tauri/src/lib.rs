@@ -20,7 +20,11 @@ pub fn run() {
             app.manage(AppState::new(db));
             let state: tauri::State<AppState> = app.state();
             let sink = std::sync::Arc::new(am_app::sink::AppEventSink { app: app.handle().clone() });
-            let engine = am_sync::engine::SyncEngine::start(std::sync::Arc::clone(&state.db), sink);
+            let engine = am_sync::engine::SyncEngine::start(
+                std::sync::Arc::clone(&state.db),
+                sink,
+                std::sync::Arc::clone(&state.creds) as std::sync::Arc<dyn am_sync::auth::CredentialSource>,
+            );
             *state.engine.lock().unwrap() = Some(engine);
             Ok(())
         })
