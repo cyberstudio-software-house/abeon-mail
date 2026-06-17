@@ -59,17 +59,16 @@ pub async fn add_account(
     Ok(account)
 }
 
-#[tauri::command]
-#[specta::specta]
-pub async fn remove_account(
-    state: tauri::State<'_, AppState>,
+pub(crate) async fn remove_account_inner(
+    db: &am_storage::Database,
+    engine: Option<&am_sync::engine::SyncEngine>,
     account_id: i64,
 ) -> Result<(), String> {
-    if let Some(engine) = state.engine.lock().unwrap().as_ref() {
-        engine.stop_account(account_id);
+    if let Some(eng) = engine {
+        eng.stop_account(account_id);
     }
 
-    let auth_ref = accounts_repo::get_account_auth_ref(&state.db, account_id)
+    let auth_ref = accounts_repo::get_account_auth_ref(db, account_id)
         .unwrap_or_default();
 
     if !auth_ref.is_empty() {
@@ -80,7 +79,17 @@ pub async fn remove_account(
         }
     }
 
-    accounts_repo::delete_account(&state.db, account_id).map_err(|e| e.to_string())
+    accounts_repo::delete_account(db, account_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn remove_account(
+    state: tauri::State<'_, AppState>,
+    account_id: i64,
+) -> Result<(), String> {
+    let engine_arc = state.engine.lock().unwrap().clone();
+    remove_account_inner(&state.db, engine_arc.as_deref(), account_id).await
 }
 
 #[tauri::command]
@@ -505,7 +514,7 @@ mod tests {
     use am_core::folder::FolderType;
     use am_core::message::{MessageBody, NewMessageHeader};
     use am_storage::{accounts_repo, folders_repo, messages_repo, Database};
-    use am_auth::credentials::{store_password, delete_password};
+    use am_auth::credentials::store_password;
 
     fn install_in_mem_keyring() {
         use keyring::credential::{
@@ -559,8 +568,8 @@ mod tests {
         });
     }
 
-    #[test]
-    fn remove_account_deletes_row_and_keychain_secret() {
+    #[tokio::test]
+    async fn remove_account_deletes_row_and_keychain_secret() {
         install_in_mem_keyring();
         let db = Database::open_in_memory().unwrap();
         let created = accounts_repo::insert_account_with_settings(
@@ -574,20 +583,46 @@ mod tests {
             "rm@example.com",
             "{}",
         ).unwrap();
-        store_password("rm@example.com", "secret").unwrap();
+
         let auth_ref = accounts_repo::get_account_auth_ref(&db, created.id).unwrap();
-        let _ = delete_password(&auth_ref);
-        delete_password(&auth_ref).unwrap_err();
-        accounts_repo::delete_account(&db, created.id).unwrap();
+        store_password(&auth_ref, "secret").unwrap();
+
+        let folder = am_storage::folders_repo::upsert_folder(
+            &db, created.id, "INBOX", "Inbox", am_core::folder::FolderType::Inbox,
+        ).unwrap();
+        am_storage::messages_repo::insert_headers(&db, folder.id, &[am_core::message::NewMessageHeader {
+            uid: 1,
+            message_id_hdr: None,
+            in_reply_to: None,
+            references_hdr: None,
+            from_address: "a@b.com".into(),
+            from_name: None,
+            subject: "Hi".into(),
+            date: 1000,
+            seen: false,
+            flagged: false,
+            has_attachments: false,
+            size: 100,
+            snippet: "".into(),
+        }]).unwrap();
+
+        super::remove_account_inner(&db, None, created.id).await.unwrap();
+
         let err = accounts_repo::get_account(&db, created.id).unwrap_err();
         assert!(matches!(err, am_storage::StorageError::NotFound));
+
+        let folders = am_storage::folders_repo::list_folders(&db, created.id).unwrap();
+        assert!(folders.is_empty());
+
+        let load_err = am_auth::credentials::load_password(&auth_ref).unwrap_err();
+        assert!(matches!(load_err, am_auth::AuthError::NotFound));
     }
 
-    #[test]
-    fn remove_missing_account_errors_cleanly() {
+    #[tokio::test]
+    async fn remove_missing_account_errors_cleanly() {
         let db = Database::open_in_memory().unwrap();
-        let err = accounts_repo::delete_account(&db, 9999).unwrap_err();
-        assert!(matches!(err, am_storage::StorageError::NotFound));
+        let result = super::remove_account_inner(&db, None, 9999).await;
+        assert!(result.is_err());
     }
 
     #[test]
