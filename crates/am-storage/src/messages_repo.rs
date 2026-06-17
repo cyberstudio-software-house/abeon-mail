@@ -1,7 +1,87 @@
-use am_core::message::{MessageBody, MessageHeader, NewMessageHeader};
+use am_core::message::{MessageBody, MessageFlag, MessageHeader, NewMessageHeader};
 use rusqlite::params;
 
 use crate::db::{Database, StorageError};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MessageLocator {
+    pub account_id: i64,
+    pub folder_id: i64,
+    pub uid: i64,
+}
+
+fn flag_column(flag: MessageFlag) -> &'static str {
+    match flag {
+        MessageFlag::Seen => "seen",
+        MessageFlag::Flagged => "flagged",
+    }
+}
+
+pub fn set_flag(db: &Database, message_id: i64, flag: MessageFlag, value: bool) -> Result<(), StorageError> {
+    let sql = format!("UPDATE messages SET {} = ?2 WHERE id = ?1", flag_column(flag));
+    let conn = db.conn();
+    let changed = conn.execute(&sql, params![message_id, value as i64])?;
+    if changed == 0 {
+        return Err(StorageError::NotFound);
+    }
+    Ok(())
+}
+
+pub fn set_flags_by_uid(db: &Database, folder_id: i64, uid: i64, seen: bool, flagged: bool) -> Result<(), StorageError> {
+    let conn = db.conn();
+    conn.execute(
+        "UPDATE messages SET seen = ?3, flagged = ?4 WHERE folder_id = ?1 AND uid = ?2",
+        params![folder_id, uid, seen as i64, flagged as i64],
+    )?;
+    Ok(())
+}
+
+pub fn list_uids(db: &Database, folder_id: i64) -> Result<Vec<i64>, StorageError> {
+    let conn = db.conn();
+    let mut stmt = conn.prepare("SELECT uid FROM messages WHERE folder_id = ?1 ORDER BY uid ASC")?;
+    let rows = stmt.query_map(params![folder_id], |row| row.get::<_, i64>(0))?;
+    let mut out = Vec::new();
+    for r in rows {
+        out.push(r?);
+    }
+    Ok(out)
+}
+
+pub fn delete_by_uids(db: &Database, folder_id: i64, uids: &[i64]) -> Result<usize, StorageError> {
+    let conn = db.conn();
+    let tx = conn.unchecked_transaction()?;
+    let mut count = 0usize;
+    {
+        let mut stmt = tx.prepare("DELETE FROM messages WHERE folder_id = ?1 AND uid = ?2")?;
+        for uid in uids {
+            count += stmt.execute(params![folder_id, uid])?;
+        }
+    }
+    tx.commit()?;
+    Ok(count)
+}
+
+pub fn delete_by_folder(db: &Database, folder_id: i64) -> Result<usize, StorageError> {
+    let conn = db.conn();
+    Ok(conn.execute("DELETE FROM messages WHERE folder_id = ?1", params![folder_id])?)
+}
+
+pub fn locate(db: &Database, message_id: i64) -> Result<MessageLocator, StorageError> {
+    let conn = db.conn();
+    conn.query_row(
+        "SELECT account_id, folder_id, uid FROM messages WHERE id = ?1",
+        params![message_id],
+        |row| Ok(MessageLocator {
+            account_id: row.get(0)?,
+            folder_id: row.get(1)?,
+            uid: row.get(2)?,
+        }),
+    )
+    .map_err(|e| match e {
+        rusqlite::Error::QueryReturnedNoRows => StorageError::NotFound,
+        other => StorageError::Sqlite(other),
+    })
+}
 
 fn row_to_header(row: &rusqlite::Row) -> rusqlite::Result<(i64, i64, i64, String, String, Option<String>, i64, i64, i64, i64, String)> {
     Ok((
@@ -326,5 +406,47 @@ mod tests {
         let updated = get_header(&db, msg.id).unwrap();
         assert_eq!(updated.snippet, "new snippet");
         assert!(updated.has_attachments);
+    }
+
+    #[test]
+    fn set_flag_toggles_seen_column() {
+        let db = Database::open_in_memory().unwrap();
+        let folder_id = setup(&db);
+        insert_headers(&db, folder_id, &[make_header(1, 1000)]).unwrap();
+        let msg = list_by_folder(&db, folder_id, 1, 0).unwrap().into_iter().next().unwrap();
+        set_flag(&db, msg.id, am_core::message::MessageFlag::Seen, true).unwrap();
+        assert!(get_header(&db, msg.id).unwrap().seen);
+    }
+
+    #[test]
+    fn list_and_delete_by_uids() {
+        let db = Database::open_in_memory().unwrap();
+        let folder_id = setup(&db);
+        insert_headers(&db, folder_id, &[make_header(1, 1), make_header(2, 2), make_header(3, 3)]).unwrap();
+        assert_eq!(list_uids(&db, folder_id).unwrap(), vec![1, 2, 3]);
+        let removed = delete_by_uids(&db, folder_id, &[2, 3]).unwrap();
+        assert_eq!(removed, 2);
+        assert_eq!(list_uids(&db, folder_id).unwrap(), vec![1]);
+    }
+
+    #[test]
+    fn set_flags_by_uid_updates_both() {
+        let db = Database::open_in_memory().unwrap();
+        let folder_id = setup(&db);
+        insert_headers(&db, folder_id, &[make_header(9, 1)]).unwrap();
+        set_flags_by_uid(&db, folder_id, 9, true, true).unwrap();
+        let msg = list_by_folder(&db, folder_id, 1, 0).unwrap().into_iter().next().unwrap();
+        assert!(msg.seen && msg.flagged);
+    }
+
+    #[test]
+    fn locate_returns_account_folder_uid() {
+        let db = Database::open_in_memory().unwrap();
+        let folder_id = setup(&db);
+        insert_headers(&db, folder_id, &[make_header(7, 1)]).unwrap();
+        let msg = list_by_folder(&db, folder_id, 1, 0).unwrap().into_iter().next().unwrap();
+        let loc = locate(&db, msg.id).unwrap();
+        assert_eq!(loc.folder_id, folder_id);
+        assert_eq!(loc.uid, 7);
     }
 }

@@ -1,5 +1,12 @@
 use serde::{Deserialize, Serialize};
 
+#[derive(Serialize, Deserialize, specta::Type, Clone, Copy, Debug, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum MessageFlag {
+    Seen,
+    Flagged,
+}
+
 #[derive(Serialize, Deserialize, specta::Type, Clone, Debug, PartialEq)]
 pub struct MessageHeader {
     pub id: i64,

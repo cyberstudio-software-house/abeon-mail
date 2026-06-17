@@ -194,6 +194,17 @@ pub fn get_sync_markers(db: &Database, folder_id: i64) -> Result<SyncMarkers, St
     })
 }
 
+pub fn recount_unread(db: &Database, folder_id: i64) -> Result<i64, StorageError> {
+    let conn = db.conn();
+    let unread: i64 = conn.query_row(
+        "SELECT count(*) FROM messages WHERE folder_id = ?1 AND seen = 0",
+        params![folder_id],
+        |row| row.get(0),
+    )?;
+    conn.execute("UPDATE folders SET unread_count = ?2 WHERE id = ?1", params![folder_id, unread])?;
+    Ok(unread)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -295,5 +306,32 @@ mod tests {
         let folder = upsert_folder(&db, account.id, "INBOX", "Inbox", FolderType::Inbox).unwrap();
         set_sync_markers(&db, folder.id, 1, 2, None, 100).unwrap();
         assert_eq!(get_sync_markers(&db, folder.id).unwrap().highestmodseq, None);
+    }
+
+    #[test]
+    fn recount_unread_counts_unseen() {
+        use am_core::message::NewMessageHeader;
+        let db = Database::open_in_memory().unwrap();
+        let account = insert_account(&db, &sample_account()).unwrap();
+        let folder = upsert_folder(&db, account.id, "INBOX", "Inbox", FolderType::Inbox).unwrap();
+        crate::messages_repo::insert_headers(&db, folder.id, &[
+            NewMessageHeader {
+                uid: 1,
+                message_id_hdr: Some("<msg-1@example.com>".into()),
+                in_reply_to: None,
+                references_hdr: None,
+                from_address: "sender@example.com".into(),
+                from_name: Some("Sender".into()),
+                subject: "Subject 1".into(),
+                date: 1,
+                seen: false,
+                flagged: false,
+                has_attachments: false,
+                size: 1024,
+                snippet: "Preview text".into(),
+            },
+        ]).unwrap();
+        let unread = recount_unread(&db, folder.id).unwrap();
+        assert_eq!(unread, 1);
     }
 }
