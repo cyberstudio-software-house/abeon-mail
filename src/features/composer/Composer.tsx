@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
+import { Image } from "@tiptap/extension-image";
 import { commands } from "../../ipc/bindings";
 import type { OutgoingAttachment } from "../../ipc/bindings";
 import { useAccounts, useSaveDraft, useEnqueueSend } from "../../ipc/queries";
@@ -9,6 +10,23 @@ import { RecipientField } from "./RecipientField";
 import "./composer.css";
 
 const AUTOSAVE_DELAY_MS = 1500;
+
+let inlineImageCounter = 0;
+
+function generateContentId(): string {
+  inlineImageCounter += 1;
+  return `inline-${inlineImageCounter}@abeonmail`;
+}
+
+function rewriteInlineSrcs(html: string, srcToContentId: Map<string, string>): string {
+  return html.replace(/<img([^>]*)\ssrc="([^"]*)"([^>]*)>/g, (match, before, src, after) => {
+    const contentId = srcToContentId.get(src);
+    if (contentId) {
+      return `<img${before} src="cid:${contentId}"${after}>`;
+    }
+    return match;
+  });
+}
 
 export function Composer() {
   const composer = useUiStore((s) => s.composer);
@@ -27,6 +45,7 @@ export function Composer() {
   const [showBcc, setShowBcc] = useState((prefill?.bcc ?? []).length > 0);
   const [isSending, setIsSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
+  const inlineSrcMapRef = useRef<Map<string, string>>(new Map());
 
   const draftIdRef = useRef<number | null>(composer.draftId);
   const autosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -37,7 +56,7 @@ export function Composer() {
   const accountId = fromAccountId ?? (accounts[0]?.id ?? null);
 
   const editor = useEditor({
-    extensions: [StarterKit],
+    extensions: [StarterKit, Image],
     content: prefill?.html_body ?? "",
   });
 
@@ -48,6 +67,8 @@ export function Composer() {
   }, [prefill?.html_body, editor]);
 
   const buildMessage = useCallback(() => {
+    const rawHtml = editor?.getHTML() ?? null;
+    const html_body = rawHtml ? rewriteInlineSrcs(rawHtml, inlineSrcMapRef.current) : null;
     return {
       from_address: accounts.find((a) => a.id === accountId)?.email ?? "",
       from_name: accounts.find((a) => a.id === accountId)?.display_name ?? null,
@@ -56,7 +77,7 @@ export function Composer() {
       bcc,
       subject,
       text_body: editor?.getText() ?? "",
-      html_body: editor?.getHTML() ?? null,
+      html_body,
       in_reply_to: prefill?.in_reply_to ?? null,
       references: prefill?.references ?? [],
       attachments,
@@ -136,6 +157,22 @@ export function Composer() {
       setAttachments((prev) => [...prev, ...result.data]);
       scheduleAutosave();
     }
+  }
+
+  async function handleInsertImage() {
+    if (!editor) return;
+    const result = await commands.pickAttachment();
+    if (result.status !== "ok" || result.data.length === 0) return;
+    const inlineAttachments: OutgoingAttachment[] = result.data.map((att) => {
+      const contentId = att.content_id ?? generateContentId();
+      return { ...att, content_id: contentId };
+    });
+    const previewSrc = inlineAttachments[0].blob_ref;
+    const contentId = inlineAttachments[0].content_id as string;
+    inlineSrcMapRef.current.set(previewSrc, contentId);
+    editor.chain().focus().setImage({ src: previewSrc }).run();
+    setAttachments((prev) => [...prev, ...inlineAttachments]);
+    scheduleAutosave();
   }
 
   async function handleInsertSignature() {
@@ -272,6 +309,14 @@ export function Composer() {
             }}
           >
             🔗
+          </button>
+          <button
+            type="button"
+            className="toolbar-btn"
+            aria-label="Insert image"
+            onClick={handleInsertImage}
+          >
+            🖼
           </button>
         </div>
 

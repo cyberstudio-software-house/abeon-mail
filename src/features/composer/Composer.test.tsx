@@ -17,11 +17,13 @@ vi.mock("../../ipc/bindings", () => ({
   events: {},
 }));
 
+let mockHtmlContent = "<p>Hello world</p>";
+
 vi.mock("@tiptap/react", () => {
   const editorInstance = {
     isActive: () => false,
     getText: () => "Hello world",
-    getHTML: () => "<p>Hello world</p>",
+    getHTML: () => mockHtmlContent,
     commands: { setContent: vi.fn() },
     chain: () => ({
       focus: () => ({
@@ -30,6 +32,11 @@ vi.mock("@tiptap/react", () => {
         toggleBulletList: () => ({ run: vi.fn() }),
         setLink: () => ({ run: vi.fn() }),
         insertContent: () => ({ run: vi.fn() }),
+        setImage: ({ src }: { src: string }) => ({
+          run: () => {
+            mockHtmlContent = `<p>Hello world</p><img src="${src}">`;
+          },
+        }),
       }),
     }),
     destroy: vi.fn(),
@@ -71,6 +78,7 @@ describe("Composer", () => {
     cleanup();
     vi.clearAllMocks();
     useUiStore.setState({ composer: { open: false, draftId: null, prefill: null } });
+    mockHtmlContent = "<p>Hello world</p>";
   });
 
   it("renders when composer is open", async () => {
@@ -207,5 +215,51 @@ describe("Composer", () => {
     vi.useRealTimers();
 
     expect(commands.saveDraft).toHaveBeenCalled();
+  });
+
+  it("rewrites inline image src to cid: in html_body and includes inline attachment on Send", async () => {
+    const { commands } = await import("../../ipc/bindings");
+
+    const inlineAttachment = {
+      filename: "photo.jpg",
+      mime_type: "image/jpeg",
+      blob_ref: "/tmp/photo.jpg",
+      content_id: "inline-1@abeonmail",
+    };
+
+    (commands.pickAttachment as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      status: "ok",
+      data: [inlineAttachment],
+    });
+
+    render(<Composer />, { wrapper: Wrapper });
+    await screen.findByRole("dialog");
+
+    const insertImageButton = screen.getByRole("button", { name: "Insert image" });
+    await act(async () => {
+      fireEvent.click(insertImageButton);
+    });
+
+    await waitFor(() => {
+      expect(commands.pickAttachment).toHaveBeenCalled();
+    });
+
+    const sendButton = await screen.findByRole("button", { name: "Send" });
+    fireEvent.click(sendButton);
+
+    await waitFor(() => {
+      expect(commands.saveDraft).toHaveBeenCalled();
+    });
+
+    const callArgs = (commands.saveDraft as ReturnType<typeof vi.fn>).mock.calls[0];
+    const message = callArgs[2];
+
+    expect(message.html_body).toContain("cid:inline-1@abeonmail");
+    expect(message.html_body).not.toContain('src="/tmp/photo.jpg"');
+    expect(message.attachments).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ content_id: "inline-1@abeonmail", blob_ref: "/tmp/photo.jpg" }),
+      ])
+    );
   });
 });
