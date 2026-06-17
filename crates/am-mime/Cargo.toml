@@ -4,6 +4,7 @@ edition.workspace = true
 version.workspace = true
 
 [dependencies]
+am-core = { path = "../am-core" }
 mail-parser.workspace = true
 ammonia.workspace = true
 serde.workspace = true

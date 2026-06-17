@@ -117,6 +117,7 @@ dependencies = [
 name = "am-mime"
 version = "0.1.0"
 dependencies = [
+ "am-core",
  "ammonia",
  "base64 0.22.1",
  "encoding_rs",
