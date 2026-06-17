@@ -30,6 +30,8 @@ pub struct FetchedHeader {
     pub seen: bool,
     pub flagged: bool,
     pub size: i64,
+    pub in_reply_to: Option<String>,
+    pub references: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -136,7 +138,7 @@ impl ImapSession {
 
         let start = exists.saturating_sub(limit).saturating_add(1).max(1);
         let range = format!("{start}:{exists}");
-        let query = "(UID ENVELOPE FLAGS RFC822.SIZE INTERNALDATE)";
+        let query = "(UID ENVELOPE FLAGS RFC822.SIZE INTERNALDATE BODY.PEEK[HEADER.FIELDS (REFERENCES)])";
 
         let fetches: Vec<Fetch> = match &mut self.session {
             SessionStream::Plain(s) => {
@@ -288,6 +290,16 @@ fn map_header(fetch: &Fetch) -> FetchedHeader {
         })
         .unwrap_or(0);
 
+    let in_reply_to = envelope
+        .and_then(|e| e.in_reply_to.as_ref())
+        .map(|s| decode_bytes(s))
+        .filter(|s| !s.trim().is_empty());
+
+    let references = fetch
+        .header()
+        .map(|h| parse_references(&String::from_utf8_lossy(h)))
+        .unwrap_or_default();
+
     FetchedHeader {
         uid,
         message_id_hdr,
@@ -298,11 +310,28 @@ fn map_header(fetch: &Fetch) -> FetchedHeader {
         seen,
         flagged,
         size,
+        in_reply_to,
+        references,
     }
 }
 
 fn decode_bytes(bytes: &[u8]) -> String {
-    String::from_utf8_lossy(bytes).into_owned()
+    am_mime::rfc2047::decode(&String::from_utf8_lossy(bytes))
+}
+
+fn parse_references(raw: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut rest = raw;
+    while let Some(open) = rest.find('<') {
+        let after = &rest[open..];
+        if let Some(close) = after.find('>') {
+            out.push(after[..=close].to_string());
+            rest = &after[close + 1..];
+        } else {
+            break;
+        }
+    }
+    out
 }
 
 fn parse_envelope_date(value: &str) -> Option<i64> {
@@ -325,5 +354,19 @@ mod tests {
         .with_safe_default_protocol_versions()
         .map(|b| b.with_root_certificates(roots).with_no_client_auth());
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn parse_references_extracts_all_ids() {
+        let raw = "<a@x.com> <b@y.com>\r\n <c@z.com>";
+        assert_eq!(
+            parse_references(raw),
+            vec!["<a@x.com>".to_string(), "<b@y.com>".to_string(), "<c@z.com>".to_string()]
+        );
+    }
+
+    #[test]
+    fn parse_references_empty_when_none() {
+        assert!(parse_references("   ").is_empty());
     }
 }
