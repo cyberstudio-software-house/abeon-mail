@@ -11,7 +11,7 @@ const MAX_QUEUE_ATTEMPTS: i64 = 6;
 const INITIAL_SYNC_LIMIT: u32 = 200;
 const INBOX_PATH: &str = "INBOX";
 
-fn now_secs() -> i64 {
+pub fn now_secs() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs() as i64)
@@ -92,6 +92,14 @@ fn imap_config(endpoints: &Endpoints, username: &str) -> ImapConfig {
         tls: endpoints.imap_tls,
         username: username.to_string(),
     }
+}
+
+pub fn imap_config_pub(endpoints: &Endpoints, username: &str) -> ImapConfig {
+    imap_config(endpoints, username)
+}
+
+pub fn load_endpoints_pub(db: &Database, account_id: i64) -> Result<Endpoints, SyncError> {
+    load_endpoints(db, account_id)
 }
 
 fn header_from_fetch(fetched: &FetchedHeader) -> NewMessageHeader {
