@@ -294,12 +294,10 @@ pub async fn incremental_sync_folder(
         messages_repo::insert_headers(db, folder_id, &headers)?;
     }
 
-    if caps.condstore {
-        if let Some(modseq) = markers.highestmodseq {
-            let changes = session.fetch_flag_changes(modseq).await?;
-            for c in changes {
-                messages_repo::set_flags_by_uid(db, folder_id, c.uid, c.seen, c.flagged)?;
-            }
+    if let Some(modseq) = markers.highestmodseq.filter(|_| caps.condstore) {
+        let changes = session.fetch_flag_changes(modseq).await?;
+        for c in changes {
+            messages_repo::set_flags_by_uid(db, folder_id, c.uid, c.seen, c.flagged)?;
         }
     } else {
         let flags = session.fetch_all_flags().await?;
