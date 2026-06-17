@@ -268,6 +268,26 @@ mod tests {
     }
 
     #[test]
+    fn header_from_fetch_joins_references_and_copies_in_reply_to() {
+        let fetched = FetchedHeader {
+            uid: 8,
+            message_id_hdr: Some("<id@example.com>".into()),
+            from_address: "a@b.com".into(),
+            from_name: Some("A".into()),
+            subject: "Hi".into(),
+            date: 123,
+            seen: false,
+            flagged: false,
+            size: 10,
+            in_reply_to: Some("<parent@example.com>".into()),
+            references: vec!["<a@x>".into(), "<b@y>".into()],
+        };
+        let header = header_from_fetch(&fetched);
+        assert_eq!(header.in_reply_to.as_deref(), Some("<parent@example.com>"));
+        assert_eq!(header.references_hdr.as_deref(), Some("<a@x> <b@y>"));
+    }
+
+    #[test]
     fn sync_error_never_contains_password() {
         let err = SyncError::Auth;
         assert_eq!(err.to_string(), "authentication failed");
