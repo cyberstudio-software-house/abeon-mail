@@ -1,0 +1,10 @@
+[package]
+name = "am-auth"
+edition.workspace = true
+version.workspace = true
+
+[dependencies]
+serde.workspace = true
+specta.workspace = true
+thiserror.workspace = true
+keyring.workspace = true
