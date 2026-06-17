@@ -1,5 +1,6 @@
 pub mod credentials;
 pub mod endpoints;
+pub mod oauth;
 pub mod provider;
 
 use thiserror::Error;
