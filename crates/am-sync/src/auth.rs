@@ -117,6 +117,7 @@ mod tests {
             provider_type: provider,
             color: None,
             position: 0,
+            requires_reauth: false,
         }
     }
 
