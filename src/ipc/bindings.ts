@@ -17,6 +17,7 @@ export const commands = {
 	markMessageSeen: (messageId: number) => typedError<null, string>(__TAURI_INVOKE("mark_message_seen", { messageId })),
 	listThreads: (folderId: number, limit: number, offset: number) => typedError<ThreadSummary[], string>(__TAURI_INVOKE("list_threads", { folderId, limit, offset })),
 	listThreadMessages: (threadId: number) => typedError<MessageHeader[], string>(__TAURI_INVOKE("list_thread_messages", { threadId })),
+	enqueueSend: (draftId: number) => typedError<null, string>(__TAURI_INVOKE("enqueue_send", { draftId })),
 };
 
 /** Events */

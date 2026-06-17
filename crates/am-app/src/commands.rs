@@ -123,6 +123,12 @@ pub fn mark_message_seen(
         .map_err(|_| "Failed to mark seen".to_string())
 }
 
+#[tauri::command]
+#[specta::specta]
+pub fn enqueue_send(state: tauri::State<'_, AppState>, draft_id: i64) -> Result<(), String> {
+    am_sync::send::enqueue_send(&state.db, draft_id).map_err(|_| "Failed to enqueue send".to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use am_core::account::{NewAccount, ProviderType};

@@ -71,7 +71,7 @@ pub async fn drain_outbox(db: &Database, account_id: i64, now: i64) -> Result<()
                 {
                     let config = imap_config_pub(&endpoints, &account.email);
                     if let Ok(mut session) = ImapSession::connect(&config, &password).await {
-                        let _ = session.append(&sent.remote_path, "\\Seen", &bytes).await;
+                        let _ = session.append(&sent.remote_path, "(\\Seen)", &bytes).await;
                         let _ = session.logout().await;
                     }
                 }
