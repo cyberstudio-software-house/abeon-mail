@@ -189,7 +189,7 @@ pub async fn drain_draft_sync(db: &Database, account_id: i64, now: i64) -> Resul
             let prev_uid = drafts_repo::get_server_uid(db, draft_id).ok().flatten();
             let new_uid = state.uidnext;
             session
-                .append_returning_uid(&drafts_folder.remote_path, "(\\Draft)", &bytes)
+                .append(&drafts_folder.remote_path, "(\\Draft)", &bytes)
                 .await?;
             drafts_repo::set_server_uid(db, draft_id, Some(new_uid))?;
             if let Some(old_uid) = prev_uid {

@@ -298,20 +298,6 @@ impl ImapSession {
         Ok(())
     }
 
-    pub async fn append_returning_uid(
-        &mut self,
-        folder: &str,
-        flags: &str,
-        bytes: &[u8],
-    ) -> Result<Option<i64>, ProtocolError> {
-        let flags_opt = if flags.is_empty() { None } else { Some(flags) };
-        match &mut self.session {
-            SessionStream::Plain(s) => s.append(folder, flags_opt, None, bytes).await?,
-            SessionStream::Tls(s) => s.append(folder, flags_opt, None, bytes).await?,
-        }
-        Ok(None)
-    }
-
     pub async fn delete_uid(&mut self, folder: &str, uid: i64) -> Result<(), ProtocolError> {
         let uid_str = uid.to_string();
         let query = "+FLAGS (\\Deleted)";
