@@ -377,6 +377,51 @@ fn url_decode(s: &str) -> String {
 
 #[tauri::command]
 #[specta::specta]
+pub fn reorder_accounts(
+    state: tauri::State<'_, AppState>,
+    ordered_ids: Vec<i64>,
+) -> Result<(), String> {
+    accounts_repo::reorder_accounts(&state.db, &ordered_ids).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn begin_reauth(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+    account_id: i64,
+) -> Result<(), String> {
+    let account = accounts_repo::get_account(&state.db, account_id)
+        .map_err(|e| e.to_string())?;
+
+    let (new_tokens, email) = run_google_oauth_flow(&app).await?;
+
+    if email != account.email {
+        return Err("Signed-in Google account does not match this account".to_string());
+    }
+
+    let refresh_token = new_tokens
+        .refresh_token
+        .clone()
+        .ok_or_else(|| "No refresh token in Google response".to_string())?;
+    am_auth::credentials::store_password(&account.email, &refresh_token)
+        .map_err(|_| "Keychain unavailable".to_string())?;
+
+    state.creds.token_manager().seed(&account.email, &new_tokens);
+
+    accounts_repo::set_requires_reauth(&state.db, account_id, false)
+        .map_err(|e| e.to_string())?;
+
+    if let Some(engine) = state.engine.lock().unwrap().as_ref() {
+        engine.stop_account(account_id);
+        engine.spawn_account(account_id);
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
 pub async fn begin_google_oauth(
     app: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
@@ -730,6 +775,27 @@ mod tests {
 
         let result = am_storage::smart_repo::list_smart_folder(&db, SmartFolderKind::AllInboxes, 100, 0).unwrap();
         assert_eq!(result.len(), 0);
+    }
+
+    #[test]
+    fn reorder_accounts_command_reorders_in_db() {
+        let db = Database::open_in_memory().unwrap();
+        let a = accounts_repo::insert_account(&db, &NewAccount {
+            email: "a@example.com".into(),
+            display_name: "A".into(),
+            provider_type: ProviderType::ImapPassword,
+            color: None,
+        }).unwrap();
+        let b = accounts_repo::insert_account(&db, &NewAccount {
+            email: "b@example.com".into(),
+            display_name: "B".into(),
+            provider_type: ProviderType::ImapPassword,
+            color: None,
+        }).unwrap();
+        accounts_repo::reorder_accounts(&db, &[b.id, a.id]).unwrap();
+        let list = accounts_repo::list_accounts(&db).unwrap();
+        assert_eq!(list[0].id, b.id);
+        assert_eq!(list[1].id, a.id);
     }
 
     #[test]
