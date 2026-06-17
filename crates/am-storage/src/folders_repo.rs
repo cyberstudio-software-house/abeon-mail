@@ -3,6 +3,13 @@ use rusqlite::params;
 
 use crate::db::{Database, StorageError};
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SyncMarkers {
+    pub uidvalidity: Option<i64>,
+    pub uidnext: Option<i64>,
+    pub highestmodseq: Option<i64>,
+}
+
 fn folder_type_to_str(ft: &FolderType) -> &'static str {
     match ft {
         FolderType::Inbox => "inbox",
@@ -149,6 +156,44 @@ pub fn set_counts(
     Ok(())
 }
 
+pub fn set_sync_markers(
+    db: &Database,
+    folder_id: i64,
+    uidvalidity: i64,
+    uidnext: i64,
+    highestmodseq: Option<i64>,
+    last_synced_at: i64,
+) -> Result<(), StorageError> {
+    let conn = db.conn();
+    let changed = conn.execute(
+        "UPDATE folders SET uidvalidity = ?2, uidnext = ?3, highestmodseq = ?4, last_synced_at = ?5 WHERE id = ?1",
+        params![folder_id, uidvalidity, uidnext, highestmodseq, last_synced_at],
+    )?;
+    if changed == 0 {
+        return Err(StorageError::NotFound);
+    }
+    Ok(())
+}
+
+pub fn get_sync_markers(db: &Database, folder_id: i64) -> Result<SyncMarkers, StorageError> {
+    let conn = db.conn();
+    conn.query_row(
+        "SELECT uidvalidity, uidnext, highestmodseq FROM folders WHERE id = ?1",
+        params![folder_id],
+        |row| {
+            Ok(SyncMarkers {
+                uidvalidity: row.get(0)?,
+                uidnext: row.get(1)?,
+                highestmodseq: row.get(2)?,
+            })
+        },
+    )
+    .map_err(|e| match e {
+        rusqlite::Error::QueryReturnedNoRows => StorageError::NotFound,
+        other => StorageError::Sqlite(other),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -229,5 +274,26 @@ mod tests {
         let fetched = get_folder(&db, folder.id).unwrap();
         assert_eq!(fetched.unread_count, 3);
         assert_eq!(fetched.total_count, 10);
+    }
+
+    #[test]
+    fn sync_markers_roundtrip() {
+        let db = Database::open_in_memory().unwrap();
+        let account = insert_account(&db, &sample_account()).unwrap();
+        let folder = upsert_folder(&db, account.id, "INBOX", "Inbox", FolderType::Inbox).unwrap();
+        set_sync_markers(&db, folder.id, 555, 42, Some(900), 1718600000).unwrap();
+        let markers = get_sync_markers(&db, folder.id).unwrap();
+        assert_eq!(markers.uidvalidity, Some(555));
+        assert_eq!(markers.uidnext, Some(42));
+        assert_eq!(markers.highestmodseq, Some(900));
+    }
+
+    #[test]
+    fn sync_markers_missing_highestmodseq_is_none() {
+        let db = Database::open_in_memory().unwrap();
+        let account = insert_account(&db, &sample_account()).unwrap();
+        let folder = upsert_folder(&db, account.id, "INBOX", "Inbox", FolderType::Inbox).unwrap();
+        set_sync_markers(&db, folder.id, 1, 2, None, 100).unwrap();
+        assert_eq!(get_sync_markers(&db, folder.id).unwrap().highestmodseq, None);
     }
 }

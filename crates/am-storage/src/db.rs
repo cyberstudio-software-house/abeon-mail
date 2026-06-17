@@ -75,4 +75,26 @@ mod tests {
             .unwrap();
         assert_eq!(fk_enabled, 1);
     }
+
+    #[test]
+    fn migration_v2_adds_sync_columns() {
+        let db = Database::open_in_memory().unwrap();
+        let conn = db.conn();
+        let count: i64 = conn
+            .query_row(
+                "SELECT count(*) FROM pragma_table_info('folders') WHERE name IN ('highestmodseq','last_synced_at')",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 2);
+        let msg_cols: i64 = conn
+            .query_row(
+                "SELECT count(*) FROM pragma_table_info('messages') WHERE name IN ('references_hdr','in_reply_to')",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(msg_cols, 2);
+    }
 }
