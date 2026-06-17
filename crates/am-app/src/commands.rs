@@ -19,9 +19,9 @@ pub fn list_accounts(state: tauri::State<'_, AppState>) -> Result<Vec<Account>, 
 #[specta::specta]
 pub fn add_account(
     state: tauri::State<'_, AppState>,
-    new: NewAccount,
+    account: NewAccount,
 ) -> Result<Account, String> {
-    accounts_repo::insert_account(&state.db, &new).map_err(|e| e.to_string())
+    accounts_repo::insert_account(&state.db, &account).map_err(|e| e.to_string())
 }
 
 #[cfg(test)]
