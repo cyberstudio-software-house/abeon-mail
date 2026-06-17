@@ -42,8 +42,12 @@ export function AddAccountWizard({ onClose, onAdded }: Props) {
   const addAccount = useAddAccount();
 
   async function handleContinue() {
-    const result = await resolveEndpoints.mutateAsync(email);
-    setEndpoints(result);
+    try {
+      const result = await resolveEndpoints.mutateAsync(email);
+      setEndpoints(result);
+    } catch (err) {
+      setAddError(err instanceof Error ? err.message : String(err));
+    }
   }
 
   async function handleAddAccount() {
@@ -168,7 +172,7 @@ export function AddAccountWizard({ onClose, onAdded }: Props) {
         <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-3)" }}>
           <EndpointsForm endpoints={endpoints} onChange={setEndpoints} />
           {addError && (
-            <p style={{ color: "#ef4444", fontSize: "13px", margin: 0 }}>{addError}</p>
+            <p style={{ color: "var(--color-error)", fontSize: "13px", margin: 0 }}>{addError}</p>
           )}
           <div style={{ display: "flex", gap: "var(--space-2)", justifyContent: "flex-end", marginTop: "var(--space-2)" }}>
             <button
