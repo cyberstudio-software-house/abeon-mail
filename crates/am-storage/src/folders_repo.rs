@@ -132,6 +132,23 @@ pub fn set_uid_state(
     Ok(())
 }
 
+pub fn set_counts(
+    db: &Database,
+    folder_id: i64,
+    unread_count: i64,
+    total_count: i64,
+) -> Result<(), StorageError> {
+    let conn = db.conn();
+    let changed = conn.execute(
+        "UPDATE folders SET unread_count = ?2, total_count = ?3 WHERE id = ?1",
+        params![folder_id, unread_count, total_count],
+    )?;
+    if changed == 0 {
+        return Err(StorageError::NotFound);
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -201,5 +218,16 @@ mod tests {
         ).unwrap();
         assert_eq!(uidvalidity, 12345);
         assert_eq!(uidnext, 100);
+    }
+
+    #[test]
+    fn set_counts_updates_values() {
+        let db = Database::open_in_memory().unwrap();
+        let account = insert_account(&db, &sample_account()).unwrap();
+        let folder = upsert_folder(&db, account.id, "INBOX", "Inbox", FolderType::Inbox).unwrap();
+        set_counts(&db, folder.id, 3, 10).unwrap();
+        let fetched = get_folder(&db, folder.id).unwrap();
+        assert_eq!(fetched.unread_count, 3);
+        assert_eq!(fetched.total_count, 10);
     }
 }

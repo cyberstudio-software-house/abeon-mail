@@ -144,6 +144,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "am-sync"
+version = "0.1.0"
+dependencies = [
+ "am-auth",
+ "am-core",
+ "am-mime",
+ "am-protocols",
+ "am-storage",
+ "async-imap",
+ "keyring",
+ "serde",
+ "serde_json",
+ "testcontainers",
+ "thiserror 1.0.69",
+ "tokio",
+]
+
+[[package]]
 name = "ammonia"
 version = "4.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"

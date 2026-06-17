@@ -46,6 +46,43 @@ pub fn insert_account(db: &Database, new: &NewAccount) -> Result<Account, Storag
     get_account(db, id)
 }
 
+pub fn insert_account_with_settings(
+    db: &Database,
+    new: &NewAccount,
+    auth_ref: &str,
+    settings: &str,
+) -> Result<Account, StorageError> {
+    let conn = db.conn();
+    conn.execute(
+        "INSERT INTO accounts (email, display_name, provider_type, auth_ref, settings, color, position)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, (SELECT COALESCE(MAX(position) + 1, 0) FROM accounts))",
+        params![
+            new.email,
+            new.display_name,
+            new.provider_type.as_db_str(),
+            auth_ref,
+            settings,
+            new.color
+        ],
+    )?;
+    let id = conn.last_insert_rowid();
+    drop(conn);
+    get_account(db, id)
+}
+
+pub fn get_account_settings(db: &Database, id: i64) -> Result<String, StorageError> {
+    let conn = db.conn();
+    conn.query_row(
+        "SELECT settings FROM accounts WHERE id = ?1",
+        params![id],
+        |row| row.get::<_, String>(0),
+    )
+    .map_err(|e| match e {
+        rusqlite::Error::QueryReturnedNoRows => StorageError::NotFound,
+        other => StorageError::Sqlite(other),
+    })
+}
+
 pub fn get_account(db: &Database, id: i64) -> Result<Account, StorageError> {
     let conn = db.conn();
     conn.query_row(
@@ -126,6 +163,31 @@ mod tests {
     fn delete_missing_account_returns_not_found() {
         let db = Database::open_in_memory().unwrap();
         let err = delete_account(&db, 999).unwrap_err();
+        assert!(matches!(err, StorageError::NotFound));
+    }
+
+    #[test]
+    fn insert_with_settings_stores_auth_ref_and_settings() {
+        let db = Database::open_in_memory().unwrap();
+        let created =
+            insert_account_with_settings(&db, &sample(), "user@example.com", "{\"k\":1}").unwrap();
+        let settings = get_account_settings(&db, created.id).unwrap();
+        assert_eq!(settings, "{\"k\":1}");
+        let conn = db.conn();
+        let auth_ref: String = conn
+            .query_row(
+                "SELECT auth_ref FROM accounts WHERE id = ?1",
+                params![created.id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(auth_ref, "user@example.com");
+    }
+
+    #[test]
+    fn get_settings_missing_account_returns_not_found() {
+        let db = Database::open_in_memory().unwrap();
+        let err = get_account_settings(&db, 999).unwrap_err();
         assert!(matches!(err, StorageError::NotFound));
     }
 

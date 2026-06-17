@@ -37,6 +37,14 @@ pub struct MessageBody {
     pub text_html: Option<String>,
 }
 
+#[derive(Serialize, Deserialize, specta::Type, Clone, Debug, PartialEq)]
+pub struct SyncProgress {
+    pub account_id: i64,
+    pub folder_id: i64,
+    pub fetched: i64,
+    pub total: i64,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
