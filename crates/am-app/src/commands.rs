@@ -61,6 +61,30 @@ pub async fn add_account(
 
 #[tauri::command]
 #[specta::specta]
+pub async fn remove_account(
+    state: tauri::State<'_, AppState>,
+    account_id: i64,
+) -> Result<(), String> {
+    if let Some(engine) = state.engine.lock().unwrap().as_ref() {
+        engine.stop_account(account_id);
+    }
+
+    let auth_ref = accounts_repo::get_account_auth_ref(&state.db, account_id)
+        .unwrap_or_default();
+
+    if !auth_ref.is_empty() {
+        match am_auth::credentials::delete_password(&auth_ref) {
+            Ok(()) => {}
+            Err(am_auth::AuthError::NotFound) => {}
+            Err(e) => return Err(e.to_string()),
+        }
+    }
+
+    accounts_repo::delete_account(&state.db, account_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+#[specta::specta]
 pub fn list_folders(state: tauri::State<'_, AppState>, account_id: i64) -> Result<Vec<Folder>, String> {
     folders_repo::list_folders(&state.db, account_id).map_err(|e| e.to_string())
 }
@@ -481,6 +505,90 @@ mod tests {
     use am_core::folder::FolderType;
     use am_core::message::{MessageBody, NewMessageHeader};
     use am_storage::{accounts_repo, folders_repo, messages_repo, Database};
+    use am_auth::credentials::{store_password, delete_password};
+
+    fn install_in_mem_keyring() {
+        use keyring::credential::{
+            Credential, CredentialApi, CredentialBuilderApi, CredentialPersistence,
+        };
+        use std::any::Any;
+        use std::collections::HashMap;
+        use std::sync::{Mutex, Once};
+
+        static STORE: Mutex<Option<HashMap<(String, String), String>>> = Mutex::new(None);
+        static INIT: Once = Once::new();
+
+        INIT.call_once(|| {
+            *STORE.lock().unwrap() = Some(HashMap::new());
+
+            #[derive(Debug)]
+            struct InMemCred { service: String, user: String }
+            impl CredentialApi for InMemCred {
+                fn set_secret(&self, secret: &[u8]) -> keyring::Result<()> {
+                    let pw = String::from_utf8(secret.to_vec())
+                        .map_err(|_| keyring::Error::BadEncoding(secret.to_vec()))?;
+                    STORE.lock().unwrap().as_mut().unwrap()
+                        .insert((self.service.clone(), self.user.clone()), pw);
+                    Ok(())
+                }
+                fn get_secret(&self) -> keyring::Result<Vec<u8>> {
+                    STORE.lock().unwrap().as_ref().unwrap()
+                        .get(&(self.service.clone(), self.user.clone()))
+                        .map(|s| s.as_bytes().to_vec())
+                        .ok_or(keyring::Error::NoEntry)
+                }
+                fn delete_credential(&self) -> keyring::Result<()> {
+                    STORE.lock().unwrap().as_mut().unwrap()
+                        .remove(&(self.service.clone(), self.user.clone()))
+                        .map(|_| ())
+                        .ok_or(keyring::Error::NoEntry)
+                }
+                fn as_any(&self) -> &dyn Any { self }
+            }
+
+            struct InMemCredBuilder;
+            impl CredentialBuilderApi for InMemCredBuilder {
+                fn build(&self, _target: Option<&str>, service: &str, user: &str) -> keyring::Result<Box<Credential>> {
+                    Ok(Box::new(InMemCred { service: service.to_string(), user: user.to_string() }))
+                }
+                fn as_any(&self) -> &dyn Any { self }
+                fn persistence(&self) -> CredentialPersistence { CredentialPersistence::ProcessOnly }
+            }
+
+            keyring::set_default_credential_builder(Box::new(InMemCredBuilder));
+        });
+    }
+
+    #[test]
+    fn remove_account_deletes_row_and_keychain_secret() {
+        install_in_mem_keyring();
+        let db = Database::open_in_memory().unwrap();
+        let created = accounts_repo::insert_account_with_settings(
+            &db,
+            &NewAccount {
+                email: "rm@example.com".into(),
+                display_name: "Rm".into(),
+                provider_type: ProviderType::ImapPassword,
+                color: None,
+            },
+            "rm@example.com",
+            "{}",
+        ).unwrap();
+        store_password("rm@example.com", "secret").unwrap();
+        let auth_ref = accounts_repo::get_account_auth_ref(&db, created.id).unwrap();
+        let _ = delete_password(&auth_ref);
+        delete_password(&auth_ref).unwrap_err();
+        accounts_repo::delete_account(&db, created.id).unwrap();
+        let err = accounts_repo::get_account(&db, created.id).unwrap_err();
+        assert!(matches!(err, am_storage::StorageError::NotFound));
+    }
+
+    #[test]
+    fn remove_missing_account_errors_cleanly() {
+        let db = Database::open_in_memory().unwrap();
+        let err = accounts_repo::delete_account(&db, 9999).unwrap_err();
+        assert!(matches!(err, am_storage::StorageError::NotFound));
+    }
 
     #[test]
     fn parse_redirect_line_extracts_code_and_state() {
