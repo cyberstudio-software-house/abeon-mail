@@ -4,6 +4,7 @@ use am_core::folder::FolderType;
 use am_core::message::{MessageBody, NewMessageHeader, SyncProgress};
 use am_protocols::imap::{FetchedHeader, ImapConfig, ImapSession, RemoteFolder};
 use am_storage::{accounts_repo, folders_repo, messages_repo, Database, StorageError};
+use crate::events::{SyncEvent, SyncEventSink};
 
 const INITIAL_SYNC_LIMIT: u32 = 200;
 const INBOX_PATH: &str = "INBOX";
@@ -252,6 +253,79 @@ pub async fn get_or_fetch_body(db: &Database, message_id: i64) -> Result<Message
     )?;
     am_storage::attachments_repo::replace_for_message(db, message_id, &parsed.attachment_names)?;
     Ok(body)
+}
+
+pub async fn incremental_sync_folder(
+    db: &Database,
+    account_id: i64,
+    folder_id: i64,
+    sink: &dyn SyncEventSink,
+) -> Result<(), SyncError> {
+    let account = accounts_repo::get_account(db, account_id)?;
+    let endpoints = load_endpoints(db, account_id)?;
+    let password = am_auth::credentials::load_password(&account.email)?;
+    let folder = folders_repo::get_folder(db, folder_id)?;
+
+    let config = imap_config(&endpoints, &account.email);
+    let mut session = ImapSession::connect(&config, &password).await?;
+    let state = session.select(&folder.remote_path).await?;
+    let markers = folders_repo::get_sync_markers(db, folder_id)?;
+
+    if markers.uidvalidity != Some(state.uidvalidity) {
+        messages_repo::delete_by_folder(db, folder_id)?;
+        let fetched = session.fetch_recent_headers(INITIAL_SYNC_LIMIT).await?;
+        session.logout().await?;
+        let headers: Vec<NewMessageHeader> = fetched.iter().map(header_from_fetch).collect();
+        messages_repo::insert_headers(db, folder_id, &headers)?;
+        folders_repo::set_sync_markers(db, folder_id, state.uidvalidity, state.uidnext, state.highestmodseq, now_secs())?;
+        let unread = folders_repo::recount_unread(db, folder_id)?;
+        folders_repo::set_counts(db, folder_id, unread, state.exists)?;
+        sink.emit(SyncEvent::MailboxChanged { account_id, folder_id });
+        return Ok(());
+    }
+
+    let caps = session.server_caps().await?;
+    let since_uid = markers.uidnext.unwrap_or(1);
+    let new_uids = session.search_new_uids(since_uid).await?;
+    let new_count = new_uids.len() as i64;
+    if !new_uids.is_empty() {
+        let fetched = session.fetch_headers_by_uids(&new_uids).await?;
+        let headers: Vec<NewMessageHeader> = fetched.iter().map(header_from_fetch).collect();
+        messages_repo::insert_headers(db, folder_id, &headers)?;
+    }
+
+    if caps.condstore {
+        if let Some(modseq) = markers.highestmodseq {
+            let changes = session.fetch_flag_changes(modseq).await?;
+            for c in changes {
+                messages_repo::set_flags_by_uid(db, folder_id, c.uid, c.seen, c.flagged)?;
+            }
+        }
+    } else {
+        let flags = session.fetch_all_flags().await?;
+        for c in flags {
+            messages_repo::set_flags_by_uid(db, folder_id, c.uid, c.seen, c.flagged)?;
+        }
+        let server_uids = session.search_all_uids().await?;
+        let server_set: std::collections::HashSet<i64> = server_uids.into_iter().collect();
+        let local = messages_repo::list_uids(db, folder_id)?;
+        let vanished: Vec<i64> = local.into_iter().filter(|u| !server_set.contains(u)).collect();
+        if !vanished.is_empty() {
+            messages_repo::delete_by_uids(db, folder_id, &vanished)?;
+        }
+    }
+
+    session.logout().await?;
+
+    folders_repo::set_sync_markers(db, folder_id, state.uidvalidity, state.uidnext, state.highestmodseq, now_secs())?;
+    let unread = folders_repo::recount_unread(db, folder_id)?;
+    folders_repo::set_counts(db, folder_id, unread, state.exists)?;
+
+    if new_count > 0 {
+        sink.emit(SyncEvent::NewMessages { account_id, folder_id, count: new_count });
+    }
+    sink.emit(SyncEvent::MailboxChanged { account_id, folder_id });
+    Ok(())
 }
 
 #[cfg(test)]
