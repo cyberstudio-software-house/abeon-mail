@@ -190,4 +190,23 @@ mod tests {
         assert!(result.blocked_remote_content);
         assert!(!result.html.contains("http://t/x.png"));
     }
+
+    #[test]
+    fn test_vbscript_href_blocked() {
+        let result = sanitize_html("<a href=\"vbscript:msgbox(1)\">x</a>");
+        assert!(!result.html.contains("vbscript:"));
+    }
+
+    #[test]
+    fn test_svg_image_data_uri_survives_on_img() {
+        let result = sanitize_html("<img src=\"data:image/svg+xml,<svg></svg>\">");
+        assert!(result.html.contains("data:image/svg+xml"));
+    }
+
+    #[test]
+    fn test_inline_svg_tag_stripped() {
+        let result = sanitize_html("<svg onload=\"alert(1)\"><circle/></svg>");
+        assert!(!result.html.contains("onload"));
+        assert!(!result.html.contains("<svg"));
+    }
 }
