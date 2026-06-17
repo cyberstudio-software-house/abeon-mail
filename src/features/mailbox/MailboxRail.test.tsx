@@ -26,6 +26,17 @@ import { useAccounts, useFolders } from "../../ipc/queries";
 import { useUiStore } from "../../app/store";
 import { MailboxRail } from "./MailboxRail";
 
+type UiState = {
+  selectedAccountId: number | null;
+  selectedFolderId: number | null;
+  selectedMessageId: number | null;
+  density: "comfortable" | "cozy" | "compact" | "dense";
+  setSelectedAccountId: (id: number | null) => void;
+  setSelectedFolderId: (id: number | null) => void;
+  setSelectedMessageId: (id: number | null) => void;
+  setDensity: (density: "comfortable" | "cozy" | "compact" | "dense") => void;
+};
+
 const mockUseAccounts = vi.mocked(useAccounts);
 const mockUseFolders = vi.mocked(useFolders);
 const mockUseUiStore = vi.mocked(useUiStore);
@@ -53,13 +64,16 @@ const singleFolder = {
 
 function setupStore(selectedAccountId: number | null = 1) {
   mockUseUiStore.mockImplementation(
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (selector: (s: any) => unknown) => {
-      const state = {
+    (selector: (s: UiState) => unknown) => {
+      const state: UiState = {
         selectedAccountId,
         selectedFolderId: null,
+        selectedMessageId: null,
+        density: "comfortable",
         setSelectedAccountId: mockSetSelectedAccountId,
         setSelectedFolderId: mockSetSelectedFolderId,
+        setSelectedMessageId: vi.fn(),
+        setDensity: vi.fn(),
       };
       return selector ? selector(state) : state;
     }

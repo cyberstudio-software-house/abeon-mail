@@ -143,7 +143,7 @@ export function MailboxRail({ status }: Props) {
             background: "var(--accent)",
             border: "none",
             borderRadius: "var(--radius-sm)",
-            color: "#fff",
+            color: "var(--color-white)",
             cursor: "pointer",
             fontSize: "13px",
             padding: "var(--space-2) var(--space-3)",
