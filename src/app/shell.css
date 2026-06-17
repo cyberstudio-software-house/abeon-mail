@@ -1,0 +1,28 @@
+.shell {
+  display: grid;
+  grid-template-columns: 248px minmax(320px, 1fr) minmax(360px, 1.4fr);
+  height: 100%;
+}
+
+.shell[data-density="compact"] {
+  grid-template-columns: 220px minmax(280px, 1fr) minmax(320px, 1.4fr);
+}
+
+.rail {
+  background: var(--bg-rail);
+  color: var(--text-on-rail);
+  padding: var(--space-4);
+}
+
+.pane {
+  background: var(--bg-surface);
+  border-left: 1px solid var(--border-subtle);
+  padding: var(--space-4);
+  overflow: auto;
+}
+
+.status {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: var(--space-4);
+}

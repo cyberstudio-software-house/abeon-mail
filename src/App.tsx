@@ -1,3 +1,5 @@
+import { AppShell } from "./app/AppShell";
+
 export default function App() {
-  return <div id="app-root">AbeonMail</div>;
+  return <AppShell />;
 }
