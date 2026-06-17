@@ -6,32 +6,21 @@ export function useSyncEvents() {
   const queryClient = useQueryClient();
 
   useEffect(() => {
-    let unlistenProgress: (() => void) | undefined;
-    let unlistenMessages: (() => void) | undefined;
+    const progressPromise = events.syncProgress.listen((event) => {
+      const { account_id, folder_id } = event.payload;
+      queryClient.invalidateQueries({ queryKey: ["folders", account_id] });
+      queryClient.invalidateQueries({ queryKey: ["messages", folder_id] });
+    });
 
-    events.syncProgress
-      .listen((event) => {
-        const { account_id, folder_id } = event.payload;
-        queryClient.invalidateQueries({ queryKey: ["folders", account_id] });
-        queryClient.invalidateQueries({ queryKey: ["messages", folder_id] });
-      })
-      .then((fn) => {
-        unlistenProgress = fn;
-      });
-
-    events.newMessages
-      .listen((event) => {
-        const { account_id, folder_id } = event.payload;
-        queryClient.invalidateQueries({ queryKey: ["folders", account_id] });
-        queryClient.invalidateQueries({ queryKey: ["messages", folder_id] });
-      })
-      .then((fn) => {
-        unlistenMessages = fn;
-      });
+    const messagesPromise = events.newMessages.listen((event) => {
+      const { account_id, folder_id } = event.payload;
+      queryClient.invalidateQueries({ queryKey: ["folders", account_id] });
+      queryClient.invalidateQueries({ queryKey: ["messages", folder_id] });
+    });
 
     return () => {
-      unlistenProgress?.();
-      unlistenMessages?.();
+      progressPromise.then((unlisten) => unlisten());
+      messagesPromise.then((unlisten) => unlisten());
     };
   }, [queryClient]);
 }
