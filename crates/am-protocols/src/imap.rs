@@ -284,6 +284,20 @@ impl ImapSession {
         Ok(())
     }
 
+    pub async fn append(
+        &mut self,
+        folder: &str,
+        flags: &str,
+        bytes: &[u8],
+    ) -> Result<(), ProtocolError> {
+        let flags_opt = if flags.is_empty() { None } else { Some(flags) };
+        match &mut self.session {
+            SessionStream::Plain(s) => s.append(folder, flags_opt, None, bytes).await?,
+            SessionStream::Tls(s) => s.append(folder, flags_opt, None, bytes).await?,
+        }
+        Ok(())
+    }
+
     pub async fn idle_wait(self, timeout: Duration) -> Result<(ImapSession, IdleOutcome), ProtocolError> {
         match self.session {
             SessionStream::Plain(s) => {
