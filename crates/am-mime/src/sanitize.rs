@@ -9,14 +9,24 @@ pub struct SanitizedHtml {
     pub blocked_remote_content: bool,
 }
 
-fn is_remote_url(value: &str) -> bool {
-    let lower = value.trim().to_ascii_lowercase();
-    lower.starts_with("http://") || lower.starts_with("https://")
+fn normalize_url(value: &str) -> String {
+    value
+        .chars()
+        .filter(|c| *c != '\t' && *c != '\n' && *c != '\r')
+        .collect::<String>()
+        .trim_start_matches(|c: char| c.is_ascii_whitespace() || c.is_ascii_control())
+        .to_ascii_lowercase()
 }
 
-fn is_safe_image_src(value: &str) -> bool {
-    let lower = value.trim().to_ascii_lowercase();
-    lower.starts_with("cid:") || lower.starts_with("data:")
+fn extract_scheme(normalized: &str) -> &str {
+    normalized
+        .find(':')
+        .map(|i| &normalized[..i])
+        .unwrap_or("")
+}
+
+fn is_remote_url(normalized: &str) -> bool {
+    normalized.starts_with("http://") || normalized.starts_with("https://")
 }
 
 pub fn sanitize_html(raw_html: &str) -> SanitizedHtml {
@@ -33,15 +43,28 @@ pub fn sanitize_html(raw_html: &str) -> SanitizedHtml {
             if attribute.starts_with("on") {
                 return None;
             }
+
+            let normalized = normalize_url(value);
+            let scheme = extract_scheme(&normalized);
+
             if element == "img" && attribute == "src" {
-                if is_remote_url(value) {
+                if is_remote_url(&normalized) {
                     *blocked_clone.lock().unwrap() = true;
                     return None;
                 }
-                if !is_safe_image_src(value) {
-                    return None;
+                if scheme == "cid" {
+                    return Some(value.into());
                 }
+                if scheme == "data" && normalized.starts_with("data:image/") {
+                    return Some(value.into());
+                }
+                return None;
             }
+
+            if scheme == "data" || scheme == "cid" {
+                return None;
+            }
+
             Some(value.into())
         })
         .clean(raw_html)
@@ -101,7 +124,7 @@ mod tests {
 
     #[test]
     fn test_data_image_allowed() {
-        let result = sanitize_html("<img src=\"data:image/png;base64,abc123\">");
+        let result = sanitize_html("<img src=\"data:image/png;base64,iVBORw0KGgo=\">");
         assert!(!result.blocked_remote_content);
         assert!(result.html.contains("data:image/png"));
     }
@@ -116,5 +139,55 @@ mod tests {
     fn test_onmouseover_stripped() {
         let result = sanitize_html("<a href=\"/\" onmouseover=\"evil()\">link</a>");
         assert!(!result.html.contains("onmouseover"));
+    }
+
+    #[test]
+    fn test_data_html_href_blocked() {
+        let result = sanitize_html("<a href=\"data:text/html;base64,PHNjcmlwdD5hbGVydCgxKTwvc2NyaXB0Pg==\">click</a>");
+        assert!(!result.html.contains("data:text/html"));
+    }
+
+    #[test]
+    fn test_data_html_href_obfuscated_tab_blocked() {
+        let result = sanitize_html("<a href=\"da\tta:text/html;base64,PHNjcmlwdD5hbGVydCgxKTwvc2NyaXB0Pg==\">click</a>");
+        assert!(!result.html.contains("data:text/html"));
+        assert!(!result.html.contains("da\tta:"));
+    }
+
+    #[test]
+    fn test_javascript_href_blocked() {
+        let result = sanitize_html("<a href=\"javascript:alert(1)\">click</a>");
+        assert!(!result.html.contains("javascript:"));
+    }
+
+    #[test]
+    fn test_cid_href_blocked() {
+        let result = sanitize_html("<a href=\"cid:abc\">link</a>");
+        assert!(!result.html.contains("cid:"));
+    }
+
+    #[test]
+    fn test_data_html_img_src_blocked() {
+        let result = sanitize_html("<img src=\"data:text/html;base64,PHNjcmlwdD5hbGVydCgxKTwvc2NyaXB0Pg==\">");
+        assert!(!result.html.contains("data:text/html"));
+    }
+
+    #[test]
+    fn test_data_image_png_img_src_allowed() {
+        let result = sanitize_html("<img src=\"data:image/png;base64,iVBORw0KGgo=\">");
+        assert!(result.html.contains("data:image/png"));
+    }
+
+    #[test]
+    fn test_cid_img_src_allowed() {
+        let result = sanitize_html("<img src=\"cid:logo\">");
+        assert!(result.html.contains("cid:logo"));
+    }
+
+    #[test]
+    fn test_remote_img_src_blocked_flag() {
+        let result = sanitize_html("<img src=\"http://t/x.png\">");
+        assert!(result.blocked_remote_content);
+        assert!(!result.html.contains("http://t/x.png"));
     }
 }
