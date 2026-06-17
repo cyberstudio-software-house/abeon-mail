@@ -111,4 +111,18 @@ mod tests {
             .unwrap();
         assert_eq!(msg_cols, 2);
     }
+
+    #[test]
+    fn migration_v4_adds_bcc_column() {
+        let db = Database::open_in_memory().unwrap();
+        let conn = db.conn();
+        let count: i64 = conn
+            .query_row(
+                "SELECT count(*) FROM pragma_table_info('messages') WHERE name = 'bcc_addresses'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1);
+    }
 }

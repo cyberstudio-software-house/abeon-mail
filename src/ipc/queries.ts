@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { commands } from "./bindings";
-import type { Account, Endpoints, MessageFlag } from "./bindings";
+import type { Account, Endpoints, MessageFlag, OutgoingMessage } from "./bindings";
 
 type ResultOk<T> = { status: "ok"; data: T };
 type ResultErr = { status: "error"; error: string };
@@ -106,6 +106,38 @@ export function useAddAccount() {
     onSuccess: (account: Account) => {
       queryClient.invalidateQueries({ queryKey: ["accounts"] });
       queryClient.invalidateQueries({ queryKey: ["folders", account.id] });
+    },
+  });
+}
+
+export function useStartReply() {
+  return useMutation({
+    mutationFn: ({ messageId, mode }: { messageId: number; mode: string }) =>
+      commands.startReply(messageId, mode).then(unwrap),
+  });
+}
+
+export function useSaveDraft() {
+  return useMutation({
+    mutationFn: ({
+      accountId,
+      draftId,
+      message,
+    }: {
+      accountId: number;
+      draftId: number | null;
+      message: OutgoingMessage;
+    }) => commands.saveDraft(accountId, draftId, message).then(unwrap),
+  });
+}
+
+export function useEnqueueSend() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (draftId: number) => commands.enqueueSend(draftId).then(unwrap),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["folders"] });
+      queryClient.invalidateQueries({ queryKey: ["threads"] });
     },
   });
 }

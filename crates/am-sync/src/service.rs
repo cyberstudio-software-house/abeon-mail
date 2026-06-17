@@ -293,6 +293,23 @@ pub async fn get_or_fetch_body(db: &Database, message_id: i64) -> Result<Message
     Ok(body)
 }
 
+pub async fn get_or_fetch_recipients(db: &Database, message_id: i64) -> Result<(Vec<String>, Vec<String>), SyncError> {
+    let (folder_id, uid) = messages_repo::message_uid(db, message_id)?;
+    let folder = folders_repo::get_folder(db, folder_id)?;
+    let account = accounts_repo::get_account(db, folder.account_id)?;
+    let endpoints = load_endpoints(db, folder.account_id)?;
+    let password = am_auth::credentials::load_password(&account.email)?;
+
+    let config = imap_config(&endpoints, &account.email);
+    let mut session = ImapSession::connect(&config, &password).await?;
+    session.select(&folder.remote_path).await?;
+    let raw = session.fetch_body(uid).await?;
+    session.logout().await?;
+
+    let parsed = am_mime::parse::parse_message(&raw);
+    Ok((parsed.to, parsed.cc))
+}
+
 pub async fn incremental_sync_folder(
     db: &Database,
     account_id: i64,
@@ -418,6 +435,9 @@ pub async fn drain_queue(db: &Database, account_id: i64, now: i64) -> Result<(),
     let mut selected: Option<String> = None;
 
     for op in due {
+        if op.op_type != "set_flag" {
+            continue;
+        }
         let parsed: serde_json::Value = match serde_json::from_str(&op.payload) {
             Ok(v) => v,
             Err(_) => { queue_repo::mark_done(db, op.id)?; continue; }

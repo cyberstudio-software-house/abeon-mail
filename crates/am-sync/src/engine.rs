@@ -50,6 +50,8 @@ impl SyncEngine {
             loop {
                 let now = service::now_secs();
                 let _ = service::drain_queue(&db, account_id, now).await;
+                let _ = crate::send::drain_outbox(&db, account_id, now).await;
+                let _ = crate::send::drain_draft_sync(&db, account_id, now).await;
                 if let Ok(folders) = folders_repo::list_folders(&db, account_id) {
                     for folder in &folders {
                         if !folder.remote_path.eq_ignore_ascii_case(INBOX_PATH) {

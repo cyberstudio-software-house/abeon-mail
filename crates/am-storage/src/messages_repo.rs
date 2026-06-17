@@ -38,7 +38,7 @@ pub fn set_flags_by_uid(db: &Database, folder_id: i64, uid: i64, seen: bool, fla
 
 pub fn list_uids(db: &Database, folder_id: i64) -> Result<Vec<i64>, StorageError> {
     let conn = db.conn();
-    let mut stmt = conn.prepare("SELECT uid FROM messages WHERE folder_id = ?1 ORDER BY uid ASC")?;
+    let mut stmt = conn.prepare("SELECT uid FROM messages WHERE folder_id = ?1 AND draft = 0 ORDER BY uid ASC")?;
     let rows = stmt.query_map(params![folder_id], |row| row.get::<_, i64>(0))?;
     let mut out = Vec::new();
     for r in rows {
@@ -52,7 +52,7 @@ pub fn delete_by_uids(db: &Database, folder_id: i64, uids: &[i64]) -> Result<usi
     let tx = conn.unchecked_transaction()?;
     let mut count = 0usize;
     {
-        let mut stmt = tx.prepare("DELETE FROM messages WHERE folder_id = ?1 AND uid = ?2")?;
+        let mut stmt = tx.prepare("DELETE FROM messages WHERE folder_id = ?1 AND uid = ?2 AND draft = 0")?;
         for uid in uids {
             count += stmt.execute(params![folder_id, uid])?;
         }
@@ -63,7 +63,7 @@ pub fn delete_by_uids(db: &Database, folder_id: i64, uids: &[i64]) -> Result<usi
 
 pub fn delete_by_folder(db: &Database, folder_id: i64) -> Result<usize, StorageError> {
     let conn = db.conn();
-    Ok(conn.execute("DELETE FROM messages WHERE folder_id = ?1", params![folder_id])?)
+    Ok(conn.execute("DELETE FROM messages WHERE folder_id = ?1 AND draft = 0", params![folder_id])?)
 }
 
 pub fn locate(db: &Database, message_id: i64) -> Result<MessageLocator, StorageError> {
@@ -173,7 +173,7 @@ pub fn list_by_thread(db: &Database, thread_id: i64) -> Result<Vec<MessageHeader
     let conn = db.conn();
     let mut stmt = conn.prepare(
         "SELECT id, account_id, folder_id, subject, from_address, from_name, date, seen, flagged, has_attachments, snippet
-         FROM messages WHERE thread_id = ?1 ORDER BY date ASC",
+         FROM messages WHERE thread_id = ?1 AND draft = 0 ORDER BY date ASC",
     )?;
     let rows = stmt.query_map(params![thread_id], row_to_header)?;
     let mut out = Vec::new();
@@ -190,7 +190,7 @@ pub fn list_by_folder(
     let conn = db.conn();
     let mut stmt = conn.prepare(
         "SELECT id, account_id, folder_id, subject, from_address, from_name, date, seen, flagged, has_attachments, snippet
-         FROM messages WHERE folder_id = ?1
+         FROM messages WHERE folder_id = ?1 AND draft = 0
          ORDER BY date DESC LIMIT ?2 OFFSET ?3",
     )?;
     let rows = stmt.query_map(params![folder_id, limit, offset], row_to_header)?;
@@ -291,7 +291,7 @@ pub fn list_unthreaded(db: &Database, account_id: i64) -> Result<Vec<ThreadingRo
     let conn = db.conn();
     let mut stmt = conn.prepare(
         "SELECT id, message_id_hdr, in_reply_to, references_hdr, subject, date
-         FROM messages WHERE account_id = ?1 AND thread_id IS NULL ORDER BY date ASC",
+         FROM messages WHERE account_id = ?1 AND thread_id IS NULL AND draft = 0 ORDER BY date ASC",
     )?;
     let rows = stmt.query_map(params![account_id], |row| {
         Ok(ThreadingRow {
@@ -322,13 +322,44 @@ pub fn assign_thread(db: &Database, message_id: i64, thread_id: i64) -> Result<(
     Ok(())
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ComposeSource {
+    pub account_id: i64,
+    pub from_address: String,
+    pub from_name: Option<String>,
+    pub subject: String,
+    pub message_id_hdr: Option<String>,
+    pub references_hdr: Option<String>,
+}
+
+pub fn get_compose_source(db: &Database, message_id: i64) -> Result<ComposeSource, StorageError> {
+    let conn = db.conn();
+    conn.query_row(
+        "SELECT account_id, from_address, from_name, subject, message_id_hdr, references_hdr FROM messages WHERE id=?1",
+        params![message_id],
+        |r| Ok(ComposeSource {
+            account_id: r.get(0)?,
+            from_address: r.get(1)?,
+            from_name: r.get(2)?,
+            subject: r.get(3)?,
+            message_id_hdr: r.get(4)?,
+            references_hdr: r.get(5)?,
+        }),
+    ).map_err(|e| match e {
+        rusqlite::Error::QueryReturnedNoRows => StorageError::NotFound,
+        o => StorageError::Sqlite(o),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::accounts_repo::insert_account;
+    use crate::drafts_repo;
     use crate::folders_repo::upsert_folder;
     use am_core::account::{NewAccount, ProviderType};
     use am_core::folder::FolderType;
+    use am_core::outgoing::OutgoingMessage;
     use crate::db::Database;
 
     fn sample_account() -> NewAccount {
@@ -508,6 +539,35 @@ mod tests {
     }
 
     #[test]
+    fn get_compose_source_roundtrip() {
+        let db = Database::open_in_memory().unwrap();
+        let folder_id = setup(&db);
+        let h = NewMessageHeader {
+            uid: 1,
+            message_id_hdr: Some("<hello@example.com>".into()),
+            in_reply_to: None,
+            references_hdr: Some("<ref1@example.com>".into()),
+            from_address: "sender@example.com".into(),
+            from_name: Some("Sender Name".into()),
+            subject: "Test Subject".into(),
+            date: 1000,
+            seen: false,
+            flagged: false,
+            has_attachments: false,
+            size: 512,
+            snippet: "preview".into(),
+        };
+        insert_headers(&db, folder_id, &[h]).unwrap();
+        let msg = list_by_folder(&db, folder_id, 1, 0).unwrap().into_iter().next().unwrap();
+        let src = get_compose_source(&db, msg.id).unwrap();
+        assert_eq!(src.from_address, "sender@example.com");
+        assert_eq!(src.from_name.as_deref(), Some("Sender Name"));
+        assert_eq!(src.subject, "Test Subject");
+        assert_eq!(src.message_id_hdr.as_deref(), Some("<hello@example.com>"));
+        assert_eq!(src.references_hdr.as_deref(), Some("<ref1@example.com>"));
+    }
+
+    #[test]
     fn list_unthreaded_then_assign() {
         let db = Database::open_in_memory().unwrap();
         let folder_id = setup(&db);
@@ -522,5 +582,116 @@ mod tests {
         };
         assign_thread(&db, unthreaded[0].id, conn_thread_id).unwrap();
         assert!(list_unthreaded(&db, account_id).unwrap().is_empty());
+    }
+
+    fn sample_outgoing() -> OutgoingMessage {
+        OutgoingMessage {
+            from_address: "me@example.com".into(),
+            from_name: None,
+            to: vec!["a@x.com".into()],
+            cc: vec![],
+            bcc: vec![],
+            subject: "Draft".into(),
+            text_body: "body".into(),
+            html_body: None,
+            in_reply_to: None,
+            references: vec![],
+            attachments: vec![],
+        }
+    }
+
+    #[test]
+    fn draft_row_excluded_from_list_by_folder() {
+        let db = Database::open_in_memory().unwrap();
+        let folder_id = setup(&db);
+        let account_id = {
+            let conn = db.conn();
+            conn.query_row("SELECT account_id FROM folders WHERE id = ?1", params![folder_id], |r| r.get::<_, i64>(0)).unwrap()
+        };
+        let draft_id = drafts_repo::save_draft(&db, account_id, None, &sample_outgoing()).unwrap();
+        let drafts_folder_id = {
+            let conn = db.conn();
+            conn.query_row("SELECT folder_id FROM messages WHERE id = ?1", params![draft_id], |r| r.get::<_, i64>(0)).unwrap()
+        };
+        insert_headers(&db, drafts_folder_id, &[make_header(1, 1000)]).unwrap();
+        let listed = list_by_folder(&db, drafts_folder_id, 100, 0).unwrap();
+        assert_eq!(listed.len(), 1);
+        assert!(listed.iter().all(|m| m.id != draft_id));
+        let (_, retrieved) = drafts_repo::get_draft(&db, draft_id).unwrap();
+        assert_eq!(retrieved.subject, "Draft");
+    }
+
+    #[test]
+    fn draft_row_excluded_from_list_uids() {
+        let db = Database::open_in_memory().unwrap();
+        let folder_id = setup(&db);
+        let account_id = {
+            let conn = db.conn();
+            conn.query_row("SELECT account_id FROM folders WHERE id = ?1", params![folder_id], |r| r.get::<_, i64>(0)).unwrap()
+        };
+        let draft_id = drafts_repo::save_draft(&db, account_id, None, &sample_outgoing()).unwrap();
+        let drafts_folder_id = {
+            let conn = db.conn();
+            conn.query_row("SELECT folder_id FROM messages WHERE id = ?1", params![draft_id], |r| r.get::<_, i64>(0)).unwrap()
+        };
+        insert_headers(&db, drafts_folder_id, &[make_header(77, 1000)]).unwrap();
+        let uids = list_uids(&db, drafts_folder_id).unwrap();
+        assert_eq!(uids, vec![77]);
+    }
+
+    #[test]
+    fn delete_by_folder_preserves_draft_rows() {
+        let db = Database::open_in_memory().unwrap();
+        let folder_id = setup(&db);
+        let account_id = {
+            let conn = db.conn();
+            conn.query_row("SELECT account_id FROM folders WHERE id = ?1", params![folder_id], |r| r.get::<_, i64>(0)).unwrap()
+        };
+        let draft_id = drafts_repo::save_draft(&db, account_id, None, &sample_outgoing()).unwrap();
+        let drafts_folder_id = {
+            let conn = db.conn();
+            conn.query_row("SELECT folder_id FROM messages WHERE id = ?1", params![draft_id], |r| r.get::<_, i64>(0)).unwrap()
+        };
+        insert_headers(&db, drafts_folder_id, &[make_header(1, 1000)]).unwrap();
+        let deleted = delete_by_folder(&db, drafts_folder_id).unwrap();
+        assert_eq!(deleted, 1);
+        assert!(drafts_repo::get_draft(&db, draft_id).is_ok());
+    }
+
+    #[test]
+    fn delete_by_uids_preserves_draft_rows() {
+        let db = Database::open_in_memory().unwrap();
+        let folder_id = setup(&db);
+        let account_id = {
+            let conn = db.conn();
+            conn.query_row("SELECT account_id FROM folders WHERE id = ?1", params![folder_id], |r| r.get::<_, i64>(0)).unwrap()
+        };
+        let draft_id = drafts_repo::save_draft(&db, account_id, None, &sample_outgoing()).unwrap();
+        let drafts_folder_id = {
+            let conn = db.conn();
+            conn.query_row("SELECT folder_id FROM messages WHERE id = ?1", params![draft_id], |r| r.get::<_, i64>(0)).unwrap()
+        };
+        let draft_uid: Option<i64> = {
+            let conn = db.conn();
+            conn.query_row("SELECT uid FROM messages WHERE id = ?1", params![draft_id], |r| r.get::<_, Option<i64>>(0)).unwrap()
+        };
+        insert_headers(&db, drafts_folder_id, &[make_header(99, 1000)]).unwrap();
+        let uids_to_delete: Vec<i64> = draft_uid.into_iter().chain(std::iter::once(99)).collect();
+        let deleted = delete_by_uids(&db, drafts_folder_id, &uids_to_delete).unwrap();
+        assert_eq!(deleted, 1);
+        assert!(drafts_repo::get_draft(&db, draft_id).is_ok());
+    }
+
+    #[test]
+    fn draft_row_excluded_from_list_unthreaded() {
+        let db = Database::open_in_memory().unwrap();
+        let folder_id = setup(&db);
+        let account_id = {
+            let conn = db.conn();
+            conn.query_row("SELECT account_id FROM folders WHERE id = ?1", params![folder_id], |r| r.get::<_, i64>(0)).unwrap()
+        };
+        drafts_repo::save_draft(&db, account_id, None, &sample_outgoing()).unwrap();
+        let unthreaded = list_unthreaded(&db, account_id).unwrap();
+        assert!(unthreaded.is_empty());
     }
 }

@@ -1,0 +1,380 @@
+import { useState, useCallback, useRef, useEffect } from "react";
+import { useEditor, EditorContent } from "@tiptap/react";
+import StarterKit from "@tiptap/starter-kit";
+import { Image } from "@tiptap/extension-image";
+import { commands } from "../../ipc/bindings";
+import type { OutgoingAttachment } from "../../ipc/bindings";
+import { useAccounts, useSaveDraft, useEnqueueSend } from "../../ipc/queries";
+import { useUiStore } from "../../app/store";
+import { RecipientField } from "./RecipientField";
+import "./composer.css";
+
+const AUTOSAVE_DELAY_MS = 1500;
+
+let inlineImageCounter = 0;
+
+function generateContentId(): string {
+  inlineImageCounter += 1;
+  return `inline-${inlineImageCounter}@abeonmail`;
+}
+
+function rewriteInlineSrcs(html: string, srcToContentId: Map<string, string>): string {
+  return html.replace(/<img([^>]*)\ssrc="([^"]*)"([^>]*)>/g, (match, before, src, after) => {
+    const contentId = srcToContentId.get(src);
+    if (contentId) {
+      return `<img${before} src="cid:${contentId}"${after}>`;
+    }
+    return match;
+  });
+}
+
+export function Composer() {
+  const composer = useUiStore((s) => s.composer);
+  const closeComposer = useUiStore((s) => s.closeComposer);
+  const { data: accounts = [] } = useAccounts();
+
+  const prefill = composer.prefill;
+
+  const [fromAccountId, setFromAccountId] = useState<number | null>(null);
+  const [to, setTo] = useState<string[]>(prefill?.to ?? []);
+  const [cc, setCc] = useState<string[]>(prefill?.cc ?? []);
+  const [bcc, setBcc] = useState<string[]>(prefill?.bcc ?? []);
+  const [subject, setSubject] = useState(prefill?.subject ?? "");
+  const [attachments, setAttachments] = useState<OutgoingAttachment[]>(prefill?.attachments ?? []);
+  const [showCc, setShowCc] = useState((prefill?.cc ?? []).length > 0);
+  const [showBcc, setShowBcc] = useState((prefill?.bcc ?? []).length > 0);
+  const [isSending, setIsSending] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
+  const inlineSrcMapRef = useRef<Map<string, string>>(new Map());
+
+  const draftIdRef = useRef<number | null>(composer.draftId);
+  const autosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const saveDraftMutation = useSaveDraft();
+  const enqueueSendMutation = useEnqueueSend();
+
+  const accountId = fromAccountId ?? (accounts[0]?.id ?? null);
+
+  const editor = useEditor({
+    extensions: [StarterKit, Image],
+    content: prefill?.html_body ?? "",
+  });
+
+  useEffect(() => {
+    if (prefill?.html_body && editor) {
+      editor.commands.setContent(prefill.html_body);
+    }
+  }, [prefill?.html_body, editor]);
+
+  const buildMessage = useCallback(() => {
+    const rawHtml = editor?.getHTML() ?? null;
+    const html_body = rawHtml ? rewriteInlineSrcs(rawHtml, inlineSrcMapRef.current) : null;
+    return {
+      from_address: accounts.find((a) => a.id === accountId)?.email ?? "",
+      from_name: accounts.find((a) => a.id === accountId)?.display_name ?? null,
+      to,
+      cc,
+      bcc,
+      subject,
+      text_body: editor?.getText() ?? "",
+      html_body,
+      in_reply_to: prefill?.in_reply_to ?? null,
+      references: prefill?.references ?? [],
+      attachments,
+    };
+  }, [accounts, accountId, to, cc, bcc, subject, editor, attachments, prefill]);
+
+  const scheduleAutosave = useCallback(() => {
+    if (autosaveTimerRef.current) {
+      clearTimeout(autosaveTimerRef.current);
+    }
+    autosaveTimerRef.current = setTimeout(async () => {
+      if (accountId == null) return;
+      const message = buildMessage();
+      const savedId = await saveDraftMutation.mutateAsync({
+        accountId,
+        draftId: draftIdRef.current,
+        message,
+      });
+      draftIdRef.current = savedId;
+    }, AUTOSAVE_DELAY_MS);
+  }, [accountId, buildMessage, saveDraftMutation]);
+
+  useEffect(() => {
+    return () => {
+      if (autosaveTimerRef.current) {
+        clearTimeout(autosaveTimerRef.current);
+      }
+    };
+  }, []);
+
+  async function handleSend() {
+    if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
+    if (accountId == null) return;
+    setIsSending(true);
+    setSendError(null);
+    try {
+      const message = buildMessage();
+      const savedId = await saveDraftMutation.mutateAsync({
+        accountId,
+        draftId: draftIdRef.current,
+        message,
+      });
+      draftIdRef.current = savedId;
+      await enqueueSendMutation.mutateAsync(savedId);
+      closeComposer();
+    } catch (err) {
+      setSendError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setIsSending(false);
+    }
+  }
+
+  async function handleSaveDraft() {
+    if (accountId == null) return;
+    const message = buildMessage();
+    const savedId = await saveDraftMutation.mutateAsync({
+      accountId,
+      draftId: draftIdRef.current,
+      message,
+    });
+    draftIdRef.current = savedId;
+    closeComposer();
+  }
+
+  async function handleDiscard() {
+    if (autosaveTimerRef.current) {
+      clearTimeout(autosaveTimerRef.current);
+    }
+    if (draftIdRef.current != null) {
+      await commands.discardDraft(draftIdRef.current);
+    }
+    closeComposer();
+  }
+
+  async function handlePickAttachment() {
+    const result = await commands.pickAttachment();
+    if (result.status === "ok") {
+      setAttachments((prev) => [...prev, ...result.data]);
+      scheduleAutosave();
+    }
+  }
+
+  async function handleInsertImage() {
+    if (!editor) return;
+    const result = await commands.pickAttachment();
+    if (result.status !== "ok" || result.data.length === 0) return;
+    const inlineAttachments: OutgoingAttachment[] = result.data.map((att) => {
+      const contentId = att.content_id ?? generateContentId();
+      return { ...att, content_id: contentId };
+    });
+    const previewSrc = inlineAttachments[0].blob_ref;
+    const contentId = inlineAttachments[0].content_id as string;
+    inlineSrcMapRef.current.set(previewSrc, contentId);
+    editor.chain().focus().setImage({ src: previewSrc }).run();
+    setAttachments((prev) => [...prev, ...inlineAttachments]);
+    scheduleAutosave();
+  }
+
+  async function handleInsertSignature() {
+    if (accountId == null || !editor) return;
+    const result = await commands.listSignatures(accountId);
+    if (result.status === "ok") {
+      const defaultSig = result.data.find((s) => s.is_default) ?? result.data[0];
+      if (defaultSig) {
+        editor.chain().focus().insertContent(defaultSig.html).run();
+        scheduleAutosave();
+      }
+    }
+  }
+
+  function removeAttachment(index: number) {
+    setAttachments((prev) => prev.filter((_, i) => i !== index));
+    scheduleAutosave();
+  }
+
+  function handleToChange(value: string[]) {
+    setTo(value);
+    scheduleAutosave();
+  }
+
+  function handleCcChange(value: string[]) {
+    setCc(value);
+    scheduleAutosave();
+  }
+
+  function handleBccChange(value: string[]) {
+    setBcc(value);
+    scheduleAutosave();
+  }
+
+  function handleSubjectChange(e: React.ChangeEvent<HTMLInputElement>) {
+    setSubject(e.target.value);
+    scheduleAutosave();
+  }
+
+  if (!composer.open) return null;
+
+  return (
+    <div className="composer-backdrop" role="dialog" aria-modal="true" aria-label="New message">
+      <div className="composer-modal">
+        <div className="composer-header">
+          <span className="composer-title">New Message</span>
+          <button type="button" className="composer-close" aria-label="Close composer" onClick={closeComposer}>
+            ×
+          </button>
+        </div>
+
+        <div className="composer-fields">
+          <div className="composer-from">
+            <span className="field-label">From</span>
+            <select
+              className="from-select"
+              value={accountId ?? ""}
+              onChange={(e) => setFromAccountId(Number(e.target.value))}
+              aria-label="From account"
+            >
+              {accounts.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.display_name} &lt;{a.email}&gt;
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <RecipientField label="To" recipients={to} onChange={handleToChange} />
+
+          <div className="composer-cc-bcc-toggles">
+            {!showCc && (
+              <button type="button" className="toggle-link" onClick={() => setShowCc(true)}>
+                Cc
+              </button>
+            )}
+            {!showBcc && (
+              <button type="button" className="toggle-link" onClick={() => setShowBcc(true)}>
+                Bcc
+              </button>
+            )}
+          </div>
+
+          {showCc && <RecipientField label="Cc" recipients={cc} onChange={handleCcChange} />}
+          {showBcc && <RecipientField label="Bcc" recipients={bcc} onChange={handleBccChange} />}
+
+          <div className="composer-subject">
+            <span className="field-label">Subject</span>
+            <input
+              type="text"
+              className="subject-input"
+              aria-label="Subject"
+              value={subject}
+              onChange={handleSubjectChange}
+              placeholder="Subject"
+            />
+          </div>
+        </div>
+
+        <div className="composer-toolbar">
+          <button
+            type="button"
+            className={`toolbar-btn${editor?.isActive("bold") ? " active" : ""}`}
+            aria-label="Bold"
+            onClick={() => editor?.chain().focus().toggleBold().run()}
+          >
+            <strong>B</strong>
+          </button>
+          <button
+            type="button"
+            className={`toolbar-btn${editor?.isActive("italic") ? " active" : ""}`}
+            aria-label="Italic"
+            onClick={() => editor?.chain().focus().toggleItalic().run()}
+          >
+            <em>I</em>
+          </button>
+          <button
+            type="button"
+            className={`toolbar-btn${editor?.isActive("bulletList") ? " active" : ""}`}
+            aria-label="Bullet list"
+            onClick={() => editor?.chain().focus().toggleBulletList().run()}
+          >
+            ≡
+          </button>
+          <button
+            type="button"
+            className="toolbar-btn"
+            aria-label="Insert link"
+            onClick={() => {
+              const url = window.prompt("URL");
+              if (url) {
+                editor?.chain().focus().setLink({ href: url }).run();
+              }
+            }}
+          >
+            🔗
+          </button>
+          <button
+            type="button"
+            className="toolbar-btn"
+            aria-label="Insert image"
+            onClick={handleInsertImage}
+          >
+            🖼
+          </button>
+        </div>
+
+        <div className="composer-editor">
+          <EditorContent editor={editor} />
+        </div>
+
+        <div className="composer-attachments">
+          <button type="button" className="attach-btn" onClick={handlePickAttachment}>
+            Attach file
+          </button>
+          {attachments.map((att, i) => (
+            <span key={att.blob_ref} className="attachment-chip">
+              {att.filename}
+              <button
+                type="button"
+                className="chip-remove"
+                aria-label={`Remove ${att.filename}`}
+                onClick={() => removeAttachment(i)}
+              >
+                ×
+              </button>
+            </span>
+          ))}
+        </div>
+
+        {sendError && (
+          <div className="composer-send-error" role="alert">
+            {sendError}
+          </div>
+        )}
+
+        <div className="composer-footer">
+          <button
+            type="button"
+            className="btn-send"
+            disabled={isSending || accountId == null}
+            onClick={handleSend}
+          >
+            {isSending ? "Sending…" : "Send"}
+          </button>
+          <button
+            type="button"
+            className="btn-draft"
+            disabled={saveDraftMutation.isPending || accountId == null}
+            onClick={handleSaveDraft}
+          >
+            Save draft
+          </button>
+          <button type="button" className="btn-signature" onClick={handleInsertSignature}>
+            Insert signature
+          </button>
+          <button type="button" className="btn-discard" onClick={handleDiscard}>
+            Discard
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}

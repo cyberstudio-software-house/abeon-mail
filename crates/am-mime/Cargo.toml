@@ -4,11 +4,13 @@ edition.workspace = true
 version.workspace = true
 
 [dependencies]
+am-core = { path = "../am-core" }
 mail-parser.workspace = true
 ammonia.workspace = true
 serde.workspace = true
 specta.workspace = true
 encoding_rs = "0.8"
 base64 = "0.22"
+mail-builder = { workspace = true }
 
 [dev-dependencies]

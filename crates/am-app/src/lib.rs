@@ -20,6 +20,14 @@ pub fn build_specta_builder() -> Builder<tauri::Wry> {
             commands::mark_message_seen,
             commands::list_threads,
             commands::list_thread_messages,
+            commands::enqueue_send,
+            commands::start_reply,
+            commands::save_draft,
+            commands::get_draft,
+            commands::list_drafts,
+            commands::discard_draft,
+            commands::list_signatures,
+            commands::pick_attachment,
         ])
         .events(collect_events![
             events::SyncProgress,

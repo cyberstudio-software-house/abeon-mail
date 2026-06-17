@@ -22,6 +22,9 @@ vi.mock("../ipc/queries", () => ({
   useMessageBody: () => ({ data: null, isLoading: false, isError: false, error: null }),
   useSetFlag: () => ({ mutate: vi.fn() }),
   useMarkSeen: () => ({ mutate: vi.fn() }),
+  useStartReply: () => ({ mutateAsync: vi.fn() }),
+  useSaveDraft: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useEnqueueSend: () => ({ mutateAsync: vi.fn() }),
 }));
 
 vi.mock("../ipc/bindings", () => ({
@@ -42,11 +45,14 @@ vi.mock("../app/store", () => ({
       selectedMessageId: null,
       selectedThreadId: null,
       density: "comfortable",
+      composer: { open: false, draftId: null, prefill: null },
       setSelectedAccountId: vi.fn(),
       setSelectedFolderId: vi.fn(),
       setSelectedMessageId: vi.fn(),
       setSelectedThreadId: vi.fn(),
       setDensity: vi.fn(),
+      openComposer: vi.fn(),
+      closeComposer: vi.fn(),
     };
     return selector ? selector(state) : state;
   },
@@ -71,5 +77,11 @@ describe("AppShell", () => {
   it("mounts sync-event hook on render", () => {
     render(<AppShell />, { wrapper: Wrapper });
     expect(vi.mocked(useSyncEvents)).toHaveBeenCalled();
+  });
+
+  it("renders New message button", async () => {
+    render(<AppShell />, { wrapper: Wrapper });
+    const buttons = screen.getAllByRole("button", { name: "New message" });
+    expect(buttons.length).toBeGreaterThan(0);
   });
 });

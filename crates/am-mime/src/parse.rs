@@ -6,6 +6,8 @@ pub struct ParsedMessage {
     pub message_id_hdr: Option<String>,
     pub from_address: String,
     pub from_name: Option<String>,
+    pub to: Vec<String>,
+    pub cc: Vec<String>,
     pub subject: String,
     pub date: i64,
     pub text_plain: Option<String>,
@@ -48,6 +50,21 @@ fn extract_snippet(text_plain: Option<&str>, text_html: Option<&str>) -> String 
     }
 }
 
+fn addresses(addr: Option<&Address>) -> Vec<String> {
+    match addr {
+        Some(Address::List(list)) => list
+            .iter()
+            .filter_map(|a| a.address.as_deref().map(str::to_string))
+            .collect(),
+        Some(Address::Group(groups)) => groups
+            .iter()
+            .flat_map(|g| g.addresses.iter())
+            .filter_map(|a| a.address.as_deref().map(str::to_string))
+            .collect(),
+        None => Vec::new(),
+    }
+}
+
 pub fn parse_message(raw: &[u8]) -> ParsedMessage {
     let parser = MessageParser::default()
         .with_minimal_headers()
@@ -58,6 +75,8 @@ pub fn parse_message(raw: &[u8]) -> ParsedMessage {
             message_id_hdr: None,
             from_address: String::new(),
             from_name: None,
+            to: Vec::new(),
+            cc: Vec::new(),
             subject: String::new(),
             date: 0,
             text_plain: None,
@@ -95,6 +114,8 @@ pub fn parse_message(raw: &[u8]) -> ParsedMessage {
         None => (String::new(), None),
     };
 
+    let to = addresses(msg.to());
+    let cc = addresses(msg.cc());
     let subject = msg.subject().unwrap_or("").to_string();
     let date = msg.date().map(|d| d.to_timestamp()).unwrap_or(0);
     let text_plain = msg.body_text(0).map(|s| s.into_owned());
@@ -111,6 +132,8 @@ pub fn parse_message(raw: &[u8]) -> ParsedMessage {
         message_id_hdr,
         from_address,
         from_name,
+        to,
+        cc,
         subject,
         date,
         text_plain,
@@ -175,5 +198,13 @@ BINARYDATA\r\n\
     fn test_date_extraction() {
         let result = parse_message(MULTIPART_RAW);
         assert!(result.date > 0);
+    }
+
+    #[test]
+    fn parses_to_and_cc_addresses() {
+        let raw = b"From: a@x.com\r\nTo: b@y.com, c@z.com\r\nCc: d@w.com\r\nSubject: S\r\n\r\nbody\r\n";
+        let parsed = parse_message(raw);
+        assert_eq!(parsed.to, vec!["b@y.com".to_string(), "c@z.com".to_string()]);
+        assert_eq!(parsed.cc, vec!["d@w.com".to_string()]);
     }
 }

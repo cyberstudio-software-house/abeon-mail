@@ -1,18 +1,28 @@
 import { create } from "zustand";
+import type { OutgoingMessage } from "../ipc/bindings";
 
 export type Density = "comfortable" | "cozy" | "compact" | "dense";
 
-type UiState = {
+type ComposerState = {
+  open: boolean;
+  draftId: number | null;
+  prefill: OutgoingMessage | null;
+};
+
+export type UiState = {
   selectedAccountId: number | null;
   selectedFolderId: number | null;
   selectedMessageId: number | null;
   selectedThreadId: number | null;
   density: Density;
+  composer: ComposerState;
   setSelectedAccountId: (id: number | null) => void;
   setSelectedFolderId: (id: number | null) => void;
   setSelectedMessageId: (id: number | null) => void;
   setSelectedThreadId: (id: number | null) => void;
   setDensity: (density: Density) => void;
+  openComposer: (draftId: number | null, prefill?: OutgoingMessage | null) => void;
+  closeComposer: () => void;
 };
 
 export const useUiStore = create<UiState>((set) => ({
@@ -21,9 +31,12 @@ export const useUiStore = create<UiState>((set) => ({
   selectedMessageId: null,
   selectedThreadId: null,
   density: "comfortable",
+  composer: { open: false, draftId: null, prefill: null },
   setSelectedAccountId: (id) => set({ selectedAccountId: id }),
   setSelectedFolderId: (id) => set({ selectedFolderId: id }),
   setSelectedMessageId: (id) => set({ selectedMessageId: id }),
   setSelectedThreadId: (id) => set({ selectedThreadId: id }),
   setDensity: (density) => set({ density }),
+  openComposer: (draftId, prefill = null) => set({ composer: { open: true, draftId, prefill } }),
+  closeComposer: () => set({ composer: { open: false, draftId: null, prefill: null } }),
 }));

@@ -17,6 +17,14 @@ export const commands = {
 	markMessageSeen: (messageId: number) => typedError<null, string>(__TAURI_INVOKE("mark_message_seen", { messageId })),
 	listThreads: (folderId: number, limit: number, offset: number) => typedError<ThreadSummary[], string>(__TAURI_INVOKE("list_threads", { folderId, limit, offset })),
 	listThreadMessages: (threadId: number) => typedError<MessageHeader[], string>(__TAURI_INVOKE("list_thread_messages", { threadId })),
+	enqueueSend: (draftId: number) => typedError<null, string>(__TAURI_INVOKE("enqueue_send", { draftId })),
+	startReply: (messageId: number, mode: string) => typedError<OutgoingMessage, string>(__TAURI_INVOKE("start_reply", { messageId, mode })),
+	saveDraft: (accountId: number, draftId: number | null, message: OutgoingMessage) => typedError<number, string>(__TAURI_INVOKE("save_draft", { accountId, draftId, message })),
+	getDraft: (draftId: number) => typedError<OutgoingMessage, string>(__TAURI_INVOKE("get_draft", { draftId })),
+	listDrafts: (accountId: number) => typedError<number[], string>(__TAURI_INVOKE("list_drafts", { accountId })),
+	discardDraft: (draftId: number) => typedError<null, string>(__TAURI_INVOKE("discard_draft", { draftId })),
+	listSignatures: (accountId: number) => typedError<Signature[], string>(__TAURI_INVOKE("list_signatures", { accountId })),
+	pickAttachment: () => typedError<OutgoingAttachment[], string>(__TAURI_INVOKE("pick_attachment")),
 };
 
 /** Events */
@@ -90,11 +98,39 @@ export type NewMessages = {
 	count: number,
 };
 
+export type OutgoingAttachment = {
+	filename: string,
+	mime_type: string,
+	blob_ref: string,
+	content_id: string | null,
+};
+
+export type OutgoingMessage = {
+	from_address: string,
+	from_name: string | null,
+	to: string[],
+	cc: string[],
+	bcc: string[],
+	subject: string,
+	text_body: string,
+	html_body: string | null,
+	in_reply_to: string | null,
+	references: string[],
+	attachments: OutgoingAttachment[],
+};
+
 export type ProviderType = "imap_password" | "google_oauth";
 
 export type SanitizedHtml = {
 	html: string,
 	blocked_remote_content: boolean,
+};
+
+export type Signature = {
+	id: number,
+	name: string,
+	html: string,
+	is_default: boolean,
 };
 
 export type SyncProgress = {

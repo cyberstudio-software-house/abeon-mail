@@ -1,7 +1,15 @@
 use std::sync::Arc;
 
-use am_core::{account::Account, folder::Folder, message::{MessageBody, MessageFlag, MessageHeader}, thread::ThreadSummary};
-use am_storage::{accounts_repo, folders_repo, messages_repo};
+use am_core::{
+    account::Account,
+    folder::Folder,
+    message::{MessageBody, MessageFlag, MessageHeader},
+    outgoing::{OutgoingAttachment, OutgoingMessage},
+    signature::Signature,
+    thread::ThreadSummary,
+};
+use am_storage::{accounts_repo, drafts_repo, folders_repo, messages_repo, signatures_repo};
+use tauri_plugin_dialog::DialogExt;
 
 use crate::state::AppState;
 
@@ -121,6 +129,158 @@ pub fn mark_message_seen(
 ) -> Result<(), String> {
     am_sync::service::enqueue_flag(&state.db, message_id, MessageFlag::Seen, true)
         .map_err(|_| "Failed to mark seen".to_string())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn enqueue_send(state: tauri::State<'_, AppState>, draft_id: i64) -> Result<(), String> {
+    am_sync::send::enqueue_send(&state.db, draft_id).map_err(|_| "Failed to enqueue send".to_string())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn start_reply(
+    state: tauri::State<'_, AppState>,
+    message_id: i64,
+    mode: String,
+) -> Result<OutgoingMessage, String> {
+    let reply_mode = match mode.as_str() {
+        "reply" => am_sync::compose::ReplyMode::Reply,
+        "reply_all" => am_sync::compose::ReplyMode::ReplyAll,
+        "forward" => am_sync::compose::ReplyMode::Forward,
+        _ => return Err("Invalid reply mode".to_string()),
+    };
+    let db: Arc<am_storage::Database> = Arc::clone(&state.db);
+    let (_account_id, msg) = am_sync::compose::build_prefill(&db, message_id, reply_mode)
+        .await
+        .map_err(|_| "Failed to build reply".to_string())?;
+    Ok(msg)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn save_draft(
+    state: tauri::State<'_, AppState>,
+    account_id: i64,
+    draft_id: Option<i64>,
+    message: OutgoingMessage,
+) -> Result<i64, String> {
+    let id = drafts_repo::save_draft(&state.db, account_id, draft_id, &message)
+        .map_err(|_| "Failed to save draft".to_string())?;
+    let _ = am_sync::send::enqueue_draft_sync(&state.db, id);
+    Ok(id)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn get_draft(
+    state: tauri::State<'_, AppState>,
+    draft_id: i64,
+) -> Result<OutgoingMessage, String> {
+    drafts_repo::get_draft(&state.db, draft_id)
+        .map(|(_account_id, msg)| msg)
+        .map_err(|_| "Failed to get draft".to_string())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn list_drafts(
+    state: tauri::State<'_, AppState>,
+    account_id: i64,
+) -> Result<Vec<i64>, String> {
+    drafts_repo::list_draft_ids(&state.db, account_id)
+        .map_err(|_| "Failed to list drafts".to_string())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn discard_draft(
+    state: tauri::State<'_, AppState>,
+    draft_id: i64,
+) -> Result<(), String> {
+    drafts_repo::delete_draft(&state.db, draft_id)
+        .map_err(|_| "Failed to discard draft".to_string())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn list_signatures(
+    state: tauri::State<'_, AppState>,
+    account_id: i64,
+) -> Result<Vec<Signature>, String> {
+    signatures_repo::list_signatures(&state.db, account_id)
+        .map_err(|_| "Failed to list signatures".to_string())
+}
+
+fn guess_mime_from_extension(ext: &str) -> &'static str {
+    match ext.to_ascii_lowercase().as_str() {
+        "pdf" => "application/pdf",
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "gif" => "image/gif",
+        "webp" => "image/webp",
+        "svg" => "image/svg+xml",
+        "txt" => "text/plain",
+        "html" | "htm" => "text/html",
+        "csv" => "text/csv",
+        "json" => "application/json",
+        "xml" => "application/xml",
+        "zip" => "application/zip",
+        "gz" => "application/gzip",
+        "tar" => "application/x-tar",
+        "mp3" => "audio/mpeg",
+        "mp4" => "video/mp4",
+        "ogg" => "audio/ogg",
+        "wav" => "audio/wav",
+        "doc" => "application/msword",
+        "docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "xls" => "application/vnd.ms-excel",
+        "xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "ppt" => "application/vnd.ms-powerpoint",
+        "pptx" => "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        _ => "application/octet-stream",
+    }
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn pick_attachment(app: tauri::AppHandle) -> Result<Vec<OutgoingAttachment>, String> {
+    let paths = tokio::task::spawn_blocking(move || {
+        app.dialog().file().blocking_pick_files()
+    })
+    .await
+    .map_err(|_| "Attachment picker task failed".to_string())?;
+
+    let file_paths = match paths {
+        None => return Ok(Vec::new()),
+        Some(v) => v,
+    };
+
+    let mut attachments = Vec::new();
+    for fp in file_paths {
+        let path = match fp.as_path() {
+            Some(p) => p.to_path_buf(),
+            None => continue,
+        };
+        let filename = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("attachment")
+            .to_string();
+        let ext = path
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("");
+        let mime_type = guess_mime_from_extension(ext).to_string();
+        let blob_ref = path.to_string_lossy().into_owned();
+        attachments.push(OutgoingAttachment {
+            filename,
+            mime_type,
+            blob_ref,
+            content_id: None,
+        });
+    }
+    Ok(attachments)
 }
 
 #[cfg(test)]

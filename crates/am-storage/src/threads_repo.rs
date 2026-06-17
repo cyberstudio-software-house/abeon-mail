@@ -63,7 +63,8 @@ pub fn list_for_folder(db: &Database, folder_id: i64, limit: i64, offset: i64) -
                 (SELECT subject FROM messages WHERE thread_id = t.id ORDER BY date DESC LIMIT 1)
          FROM threads t
          JOIN messages m ON m.thread_id = t.id
-         WHERE t.id IN (SELECT DISTINCT thread_id FROM messages WHERE folder_id = ?1 AND thread_id IS NOT NULL)
+         WHERE t.id IN (SELECT DISTINCT thread_id FROM messages WHERE folder_id = ?1 AND thread_id IS NOT NULL AND draft = 0)
+           AND m.draft = 0
          GROUP BY t.id
          ORDER BY t.last_date DESC
          LIMIT ?2 OFFSET ?3",
