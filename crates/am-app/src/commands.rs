@@ -165,8 +165,10 @@ pub fn save_draft(
     draft_id: Option<i64>,
     message: OutgoingMessage,
 ) -> Result<i64, String> {
-    drafts_repo::save_draft(&state.db, account_id, draft_id, &message)
-        .map_err(|_| "Failed to save draft".to_string())
+    let id = drafts_repo::save_draft(&state.db, account_id, draft_id, &message)
+        .map_err(|_| "Failed to save draft".to_string())?;
+    let _ = am_sync::send::enqueue_draft_sync(&state.db, id);
+    Ok(id)
 }
 
 #[tauri::command]

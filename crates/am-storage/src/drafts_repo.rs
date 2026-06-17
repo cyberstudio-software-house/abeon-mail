@@ -171,6 +171,32 @@ pub fn delete_draft(db: &Database, draft_id: i64) -> Result<(), StorageError> {
     Ok(())
 }
 
+pub fn set_server_uid(
+    db: &Database,
+    draft_id: i64,
+    uid: Option<i64>,
+) -> Result<(), StorageError> {
+    let conn = db.conn();
+    conn.execute(
+        "UPDATE messages SET uid=?2 WHERE id=?1 AND draft=1",
+        params![draft_id, uid],
+    )?;
+    Ok(())
+}
+
+pub fn get_server_uid(db: &Database, draft_id: i64) -> Result<Option<i64>, StorageError> {
+    let conn = db.conn();
+    conn.query_row(
+        "SELECT uid FROM messages WHERE id=?1 AND draft=1",
+        params![draft_id],
+        |r| r.get::<_, Option<i64>>(0),
+    )
+    .map_err(|e| match e {
+        rusqlite::Error::QueryReturnedNoRows => StorageError::NotFound,
+        o => StorageError::Sqlite(o),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -243,5 +269,17 @@ mod tests {
         let id = save_draft(&db, account_id, None, &sample()).unwrap();
         delete_draft(&db, id).unwrap();
         assert!(list_draft_ids(&db, account_id).unwrap().is_empty());
+    }
+
+    #[test]
+    fn set_server_uid_roundtrips() {
+        let db = Database::open_in_memory().unwrap();
+        let account_id = acct(&db);
+        let id = save_draft(&db, account_id, None, &sample()).unwrap();
+        assert_eq!(get_server_uid(&db, id).unwrap(), None);
+        set_server_uid(&db, id, Some(42)).unwrap();
+        assert_eq!(get_server_uid(&db, id).unwrap(), Some(42));
+        set_server_uid(&db, id, None).unwrap();
+        assert_eq!(get_server_uid(&db, id).unwrap(), None);
     }
 }
