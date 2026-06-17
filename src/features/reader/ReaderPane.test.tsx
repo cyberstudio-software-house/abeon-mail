@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 vi.mock("../../ipc/queries", () => ({
   useMessageBody: vi.fn(),
+  useMarkSeen: vi.fn(() => ({ mutate: vi.fn() })),
 }));
 
 vi.mock("../../ipc/bindings", () => ({

@@ -5,6 +5,7 @@ const mockSetSelectedMessageId = vi.fn();
 
 vi.mock("../../ipc/queries", () => ({
   useMessages: vi.fn(),
+  useSetFlag: vi.fn(() => ({ mutate: vi.fn() })),
 }));
 
 vi.mock("../../app/store", () => ({

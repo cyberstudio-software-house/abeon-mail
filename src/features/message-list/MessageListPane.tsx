@@ -1,8 +1,8 @@
 import { useRef } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { useMessages } from "../../ipc/queries";
+import { useMessages, useSetFlag } from "../../ipc/queries";
 import { useUiStore, type Density } from "../../app/store";
-import type { MessageHeader } from "../../ipc/bindings";
+import type { MessageHeader, MessageFlag } from "../../ipc/bindings";
 import "./MessageListPane.css";
 
 const ROW_HEIGHT: Record<Density, number> = {
@@ -31,11 +31,13 @@ function MessageRow({
   isSelected,
   rowHeight,
   onSelect,
+  onToggleFlag,
 }: {
   message: MessageHeader;
   isSelected: boolean;
   rowHeight: number;
   onSelect: (id: number) => void;
+  onToggleFlag: (id: number, flag: MessageFlag, value: boolean) => void;
 }) {
   const sender = message.from_name || message.from_address;
   const isUnread = !message.seen;
@@ -60,7 +62,13 @@ function MessageRow({
         <div className="message-row__meta">
           <span className="message-row__subject">{message.subject}</span>
           <div className="message-row__badges">
-            {message.flagged && <span className="message-row__flag" aria-label="flagged">⚑</span>}
+            {message.flagged ? (
+            <button type="button" className="message-row__flag" aria-label="unflag"
+              onClick={(e) => { e.stopPropagation(); onToggleFlag(message.id, "flagged", false); }}>⚑</button>
+          ) : (
+            <button type="button" className="message-row__flag message-row__flag--off" aria-label="flag"
+              onClick={(e) => { e.stopPropagation(); onToggleFlag(message.id, "flagged", true); }}>⚐</button>
+          )}
             {message.has_attachments && <span className="message-row__attachment" aria-label="has attachments">📎</span>}
           </div>
         </div>
@@ -84,6 +92,7 @@ export function MessageListPane() {
   const selectedMessageId = useUiStore((s) => s.selectedMessageId);
   const density = useUiStore((s) => s.density);
   const setSelectedMessageId = useUiStore((s) => s.setSelectedMessageId);
+  const setFlag = useSetFlag();
 
   const { data: messages, isLoading } = useMessages(selectedFolderId);
 
@@ -144,6 +153,7 @@ export function MessageListPane() {
                     isSelected={selectedMessageId === message.id}
                     rowHeight={rowHeight}
                     onSelect={setSelectedMessageId}
+                    onToggleFlag={(id, flag, value) => setFlag.mutate({ messageId: id, flag, value })}
                   />
                 </div>
               );

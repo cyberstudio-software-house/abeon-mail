@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useUiStore } from "../../app/store";
-import { useMessageBody } from "../../ipc/queries";
+import { useMessageBody, useMarkSeen } from "../../ipc/queries";
 import { commands } from "../../ipc/bindings";
 import { SafeHtmlFrame } from "./SafeHtmlFrame";
 import "./reader.css";
@@ -28,6 +28,13 @@ function RemoteContentBanner() {
 export function ReaderPane() {
   const selectedMessageId = useUiStore((s) => s.selectedMessageId);
   const { data: body, isLoading: bodyLoading } = useMessageBody(selectedMessageId);
+  const markSeen = useMarkSeen();
+
+  useEffect(() => {
+    if (selectedMessageId != null) {
+      markSeen.mutate(selectedMessageId);
+    }
+  }, [selectedMessageId]);
 
   const htmlSource = body?.text_html ?? null;
 

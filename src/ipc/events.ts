@@ -18,9 +18,16 @@ export function useSyncEvents() {
       queryClient.invalidateQueries({ queryKey: ["messages", folder_id] });
     });
 
+    const mailboxPromise = events.mailboxChanged.listen((event) => {
+      const { account_id, folder_id } = event.payload;
+      queryClient.invalidateQueries({ queryKey: ["folders", account_id] });
+      queryClient.invalidateQueries({ queryKey: ["messages", folder_id] });
+    });
+
     return () => {
       progressPromise.then((unlisten) => unlisten());
       messagesPromise.then((unlisten) => unlisten());
+      mailboxPromise.then((unlisten) => unlisten());
     };
   }, [queryClient]);
 }

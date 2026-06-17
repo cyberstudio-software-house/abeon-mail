@@ -19,6 +19,8 @@ vi.mock("../ipc/queries", () => ({
   useFolders: () => ({ data: [], isLoading: false, isError: false, error: null }),
   useMessages: () => ({ data: [], isLoading: false, isError: false, error: null }),
   useMessageBody: () => ({ data: null, isLoading: false, isError: false, error: null }),
+  useSetFlag: () => ({ mutate: vi.fn() }),
+  useMarkSeen: () => ({ mutate: vi.fn() }),
 }));
 
 vi.mock("../ipc/bindings", () => ({
