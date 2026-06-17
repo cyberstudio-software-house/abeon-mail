@@ -1,40 +1,51 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { commands } from "../../ipc/bindings";
 import type { OutgoingAttachment } from "../../ipc/bindings";
-import { useAccounts } from "../../ipc/queries";
+import { useAccounts, useSaveDraft, useEnqueueSend } from "../../ipc/queries";
 import { useUiStore } from "../../app/store";
 import { RecipientField } from "./RecipientField";
 import "./composer.css";
 
-function unwrapOk<T>(result: { status: "ok"; data: T } | { status: "error"; error: string }): T {
-  if (result.status === "error") throw new Error(result.error);
-  return result.data;
-}
+const AUTOSAVE_DELAY_MS = 1500;
 
 export function Composer() {
   const composer = useUiStore((s) => s.composer);
   const closeComposer = useUiStore((s) => s.closeComposer);
   const { data: accounts = [] } = useAccounts();
 
+  const prefill = composer.prefill;
+
   const [fromAccountId, setFromAccountId] = useState<number | null>(null);
-  const [to, setTo] = useState<string[]>([]);
-  const [cc, setCc] = useState<string[]>([]);
-  const [bcc, setBcc] = useState<string[]>([]);
-  const [subject, setSubject] = useState("");
-  const [attachments, setAttachments] = useState<OutgoingAttachment[]>([]);
-  const [showCc, setShowCc] = useState(false);
-  const [showBcc, setShowBcc] = useState(false);
+  const [to, setTo] = useState<string[]>(prefill?.to ?? []);
+  const [cc, setCc] = useState<string[]>(prefill?.cc ?? []);
+  const [bcc, setBcc] = useState<string[]>(prefill?.bcc ?? []);
+  const [subject, setSubject] = useState(prefill?.subject ?? "");
+  const [attachments, setAttachments] = useState<OutgoingAttachment[]>(prefill?.attachments ?? []);
+  const [showCc, setShowCc] = useState((prefill?.cc ?? []).length > 0);
+  const [showBcc, setShowBcc] = useState((prefill?.bcc ?? []).length > 0);
   const [isSending, setIsSending] = useState(false);
-  const [isSavingDraft, setIsSavingDraft] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
+
+  const draftIdRef = useRef<number | null>(composer.draftId);
+  const autosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const saveDraftMutation = useSaveDraft();
+  const enqueueSendMutation = useEnqueueSend();
+
+  const accountId = fromAccountId ?? (accounts[0]?.id ?? null);
 
   const editor = useEditor({
     extensions: [StarterKit],
-    content: "",
+    content: prefill?.html_body ?? "",
   });
 
-  const accountId = fromAccountId ?? (accounts[0]?.id ?? null);
+  useEffect(() => {
+    if (prefill?.html_body && editor) {
+      editor.commands.setContent(prefill.html_body);
+    }
+  }, [prefill?.html_body, editor]);
 
   const buildMessage = useCallback(() => {
     return {
@@ -46,20 +57,52 @@ export function Composer() {
       subject,
       text_body: editor?.getText() ?? "",
       html_body: editor?.getHTML() ?? null,
-      in_reply_to: null,
-      references: [],
+      in_reply_to: prefill?.in_reply_to ?? null,
+      references: prefill?.references ?? [],
       attachments,
     };
-  }, [accounts, accountId, to, cc, bcc, subject, editor, attachments]);
+  }, [accounts, accountId, to, cc, bcc, subject, editor, attachments, prefill]);
+
+  const scheduleAutosave = useCallback(() => {
+    if (autosaveTimerRef.current) {
+      clearTimeout(autosaveTimerRef.current);
+    }
+    autosaveTimerRef.current = setTimeout(async () => {
+      if (accountId == null) return;
+      const message = buildMessage();
+      const savedId = await saveDraftMutation.mutateAsync({
+        accountId,
+        draftId: draftIdRef.current,
+        message,
+      });
+      draftIdRef.current = savedId;
+    }, AUTOSAVE_DELAY_MS);
+  }, [accountId, buildMessage, saveDraftMutation]);
+
+  useEffect(() => {
+    return () => {
+      if (autosaveTimerRef.current) {
+        clearTimeout(autosaveTimerRef.current);
+      }
+    };
+  }, []);
 
   async function handleSend() {
     if (accountId == null) return;
     setIsSending(true);
+    setSendError(null);
     try {
       const message = buildMessage();
-      const savedId = unwrapOk(await commands.saveDraft(accountId, composer.draftId, message));
-      await commands.enqueueSend(savedId);
+      const savedId = await saveDraftMutation.mutateAsync({
+        accountId,
+        draftId: draftIdRef.current,
+        message,
+      });
+      draftIdRef.current = savedId;
+      await enqueueSendMutation.mutateAsync(savedId);
       closeComposer();
+    } catch (err) {
+      setSendError(err instanceof Error ? err.message : String(err));
     } finally {
       setIsSending(false);
     }
@@ -67,20 +110,31 @@ export function Composer() {
 
   async function handleSaveDraft() {
     if (accountId == null) return;
-    setIsSavingDraft(true);
-    try {
-      const message = buildMessage();
-      await commands.saveDraft(accountId, composer.draftId, message);
-      closeComposer();
-    } finally {
-      setIsSavingDraft(false);
+    const message = buildMessage();
+    const savedId = await saveDraftMutation.mutateAsync({
+      accountId,
+      draftId: draftIdRef.current,
+      message,
+    });
+    draftIdRef.current = savedId;
+    closeComposer();
+  }
+
+  async function handleDiscard() {
+    if (autosaveTimerRef.current) {
+      clearTimeout(autosaveTimerRef.current);
     }
+    if (draftIdRef.current != null) {
+      await commands.discardDraft(draftIdRef.current);
+    }
+    closeComposer();
   }
 
   async function handlePickAttachment() {
     const result = await commands.pickAttachment();
     if (result.status === "ok") {
       setAttachments((prev) => [...prev, ...result.data]);
+      scheduleAutosave();
     }
   }
 
@@ -91,12 +145,34 @@ export function Composer() {
       const defaultSig = result.data.find((s) => s.is_default) ?? result.data[0];
       if (defaultSig) {
         editor.chain().focus().insertContent(defaultSig.html).run();
+        scheduleAutosave();
       }
     }
   }
 
   function removeAttachment(index: number) {
     setAttachments((prev) => prev.filter((_, i) => i !== index));
+    scheduleAutosave();
+  }
+
+  function handleToChange(value: string[]) {
+    setTo(value);
+    scheduleAutosave();
+  }
+
+  function handleCcChange(value: string[]) {
+    setCc(value);
+    scheduleAutosave();
+  }
+
+  function handleBccChange(value: string[]) {
+    setBcc(value);
+    scheduleAutosave();
+  }
+
+  function handleSubjectChange(e: React.ChangeEvent<HTMLInputElement>) {
+    setSubject(e.target.value);
+    scheduleAutosave();
   }
 
   if (!composer.open) return null;
@@ -128,7 +204,7 @@ export function Composer() {
             </select>
           </div>
 
-          <RecipientField label="To" recipients={to} onChange={setTo} />
+          <RecipientField label="To" recipients={to} onChange={handleToChange} />
 
           <div className="composer-cc-bcc-toggles">
             {!showCc && (
@@ -143,8 +219,8 @@ export function Composer() {
             )}
           </div>
 
-          {showCc && <RecipientField label="Cc" recipients={cc} onChange={setCc} />}
-          {showBcc && <RecipientField label="Bcc" recipients={bcc} onChange={setBcc} />}
+          {showCc && <RecipientField label="Cc" recipients={cc} onChange={handleCcChange} />}
+          {showBcc && <RecipientField label="Bcc" recipients={bcc} onChange={handleBccChange} />}
 
           <div className="composer-subject">
             <span className="field-label">Subject</span>
@@ -153,7 +229,7 @@ export function Composer() {
               className="subject-input"
               aria-label="Subject"
               value={subject}
-              onChange={(e) => setSubject(e.target.value)}
+              onChange={handleSubjectChange}
               placeholder="Subject"
             />
           </div>
@@ -222,6 +298,12 @@ export function Composer() {
           ))}
         </div>
 
+        {sendError && (
+          <div className="composer-send-error" role="alert">
+            {sendError}
+          </div>
+        )}
+
         <div className="composer-footer">
           <button
             type="button"
@@ -234,7 +316,7 @@ export function Composer() {
           <button
             type="button"
             className="btn-draft"
-            disabled={isSavingDraft || accountId == null}
+            disabled={saveDraftMutation.isPending || accountId == null}
             onClick={handleSaveDraft}
           >
             Save draft
@@ -242,7 +324,7 @@ export function Composer() {
           <button type="button" className="btn-signature" onClick={handleInsertSignature}>
             Insert signature
           </button>
-          <button type="button" className="btn-discard" onClick={closeComposer}>
+          <button type="button" className="btn-discard" onClick={handleDiscard}>
             Discard
           </button>
         </div>

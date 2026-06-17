@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
-import { render, screen, cleanup, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, cleanup, fireEvent, waitFor, act } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 vi.mock("../../ipc/bindings", () => ({
@@ -12,6 +12,7 @@ vi.mock("../../ipc/bindings", () => ({
     enqueueSend: vi.fn().mockResolvedValue({ status: "ok", data: null }),
     listSignatures: vi.fn().mockResolvedValue({ status: "ok", data: [] }),
     pickAttachment: vi.fn().mockResolvedValue({ status: "ok", data: [] }),
+    discardDraft: vi.fn().mockResolvedValue({ status: "ok", data: null }),
   },
   events: {},
 }));
@@ -21,6 +22,7 @@ vi.mock("@tiptap/react", () => {
     isActive: () => false,
     getText: () => "Hello world",
     getHTML: () => "<p>Hello world</p>",
+    commands: { setContent: vi.fn() },
     chain: () => ({
       focus: () => ({
         toggleBold: () => ({ run: vi.fn() }),
@@ -62,13 +64,13 @@ function Wrapper({ children }: { children: React.ReactNode }) {
 
 describe("Composer", () => {
   beforeEach(() => {
-    useUiStore.setState({ composer: { open: true, draftId: null } });
+    useUiStore.setState({ composer: { open: true, draftId: null, prefill: null } });
   });
 
   afterEach(() => {
     cleanup();
     vi.clearAllMocks();
-    useUiStore.setState({ composer: { open: false, draftId: null } });
+    useUiStore.setState({ composer: { open: false, draftId: null, prefill: null } });
   });
 
   it("renders when composer is open", async () => {
@@ -127,9 +129,83 @@ describe("Composer", () => {
   });
 
   it("does not render when composer is closed", async () => {
-    useUiStore.setState({ composer: { open: false, draftId: null } });
+    useUiStore.setState({ composer: { open: false, draftId: null, prefill: null } });
 
     render(<Composer />, { wrapper: Wrapper });
     expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("shows send error when enqueueSend fails", async () => {
+    const { commands } = await import("../../ipc/bindings");
+    (commands.enqueueSend as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      status: "error",
+      error: "SMTP connection failed",
+    });
+
+    render(<Composer />, { wrapper: Wrapper });
+    await screen.findByRole("dialog");
+
+    const sendButton = await screen.findByRole("button", { name: "Send" });
+    fireEvent.click(sendButton);
+
+    await waitFor(() => {
+      expect(screen.getByRole("alert")).toBeTruthy();
+    });
+    expect(screen.getByRole("alert").textContent).toContain("SMTP connection failed");
+  });
+
+  it("calls discardDraft with saved draftId when Discard is clicked after autosave", async () => {
+    const { commands } = await import("../../ipc/bindings");
+
+    render(<Composer />, { wrapper: Wrapper });
+    await screen.findByRole("dialog");
+    await screen.findByDisplayValue("me@example.com", { exact: false });
+
+    vi.useFakeTimers();
+
+    const subjectInput = screen.getByLabelText("Subject");
+    fireEvent.change(subjectInput, { target: { value: "draft subject" } });
+
+    expect(commands.saveDraft).not.toHaveBeenCalled();
+
+    await act(async () => {
+      await vi.runAllTimersAsync();
+    });
+
+    vi.useRealTimers();
+
+    expect(commands.saveDraft).toHaveBeenCalled();
+
+    const discardButton = screen.getByRole("button", { name: "Discard" });
+    await act(async () => {
+      fireEvent.click(discardButton);
+    });
+
+    await waitFor(() => {
+      expect(commands.discardDraft).toHaveBeenCalledWith(1);
+    });
+  });
+
+  it("autosave calls saveDraft after field edit with debounce delay", async () => {
+    const { commands } = await import("../../ipc/bindings");
+
+    render(<Composer />, { wrapper: Wrapper });
+    await screen.findByRole("dialog");
+    await screen.findByDisplayValue("me@example.com", { exact: false });
+
+    vi.useFakeTimers();
+
+    const subjectInput = screen.getByLabelText("Subject");
+    fireEvent.change(subjectInput, { target: { value: "autosave test" } });
+
+    expect(commands.saveDraft).not.toHaveBeenCalled();
+
+    await act(async () => {
+      await vi.runAllTimersAsync();
+    });
+
+    vi.useRealTimers();
+
+    expect(commands.saveDraft).toHaveBeenCalled();
   });
 });

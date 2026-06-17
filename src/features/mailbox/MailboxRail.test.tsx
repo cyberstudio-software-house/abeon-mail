@@ -24,23 +24,8 @@ vi.mock("../accounts/AddAccountWizard", () => ({
 
 import { useAccounts, useFolders } from "../../ipc/queries";
 import { useUiStore } from "../../app/store";
+import type { UiState } from "../../app/store";
 import { MailboxRail } from "./MailboxRail";
-
-type UiState = {
-  selectedAccountId: number | null;
-  selectedFolderId: number | null;
-  selectedMessageId: number | null;
-  selectedThreadId: number | null;
-  density: "comfortable" | "cozy" | "compact" | "dense";
-  composer: { open: boolean; draftId: number | null };
-  setSelectedAccountId: (id: number | null) => void;
-  setSelectedFolderId: (id: number | null) => void;
-  setSelectedMessageId: (id: number | null) => void;
-  setSelectedThreadId: (id: number | null) => void;
-  setDensity: (density: "comfortable" | "cozy" | "compact" | "dense") => void;
-  openComposer: (draftId: number | null) => void;
-  closeComposer: () => void;
-};
 
 const mockUseAccounts = vi.mocked(useAccounts);
 const mockUseFolders = vi.mocked(useFolders);
@@ -76,7 +61,7 @@ function setupStore(selectedAccountId: number | null = 1) {
         selectedMessageId: null,
         selectedThreadId: null,
         density: "comfortable",
-        composer: { open: false, draftId: null },
+        composer: { open: false, draftId: null, prefill: null },
         setSelectedAccountId: mockSetSelectedAccountId,
         setSelectedFolderId: mockSetSelectedFolderId,
         setSelectedMessageId: vi.fn(),

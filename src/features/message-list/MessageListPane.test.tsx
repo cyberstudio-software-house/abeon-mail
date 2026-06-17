@@ -12,25 +12,10 @@ vi.mock("../../app/store", () => ({
 }));
 
 import { useThreads } from "../../ipc/queries";
-import { useUiStore, type Density } from "../../app/store";
+import { useUiStore } from "../../app/store";
+import type { UiState, Density } from "../../app/store";
 import { MessageListPane } from "./MessageListPane";
 import type { ThreadSummary } from "../../ipc/bindings";
-
-type UiState = {
-  selectedAccountId: number | null;
-  selectedFolderId: number | null;
-  selectedMessageId: number | null;
-  selectedThreadId: number | null;
-  density: Density;
-  composer: { open: boolean; draftId: number | null };
-  setSelectedAccountId: (id: number | null) => void;
-  setSelectedFolderId: (id: number | null) => void;
-  setSelectedMessageId: (id: number | null) => void;
-  setSelectedThreadId: (id: number | null) => void;
-  setDensity: (density: Density) => void;
-  openComposer: (draftId: number | null) => void;
-  closeComposer: () => void;
-};
 
 const mockUseThreads = vi.mocked(useThreads);
 const mockUseUiStore = vi.mocked(useUiStore);
@@ -70,7 +55,7 @@ function setupStore(selectedFolderId: number | null, density: Density = "comfort
       selectedMessageId: null,
       selectedThreadId: null,
       density,
-      composer: { open: false, draftId: null },
+      composer: { open: false, draftId: null, prefill: null },
       setSelectedAccountId: vi.fn(),
       setSelectedFolderId: vi.fn(),
       setSelectedMessageId: vi.fn(),
