@@ -1,0 +1,18 @@
+[package]
+name = "am-protocols"
+edition.workspace = true
+version.workspace = true
+
+[dependencies]
+thiserror.workspace = true
+tokio.workspace = true
+async-imap.workspace = true
+futures.workspace = true
+tokio-rustls.workspace = true
+rustls.workspace = true
+webpki-roots.workspace = true
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+
+[dev-dependencies]
+testcontainers.workspace = true
+tokio = { workspace = true, features = ["rt-multi-thread", "net", "macros", "io-util", "time"] }
