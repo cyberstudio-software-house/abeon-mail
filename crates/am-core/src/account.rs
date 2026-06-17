@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, specta::Type, Clone, Debug, PartialEq)]
-#[serde(rename_all = "lowercase")]
+#[serde(rename_all = "snake_case")]
 pub enum ProviderType {
     ImapPassword,
     GoogleOauth,
@@ -42,5 +42,11 @@ mod tests {
         let json = serde_json::to_string(&account).unwrap();
         let back: Account = serde_json::from_str(&json).unwrap();
         assert_eq!(account, back);
+    }
+
+    #[test]
+    fn provider_type_google_oauth_serializes_as_snake_case() {
+        let json = serde_json::to_string(&ProviderType::GoogleOauth).unwrap();
+        assert_eq!(json, "\"google_oauth\"");
     }
 }
