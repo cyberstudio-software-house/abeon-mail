@@ -1,0 +1,11 @@
+[package]
+name = "am-storage"
+edition.workspace = true
+version.workspace = true
+
+[dependencies]
+am-core = { path = "../am-core" }
+rusqlite.workspace = true
+refinery.workspace = true
+thiserror.workspace = true
+serde_json.workspace = true
