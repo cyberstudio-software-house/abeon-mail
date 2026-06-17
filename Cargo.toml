@@ -1,5 +1,5 @@
 [workspace]
-members = ["src-tauri", "crates/am-core", "crates/am-storage", "crates/am-app"]
+members = ["src-tauri", "crates/am-core", "crates/am-storage", "crates/am-app", "crates/am-mime"]
 resolver = "2"
 
 [workspace.package]
@@ -16,3 +16,5 @@ tauri-specta = { version = "=2.0.0-rc.25", features = ["derive", "typescript"] }
 thiserror = "1"
 rusqlite = { version = "0.31", features = ["bundled"] }
 refinery = { version = "0.8", features = ["rusqlite"] }
+mail-parser = "0.11.3"
+ammonia = "4.1.2"
