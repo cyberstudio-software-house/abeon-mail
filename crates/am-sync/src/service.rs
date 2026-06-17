@@ -373,6 +373,12 @@ pub async fn drain_queue(db: &Database, account_id: i64, now: i64) -> Result<(),
     let password = am_auth::credentials::load_password(&account.email)?;
     let config = imap_config(&endpoints, &account.email);
 
+    let mut session = match ImapSession::connect(&config, &password).await {
+        Ok(s) => s,
+        Err(_) => return Ok(()),
+    };
+    let mut selected: Option<String> = None;
+
     for op in due {
         let parsed: serde_json::Value = match serde_json::from_str(&op.payload) {
             Ok(v) => v,
@@ -388,23 +394,33 @@ pub async fn drain_queue(db: &Database, account_id: i64, now: i64) -> Result<(),
         };
         let value = parsed["value"].as_bool().unwrap_or(false);
 
-        let folder = folders_repo::get_folder(db, folder_id)?;
-        let current_validity = folders_repo::get_sync_markers(db, folder_id)?.uidvalidity.unwrap_or(-2);
-        if payload_validity != current_validity {
-            queue_repo::mark_done(db, op.id)?;
-            continue;
+        let folder = match folders_repo::get_folder(db, folder_id) {
+            Ok(f) => f,
+            Err(_) => { queue_repo::mark_done(db, op.id)?; continue; }
+        };
+        let markers = match folders_repo::get_sync_markers(db, folder_id) {
+            Ok(m) => m,
+            Err(_) => { queue_repo::mark_done(db, op.id)?; continue; }
+        };
+        match markers.uidvalidity {
+            Some(v) if v == payload_validity => {}
+            _ => { queue_repo::mark_done(db, op.id)?; continue; }
         }
 
-        let result: Result<(), SyncError> = async {
-            let mut session = ImapSession::connect(&config, &password).await?;
-            session.select(&folder.remote_path).await?;
-            session.store_flag(uid, imap_flag(flag), value).await?;
-            session.logout().await?;
-            Ok(())
+        if selected.as_deref() != Some(folder.remote_path.as_str()) {
+            if let Err(_) = session.select(&folder.remote_path).await {
+                let backoff = now + 2i64.pow((op.attempts + 1).min(5) as u32) * 30;
+                if op.attempts + 1 >= MAX_QUEUE_ATTEMPTS {
+                    queue_repo::mark_done(db, op.id)?;
+                } else {
+                    queue_repo::mark_retry(db, op.id, backoff)?;
+                }
+                continue;
+            }
+            selected = Some(folder.remote_path.clone());
         }
-        .await;
 
-        match result {
+        match session.store_flag(uid, imap_flag(flag), value).await {
             Ok(()) => queue_repo::mark_done(db, op.id)?,
             Err(_) if op.attempts + 1 >= MAX_QUEUE_ATTEMPTS => queue_repo::mark_done(db, op.id)?,
             Err(_) => {
@@ -413,6 +429,8 @@ pub async fn drain_queue(db: &Database, account_id: i64, now: i64) -> Result<(),
             }
         }
     }
+
+    let _ = session.logout().await;
     Ok(())
 }
 
