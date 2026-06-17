@@ -34,12 +34,16 @@ pub async fn add_account(
 ) -> Result<Account, String> {
     let db: Arc<am_storage::Database> = Arc::clone(&state.db);
     let input = am_sync::service::AddAccountInput { email, display_name, password, endpoints };
-    am_sync::service::add_account(&db, input).await.map_err(|e| match e {
+    let account = am_sync::service::add_account(&db, input).await.map_err(|e| match e {
         am_sync::service::SyncError::Auth => "Authentication failed".to_string(),
         am_sync::service::SyncError::CredentialMissing => "Credential not found".to_string(),
         am_sync::service::SyncError::Keychain => "Keychain unavailable".to_string(),
         _ => "Account setup failed".to_string(),
-    })
+    })?;
+    if let Some(engine) = state.engine.lock().unwrap().as_ref() {
+        engine.spawn_account(account.id);
+    }
+    Ok(account)
 }
 
 #[tauri::command]

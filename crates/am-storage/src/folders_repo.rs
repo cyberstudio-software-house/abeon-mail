@@ -122,23 +122,6 @@ pub fn get_folder(db: &Database, id: i64) -> Result<Folder, StorageError> {
     .and_then(tuple_to_folder)
 }
 
-pub fn set_uid_state(
-    db: &Database,
-    folder_id: i64,
-    uidvalidity: i64,
-    uidnext: i64,
-) -> Result<(), StorageError> {
-    let conn = db.conn();
-    let changed = conn.execute(
-        "UPDATE folders SET uidvalidity = ?2, uidnext = ?3 WHERE id = ?1",
-        params![folder_id, uidvalidity, uidnext],
-    )?;
-    if changed == 0 {
-        return Err(StorageError::NotFound);
-    }
-    Ok(())
-}
-
 pub fn set_counts(
     db: &Database,
     folder_id: i64,
@@ -258,22 +241,6 @@ mod tests {
         let db = Database::open_in_memory().unwrap();
         let err = get_folder(&db, 999).unwrap_err();
         assert!(matches!(err, StorageError::NotFound));
-    }
-
-    #[test]
-    fn set_uid_state_updates_values() {
-        let db = Database::open_in_memory().unwrap();
-        let account = insert_account(&db, &sample_account()).unwrap();
-        let folder = upsert_folder(&db, account.id, "INBOX", "Inbox", FolderType::Inbox).unwrap();
-        set_uid_state(&db, folder.id, 12345, 100).unwrap();
-        let conn = db.conn();
-        let (uidvalidity, uidnext): (i64, i64) = conn.query_row(
-            "SELECT uidvalidity, uidnext FROM folders WHERE id = ?1",
-            params![folder.id],
-            |row| Ok((row.get(0)?, row.get(1)?)),
-        ).unwrap();
-        assert_eq!(uidvalidity, 12345);
-        assert_eq!(uidnext, 100);
     }
 
     #[test]
