@@ -15,15 +15,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn google_client_id_reads_env() {
+    fn google_client_id_reads_env_then_missing() {
         std::env::set_var("ABEONMAIL_GOOGLE_CLIENT_ID", "test-client-id-123");
         let id = google_client_id().unwrap();
         assert_eq!(id, "test-client-id-123");
-        std::env::remove_var("ABEONMAIL_GOOGLE_CLIENT_ID");
-    }
 
-    #[test]
-    fn google_client_id_missing_returns_config_error() {
         std::env::remove_var("ABEONMAIL_GOOGLE_CLIENT_ID");
         let result = google_client_id();
         assert!(matches!(result, Err(OAuthError::Config(_))));
