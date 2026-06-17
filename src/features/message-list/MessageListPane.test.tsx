@@ -22,11 +22,14 @@ type UiState = {
   selectedMessageId: number | null;
   selectedThreadId: number | null;
   density: Density;
+  composer: { open: boolean; draftId: number | null };
   setSelectedAccountId: (id: number | null) => void;
   setSelectedFolderId: (id: number | null) => void;
   setSelectedMessageId: (id: number | null) => void;
   setSelectedThreadId: (id: number | null) => void;
   setDensity: (density: Density) => void;
+  openComposer: (draftId: number | null) => void;
+  closeComposer: () => void;
 };
 
 const mockUseThreads = vi.mocked(useThreads);
@@ -67,11 +70,14 @@ function setupStore(selectedFolderId: number | null, density: Density = "comfort
       selectedMessageId: null,
       selectedThreadId: null,
       density,
+      composer: { open: false, draftId: null },
       setSelectedAccountId: vi.fn(),
       setSelectedFolderId: vi.fn(),
       setSelectedMessageId: vi.fn(),
       setSelectedThreadId: mockSetSelectedThreadId,
       setDensity: vi.fn(),
+      openComposer: vi.fn(),
+      closeComposer: vi.fn(),
     };
     return selector ? selector(state) : state;
   });

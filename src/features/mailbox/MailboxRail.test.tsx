@@ -32,11 +32,14 @@ type UiState = {
   selectedMessageId: number | null;
   selectedThreadId: number | null;
   density: "comfortable" | "cozy" | "compact" | "dense";
+  composer: { open: boolean; draftId: number | null };
   setSelectedAccountId: (id: number | null) => void;
   setSelectedFolderId: (id: number | null) => void;
   setSelectedMessageId: (id: number | null) => void;
   setSelectedThreadId: (id: number | null) => void;
   setDensity: (density: "comfortable" | "cozy" | "compact" | "dense") => void;
+  openComposer: (draftId: number | null) => void;
+  closeComposer: () => void;
 };
 
 const mockUseAccounts = vi.mocked(useAccounts);
@@ -73,11 +76,14 @@ function setupStore(selectedAccountId: number | null = 1) {
         selectedMessageId: null,
         selectedThreadId: null,
         density: "comfortable",
+        composer: { open: false, draftId: null },
         setSelectedAccountId: mockSetSelectedAccountId,
         setSelectedFolderId: mockSetSelectedFolderId,
         setSelectedMessageId: vi.fn(),
         setSelectedThreadId: vi.fn(),
         setDensity: vi.fn(),
+        openComposer: vi.fn(),
+        closeComposer: vi.fn(),
       };
       return selector ? selector(state) : state;
     }
