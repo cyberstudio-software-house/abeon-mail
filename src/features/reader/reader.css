@@ -1,0 +1,59 @@
+.reader-pane {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.reader-frame {
+  width: 100%;
+  height: 100%;
+  border: none;
+  background: var(--bg-surface);
+}
+
+.remote-content-banner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: var(--bg-elevated);
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.remote-content-banner button {
+  padding: 4px 12px;
+  background: var(--accent);
+  color: var(--color-white);
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.remote-content-banner button:hover {
+  background: var(--accent-hover);
+}
+
+.plain-text-body {
+  white-space: pre-wrap;
+  word-break: break-word;
+  padding: var(--space-4);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  margin: 0;
+}
+
+.empty-state {
+  color: var(--text-muted);
+  padding: var(--space-6);
+  text-align: center;
+}
+
+.loading-state {
+  color: var(--text-muted);
+  padding: var(--space-6);
+  text-align: center;
+}

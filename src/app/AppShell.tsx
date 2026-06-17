@@ -1,11 +1,14 @@
 import { useEffect, useState } from "react";
 import "./shell.css";
 import { health } from "../ipc/client";
+import { useSyncEvents } from "../ipc/events";
 import { MailboxRail } from "../features/mailbox/MailboxRail";
 import { MessageListPane } from "../features/message-list/MessageListPane";
 import { ReaderPane } from "../features/reader/ReaderPane";
 
 export function AppShell() {
+  useSyncEvents();
+
   const [status, setStatus] = useState("…");
 
   useEffect(() => {

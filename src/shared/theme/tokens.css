@@ -5,6 +5,8 @@
   --accent-hover: #6366f1;
   --accent-sky: #0ea5e9;
   --accent-pink: #ec4899;
+  --color-error: #ef4444;
+  --color-white: #ffffff;
 
   --radius-sm: 6px;
   --radius-md: 10px;
@@ -50,4 +52,10 @@ body {
   font-family: var(--font-sans);
   background: var(--bg-app);
   color: var(--text-primary);
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
