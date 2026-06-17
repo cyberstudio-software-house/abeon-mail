@@ -8,6 +8,13 @@ use am_storage::{accounts_repo, folders_repo, messages_repo, Database, StorageEr
 const INITIAL_SYNC_LIMIT: u32 = 200;
 const INBOX_PATH: &str = "INBOX";
 
+fn now_secs() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0)
+}
+
 #[derive(Clone)]
 pub struct AddAccountInput {
     pub email: String,
@@ -149,36 +156,32 @@ pub async fn add_account(db: &Database, input: AddAccountInput) -> Result<Accoun
 
     upsert_remote_folders(db, account.id, &folders)?;
 
-    initial_sync_inbox(db, account.id, |_| {}).await?;
+    sync_all_folders(db, account.id, |_| {}).await?;
 
     Ok(account)
 }
 
-pub async fn initial_sync_inbox(
+pub async fn sync_folder(
     db: &Database,
     account_id: i64,
+    folder_id: i64,
     progress: impl Fn(SyncProgress),
 ) -> Result<usize, SyncError> {
     let account = accounts_repo::get_account(db, account_id)?;
     let endpoints = load_endpoints(db, account_id)?;
     let password = am_auth::credentials::load_password(&account.email)?;
+    let folder = folders_repo::get_folder(db, folder_id)?;
 
     let config = imap_config(&endpoints, &account.email);
     let mut session = ImapSession::connect(&config, &password).await?;
-    let state = session.select(INBOX_PATH).await?;
+    let state = session.select(&folder.remote_path).await?;
     let fetched = session.fetch_recent_headers(INITIAL_SYNC_LIMIT).await?;
     session.logout().await?;
-
-    let folder = folders_repo::list_folders(db, account_id)?
-        .into_iter()
-        .find(|f| f.remote_path.eq_ignore_ascii_case(INBOX_PATH))
-        .ok_or(SyncError::Storage(StorageError::NotFound))?;
 
     let headers: Vec<NewMessageHeader> = fetched.iter().map(header_from_fetch).collect();
     let inserted = messages_repo::insert_headers(db, folder.id, &headers)?;
 
-    folders_repo::set_uid_state(db, folder.id, state.uidvalidity, state.uidnext)?;
-
+    folders_repo::set_sync_markers(db, folder.id, state.uidvalidity, state.uidnext, None, now_secs())?;
     let unread = fetched.iter().filter(|h| !h.seen).count() as i64;
     folders_repo::set_counts(db, folder.id, unread, state.exists)?;
 
@@ -190,6 +193,31 @@ pub async fn initial_sync_inbox(
     });
 
     Ok(inserted)
+}
+
+pub async fn initial_sync_inbox(
+    db: &Database,
+    account_id: i64,
+    progress: impl Fn(SyncProgress),
+) -> Result<usize, SyncError> {
+    let folder = folders_repo::list_folders(db, account_id)?
+        .into_iter()
+        .find(|f| f.remote_path.eq_ignore_ascii_case(INBOX_PATH))
+        .ok_or(SyncError::Storage(StorageError::NotFound))?;
+    sync_folder(db, account_id, folder.id, progress).await
+}
+
+pub async fn sync_all_folders(
+    db: &Database,
+    account_id: i64,
+    progress: impl Fn(SyncProgress) + Copy,
+) -> Result<usize, SyncError> {
+    let folders = folders_repo::list_folders(db, account_id)?;
+    let mut total = 0usize;
+    for folder in folders {
+        total += sync_folder(db, account_id, folder.id, progress).await?;
+    }
+    Ok(total)
 }
 
 pub async fn get_or_fetch_body(db: &Database, message_id: i64) -> Result<MessageBody, SyncError> {

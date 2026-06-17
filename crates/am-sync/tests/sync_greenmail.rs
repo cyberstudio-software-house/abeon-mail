@@ -136,6 +136,12 @@ async fn seed_messages(port: u16) {
             .expect("append failed");
     }
 
+    session.create("Archive").await.ok();
+    session
+        .append("Archive", None, None, raw_message("Archived One", "archive marker ZETA").as_bytes())
+        .await
+        .expect("append to archive failed");
+
     session.logout().await.expect("seed logout failed");
 }
 
@@ -238,4 +244,12 @@ async fn add_account_syncs_inbox_and_fetches_body() {
         .await
         .expect("cached get_or_fetch_body failed");
     assert_eq!(cached, body);
+
+    let archive = folders
+        .iter()
+        .find(|f| f.remote_path.eq_ignore_ascii_case("Archive"))
+        .expect("archive folder missing");
+    let archive_headers = messages_repo::list_by_folder(&db, archive.id, 50, 0).expect("archive list failed");
+    assert_eq!(archive_headers.len(), 1, "expected 1 archived header");
+    assert_eq!(archive_headers[0].subject, "Archived One");
 }
