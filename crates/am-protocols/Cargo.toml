@@ -13,6 +13,7 @@ tokio-rustls = { version = "0.26", default-features = false, features = ["ring",
 rustls = { version = "0.23", default-features = false, features = ["ring", "tls12", "logging"] }
 webpki-roots.workspace = true
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
+lettre = { workspace = true }
 
 [dev-dependencies]
 testcontainers.workspace = true

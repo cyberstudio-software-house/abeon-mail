@@ -10,5 +10,6 @@ serde.workspace = true
 specta.workspace = true
 encoding_rs = "0.8"
 base64 = "0.22"
+mail-builder = { workspace = true }
 
 [dev-dependencies]
