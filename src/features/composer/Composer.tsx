@@ -109,6 +109,7 @@ export function Composer() {
   }, []);
 
   async function handleSend() {
+    if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
     if (accountId == null) return;
     setIsSending(true);
     setSendError(null);
