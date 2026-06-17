@@ -1,6 +1,5 @@
 use std::str::FromStr;
 
-use base64::{engine::general_purpose::STANDARD, Engine};
 use lettre::address::Envelope;
 use lettre::transport::smtp::authentication::{Credentials, Mechanism};
 use lettre::transport::smtp::AsyncSmtpTransport;
@@ -64,8 +63,6 @@ pub async fn send_raw(
             .credentials(Credentials::new(config.username.clone(), pw.clone()))
             .build(),
         SmtpAuth::XOauth2 { user, access_token } => {
-            let raw = format!("user={user}\x01auth=Bearer {access_token}\x01\x01");
-            let _sasl = STANDARD.encode(raw.as_bytes());
             builder
                 .port(config.port)
                 .authentication(vec![Mechanism::Xoauth2])
@@ -83,6 +80,7 @@ pub async fn send_raw(
 
 #[cfg(test)]
 mod tests {
+    use base64::{engine::general_purpose::STANDARD, Engine};
     use super::*;
 
     #[test]

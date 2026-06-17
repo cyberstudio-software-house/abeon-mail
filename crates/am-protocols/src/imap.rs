@@ -565,18 +565,11 @@ mod tests {
     fn xoauth2_sasl_base64_matches_expected() {
         let user = "user@gmail.com";
         let token = "ya29.some_token";
-        let raw = format!("user={user}\x01auth=Bearer {token}\x01\x01");
-        use base64::{engine::general_purpose::STANDARD, Engine};
-        let encoded = STANDARD.encode(raw.as_bytes());
+        let auth = Xoauth2Authenticator::new(user, token);
         assert_eq!(
-            encoded,
-            base64::engine::general_purpose::STANDARD
-                .encode(format!("user=user@gmail.com\x01auth=Bearer ya29.some_token\x01\x01").as_bytes())
+            auth.sasl,
+            "dXNlcj11c2VyQGdtYWlsLmNvbQFhdXRoPUJlYXJlciB5YTI5LnNvbWVfdG9rZW4BAQ=="
         );
-        assert!(encoded.contains("=") || !encoded.is_empty());
-        let decoded = String::from_utf8(STANDARD.decode(&encoded).unwrap()).unwrap();
-        assert!(decoded.contains("user=user@gmail.com"));
-        assert!(decoded.contains("auth=Bearer ya29.some_token"));
     }
 
     #[test]
