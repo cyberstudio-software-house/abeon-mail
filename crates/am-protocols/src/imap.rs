@@ -200,9 +200,13 @@ where
 fn build_tls_connector() -> Result<TlsConnector, ProtocolError> {
     let mut roots = RootCertStore::empty();
     roots.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
-    let config = ClientConfig::builder()
-        .with_root_certificates(roots)
-        .with_no_client_auth();
+    let config = ClientConfig::builder_with_provider(Arc::new(
+        tokio_rustls::rustls::crypto::ring::default_provider(),
+    ))
+    .with_safe_default_protocol_versions()
+    .map_err(|e| ProtocolError::Tls(e.to_string()))?
+    .with_root_certificates(roots)
+    .with_no_client_auth();
     Ok(TlsConnector::from(Arc::new(config)))
 }
 
@@ -305,4 +309,21 @@ fn parse_envelope_date(value: &str) -> Option<i64> {
     chrono::DateTime::parse_from_rfc2822(value.trim())
         .ok()
         .map(|d| d.timestamp())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tls_config_builds_without_panic() {
+        let mut roots = RootCertStore::empty();
+        roots.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
+        let result = ClientConfig::builder_with_provider(Arc::new(
+            tokio_rustls::rustls::crypto::ring::default_provider(),
+        ))
+        .with_safe_default_protocol_versions()
+        .map(|b| b.with_root_certificates(roots).with_no_client_auth());
+        assert!(result.is_ok());
+    }
 }

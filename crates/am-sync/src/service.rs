@@ -8,12 +8,23 @@ use am_storage::{accounts_repo, folders_repo, messages_repo, Database, StorageEr
 const INITIAL_SYNC_LIMIT: u32 = 200;
 const INBOX_PATH: &str = "INBOX";
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct AddAccountInput {
     pub email: String,
     pub display_name: String,
     pub password: String,
     pub endpoints: Endpoints,
+}
+
+impl std::fmt::Debug for AddAccountInput {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AddAccountInput")
+            .field("email", &self.email)
+            .field("display_name", &self.display_name)
+            .field("password", &"***")
+            .field("endpoints", &self.endpoints)
+            .finish()
+    }
 }
 
 #[derive(thiserror::Error, Debug)]

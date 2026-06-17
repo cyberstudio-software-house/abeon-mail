@@ -17,5 +17,13 @@ tokio.workspace = true
 [dev-dependencies]
 testcontainers.workspace = true
 async-imap.workspace = true
-keyring = { version = "3", features = ["sync-secret-service", "crypto-rust"] }
 tokio = { workspace = true, features = ["rt-multi-thread", "net", "macros", "io-util", "time"] }
+
+[target.'cfg(target_os = "linux")'.dev-dependencies]
+keyring = { version = "3", features = ["sync-secret-service", "crypto-rust"] }
+
+[target.'cfg(target_os = "macos")'.dev-dependencies]
+keyring = { version = "3", features = ["apple-native"] }
+
+[target.'cfg(target_os = "windows")'.dev-dependencies]
+keyring = { version = "3", features = ["windows-native"] }
