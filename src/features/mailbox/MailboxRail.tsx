@@ -1,8 +1,29 @@
 import { useState } from "react";
-import { useAccounts, useFolders } from "../../ipc/queries";
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+  arrayMove,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import {
+  useAccounts,
+  useFolders,
+  useRemoveAccount,
+  useBeginReauth,
+  useReorderAccounts,
+} from "../../ipc/queries";
 import { useUiStore } from "../../app/store";
 import { AddAccountWizard } from "../accounts/AddAccountWizard";
-import type { SmartFolderKind } from "../../ipc/bindings";
+import type { Account, SmartFolderKind } from "../../ipc/bindings";
 
 const SMART_FOLDERS: { label: string; kind: SmartFolderKind }[] = [
   { label: "All Inboxes", kind: "all_inboxes" },
@@ -10,12 +31,186 @@ const SMART_FOLDERS: { label: string; kind: SmartFolderKind }[] = [
   { label: "Flagged", kind: "flagged" },
 ];
 
+interface RemoveConfirmProps {
+  account: Account;
+  onConfirm: () => void;
+  onCancel: () => void;
+}
+
+function RemoveConfirmDialog({ account, onConfirm, onCancel }: RemoveConfirmProps) {
+  return (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(0,0,0,0.5)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        zIndex: 200,
+      }}
+    >
+      <div
+        style={{
+          background: "var(--bg-surface)",
+          borderRadius: "var(--radius-md)",
+          padding: "var(--space-6)",
+          maxWidth: 380,
+          width: "100%",
+        }}
+      >
+        <p style={{ marginBottom: "var(--space-4)", fontSize: "14px" }}>
+          Permanently remove <strong>{account.display_name || account.email}</strong>? This deletes all
+          locally cached messages and cannot be undone.
+        </p>
+        <div style={{ display: "flex", gap: "var(--space-2)", justifyContent: "flex-end" }}>
+          <button
+            onClick={onCancel}
+            aria-label="Cancel"
+            style={{
+              background: "transparent",
+              border: "1px solid var(--border)",
+              borderRadius: "var(--radius-sm)",
+              padding: "var(--space-1) var(--space-3)",
+              cursor: "pointer",
+              fontSize: "13px",
+            }}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            aria-label="Confirm"
+            style={{
+              background: "var(--color-red-600, #dc2626)",
+              border: "none",
+              borderRadius: "var(--radius-sm)",
+              color: "white",
+              padding: "var(--space-1) var(--space-3)",
+              cursor: "pointer",
+              fontSize: "13px",
+            }}
+          >
+            Confirm
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+interface SortableAccountRowProps {
+  account: Account;
+  isSelected: boolean;
+  onAccountClick: (id: number) => void;
+  onRemoveClick: (account: Account) => void;
+  onReauthClick: (id: number) => void;
+  children?: React.ReactNode;
+}
+
+function SortableAccountRow({
+  account,
+  isSelected,
+  onAccountClick,
+  onRemoveClick,
+  onReauthClick,
+  children,
+}: SortableAccountRowProps) {
+  const { attributes, listeners, setNodeRef, transform, transition } = useSortable({
+    id: account.id,
+  });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
+
+  return (
+    <div ref={setNodeRef} style={style}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "var(--space-2)",
+          padding: "var(--space-2) var(--space-4)",
+          cursor: "pointer",
+          fontSize: "14px",
+          borderRadius: "var(--radius-sm)",
+          margin: "1px var(--space-2)",
+          fontWeight: isSelected ? 600 : 400,
+          color: isSelected ? "var(--accent)" : "var(--text-on-rail)",
+        }}
+      >
+        <span
+          {...attributes}
+          {...listeners}
+          style={{ cursor: "grab", padding: "0 2px", color: "var(--text-muted)" }}
+          aria-label={`Drag to reorder ${account.display_name || account.email}`}
+        >
+          ⠿
+        </span>
+        <span
+          style={{
+            width: "8px",
+            height: "8px",
+            borderRadius: "50%",
+            background: account.color ?? "var(--accent)",
+            flexShrink: 0,
+          }}
+          onClick={() => onAccountClick(account.id)}
+        />
+        <span style={{ flex: 1 }} onClick={() => onAccountClick(account.id)}>
+          {account.display_name || account.email}
+        </span>
+        {account.requires_reauth && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onReauthClick(account.id);
+            }}
+            style={{
+              background: "transparent",
+              border: "none",
+              cursor: "pointer",
+              fontSize: "12px",
+              color: "var(--color-amber-500, #f59e0b)",
+              padding: "0 2px",
+            }}
+          >
+            ⚠ Reconnect
+          </button>
+        )}
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onRemoveClick(account);
+          }}
+          aria-label={`Remove account ${account.display_name || account.email}`}
+          style={{
+            background: "transparent",
+            border: "none",
+            cursor: "pointer",
+            fontSize: "12px",
+            color: "var(--text-muted)",
+            padding: "0 2px",
+            opacity: 0.5,
+          }}
+        >
+          ✕
+        </button>
+      </div>
+      {children}
+    </div>
+  );
+}
+
 interface Props {
   status?: string;
 }
 
 export function MailboxRail({ status }: Props) {
   const [wizardOpen, setWizardOpen] = useState(false);
+  const [confirmAccount, setConfirmAccount] = useState<Account | null>(null);
 
   const selectedAccountId = useUiStore((s) => s.selectedAccountId);
   const selectedFolderId = useUiStore((s) => s.selectedFolderId);
@@ -26,6 +221,11 @@ export function MailboxRail({ status }: Props) {
 
   const { data: accounts = [], isLoading: accountsLoading } = useAccounts();
   const { data: folders = [] } = useFolders(selectedAccountId);
+  const removeAccount = useRemoveAccount();
+  const beginReauth = useBeginReauth();
+  const reorderAccounts = useReorderAccounts();
+
+  const sensors = useSensors(useSensor(PointerSensor));
 
   function handleAccountClick(accountId: number) {
     setSelectedAccountId(accountId);
@@ -40,6 +240,35 @@ export function MailboxRail({ status }: Props) {
   function handleAdded(accountId: number) {
     setSelectedAccountId(accountId);
     setWizardOpen(false);
+  }
+
+  function handleRemoveClick(account: Account) {
+    setConfirmAccount(account);
+  }
+
+  function handleRemoveConfirm() {
+    if (confirmAccount) {
+      removeAccount.mutate(confirmAccount.id);
+    }
+    setConfirmAccount(null);
+  }
+
+  function handleRemoveCancel() {
+    setConfirmAccount(null);
+  }
+
+  function handleReauthClick(accountId: number) {
+    beginReauth.mutate(accountId);
+  }
+
+  function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIndex = accounts.findIndex((a) => a.id === active.id);
+    const newIndex = accounts.findIndex((a) => a.id === over.id);
+    if (oldIndex === -1 || newIndex === -1) return;
+    const reordered = arrayMove(accounts, oldIndex, newIndex);
+    reorderAccounts.mutate(reordered.map((a) => a.id));
   }
 
   return (
@@ -102,69 +331,57 @@ export function MailboxRail({ status }: Props) {
             >
               Accounts
             </div>
-            {accounts.map((account) => (
-              <div key={account.id}>
-                <div
-                  onClick={() => handleAccountClick(account.id)}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "var(--space-2)",
-                    padding: "var(--space-2) var(--space-4)",
-                    cursor: "pointer",
-                    fontSize: "14px",
-                    borderRadius: "var(--radius-sm)",
-                    margin: "1px var(--space-2)",
-                    fontWeight: selectedAccountId === account.id ? 600 : 400,
-                    color:
-                      selectedAccountId === account.id
-                        ? "var(--accent)"
-                        : "var(--text-on-rail)",
-                  }}
-                >
-                  <span
-                    style={{
-                      width: "8px",
-                      height: "8px",
-                      borderRadius: "50%",
-                      background: account.color ?? "var(--accent)",
-                      flexShrink: 0,
-                    }}
-                  />
-                  {account.display_name || account.email}
-                </div>
-
-                {selectedAccountId === account.id &&
-                  folders.map((folder) => (
-                    <div
-                      key={folder.id}
-                      onClick={() => handleFolderClick(folder.id, account.id)}
-                      style={{
-                        padding: "var(--space-1) var(--space-4)",
-                        paddingLeft: "calc(var(--space-4) + 20px)",
-                        cursor: "pointer",
-                        fontSize: "13px",
-                        borderRadius: "var(--radius-sm)",
-                        margin: "1px var(--space-2)",
-                        color:
-                          selectedFolderId === folder.id
-                            ? "var(--accent)"
-                            : "var(--text-on-rail)",
-                        fontWeight: selectedFolderId === folder.id ? 600 : 400,
-                      }}
-                    >
-                      {folder.name}
-                      {folder.unread_count > 0 && (
-                        <span
-                          style={{ marginLeft: "var(--space-2)", fontSize: "11px", opacity: 0.7 }}
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragEnd={handleDragEnd}
+            >
+              <SortableContext
+                items={accounts.map((a) => a.id)}
+                strategy={verticalListSortingStrategy}
+              >
+                {accounts.map((account) => (
+                  <SortableAccountRow
+                    key={account.id}
+                    account={account}
+                    isSelected={selectedAccountId === account.id}
+                    onAccountClick={handleAccountClick}
+                    onRemoveClick={handleRemoveClick}
+                    onReauthClick={handleReauthClick}
+                  >
+                    {selectedAccountId === account.id &&
+                      folders.map((folder) => (
+                        <div
+                          key={folder.id}
+                          onClick={() => handleFolderClick(folder.id, account.id)}
+                          style={{
+                            padding: "var(--space-1) var(--space-4)",
+                            paddingLeft: "calc(var(--space-4) + 20px)",
+                            cursor: "pointer",
+                            fontSize: "13px",
+                            borderRadius: "var(--radius-sm)",
+                            margin: "1px var(--space-2)",
+                            color:
+                              selectedFolderId === folder.id
+                                ? "var(--accent)"
+                                : "var(--text-on-rail)",
+                            fontWeight: selectedFolderId === folder.id ? 600 : 400,
+                          }}
                         >
-                          {folder.unread_count}
-                        </span>
-                      )}
-                    </div>
-                  ))}
-              </div>
-            ))}
+                          {folder.name}
+                          {folder.unread_count > 0 && (
+                            <span
+                              style={{ marginLeft: "var(--space-2)", fontSize: "11px", opacity: 0.7 }}
+                            >
+                              {folder.unread_count}
+                            </span>
+                          )}
+                        </div>
+                      ))}
+                  </SortableAccountRow>
+                ))}
+              </SortableContext>
+            </DndContext>
           </>
         )}
 
@@ -227,6 +444,14 @@ export function MailboxRail({ status }: Props) {
         >
           <AddAccountWizard onClose={() => setWizardOpen(false)} onAdded={handleAdded} />
         </div>
+      )}
+
+      {confirmAccount && (
+        <RemoveConfirmDialog
+          account={confirmAccount}
+          onConfirm={handleRemoveConfirm}
+          onCancel={handleRemoveCancel}
+        />
       )}
     </aside>
   );

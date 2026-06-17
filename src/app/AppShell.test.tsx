@@ -26,6 +26,9 @@ vi.mock("../ipc/queries", () => ({
   useStartReply: () => ({ mutateAsync: vi.fn() }),
   useSaveDraft: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useEnqueueSend: () => ({ mutateAsync: vi.fn() }),
+  useRemoveAccount: () => ({ mutate: vi.fn(), isPending: false }),
+  useBeginReauth: () => ({ mutate: vi.fn(), isPending: false }),
+  useReorderAccounts: () => ({ mutate: vi.fn(), isPending: false }),
 }));
 
 vi.mock("../ipc/bindings", () => ({
