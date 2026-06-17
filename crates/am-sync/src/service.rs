@@ -418,6 +418,9 @@ pub async fn drain_queue(db: &Database, account_id: i64, now: i64) -> Result<(),
     let mut selected: Option<String> = None;
 
     for op in due {
+        if op.op_type != "set_flag" {
+            continue;
+        }
         let parsed: serde_json::Value = match serde_json::from_str(&op.payload) {
             Ok(v) => v,
             Err(_) => { queue_repo::mark_done(db, op.id)?; continue; }
