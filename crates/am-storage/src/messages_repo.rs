@@ -265,6 +265,51 @@ pub fn backfill_body_meta(
     Ok(())
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ThreadingRow {
+    pub id: i64,
+    pub message_id_hdr: Option<String>,
+    pub in_reply_to: Option<String>,
+    pub references_hdr: Option<String>,
+    pub subject: String,
+    pub date: i64,
+}
+
+pub fn list_unthreaded(db: &Database, account_id: i64) -> Result<Vec<ThreadingRow>, StorageError> {
+    let conn = db.conn();
+    let mut stmt = conn.prepare(
+        "SELECT id, message_id_hdr, in_reply_to, references_hdr, subject, date
+         FROM messages WHERE account_id = ?1 AND thread_id IS NULL ORDER BY date ASC",
+    )?;
+    let rows = stmt.query_map(params![account_id], |row| {
+        Ok(ThreadingRow {
+            id: row.get(0)?,
+            message_id_hdr: row.get(1)?,
+            in_reply_to: row.get(2)?,
+            references_hdr: row.get(3)?,
+            subject: row.get(4)?,
+            date: row.get(5)?,
+        })
+    })?;
+    let mut out = Vec::new();
+    for r in rows {
+        out.push(r?);
+    }
+    Ok(out)
+}
+
+pub fn assign_thread(db: &Database, message_id: i64, thread_id: i64) -> Result<(), StorageError> {
+    let conn = db.conn();
+    let changed = conn.execute(
+        "UPDATE messages SET thread_id = ?2 WHERE id = ?1",
+        params![message_id, thread_id],
+    )?;
+    if changed == 0 {
+        return Err(StorageError::NotFound);
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -448,5 +493,22 @@ mod tests {
         let loc = locate(&db, msg.id).unwrap();
         assert_eq!(loc.folder_id, folder_id);
         assert_eq!(loc.uid, 7);
+    }
+
+    #[test]
+    fn list_unthreaded_then_assign() {
+        let db = Database::open_in_memory().unwrap();
+        let folder_id = setup(&db);
+        insert_headers(&db, folder_id, &[make_header(1, 100)]).unwrap();
+        let account_id = get_header(&db, list_by_folder(&db, folder_id, 1, 0).unwrap()[0].id).unwrap().account_id;
+        let unthreaded = list_unthreaded(&db, account_id).unwrap();
+        assert_eq!(unthreaded.len(), 1);
+        let conn_thread_id = {
+            let conn = db.conn();
+            conn.execute("INSERT INTO threads (account_id, subject_root, last_date) VALUES (?1, 's', 100)", params![account_id]).unwrap();
+            conn.last_insert_rowid()
+        };
+        assign_thread(&db, unthreaded[0].id, conn_thread_id).unwrap();
+        assert!(list_unthreaded(&db, account_id).unwrap().is_empty());
     }
 }

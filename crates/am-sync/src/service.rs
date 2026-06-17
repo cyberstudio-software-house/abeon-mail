@@ -3,7 +3,8 @@ use am_core::account::{Account, NewAccount, ProviderType};
 use am_core::folder::FolderType;
 use am_core::message::{MessageBody, MessageFlag, NewMessageHeader, SyncProgress};
 use am_protocols::imap::{FetchedHeader, ImapConfig, ImapSession, RemoteFolder};
-use am_storage::{accounts_repo, folders_repo, messages_repo, queue_repo, Database, StorageError};
+use am_core::threading::{normalize_subject, parse_reference_ids};
+use am_storage::{accounts_repo, folders_repo, messages_repo, queue_repo, threads_repo, Database, StorageError};
 use crate::events::{SyncEvent, SyncEventSink};
 
 const MAX_QUEUE_ATTEMPTS: i64 = 6;
@@ -172,6 +173,32 @@ pub async fn add_account(db: &Database, input: AddAccountInput) -> Result<Accoun
     Ok(account)
 }
 
+pub fn assign_threads(db: &Database, account_id: i64) -> Result<(), SyncError> {
+    let pending = messages_repo::list_unthreaded(db, account_id)?;
+    let mut touched: std::collections::HashSet<i64> = std::collections::HashSet::new();
+
+    for row in pending {
+        let ids = parse_reference_ids(row.in_reply_to.as_deref(), row.references_hdr.as_deref());
+        let subject_root = normalize_subject(&row.subject);
+
+        let thread_id = if let Some(existing) = threads_repo::find_by_message_ids(db, account_id, &ids)? {
+            existing
+        } else if let Some(existing) = threads_repo::find_by_subject_root(db, account_id, &subject_root)? {
+            existing
+        } else {
+            threads_repo::create(db, account_id, &subject_root, row.date)?
+        };
+
+        messages_repo::assign_thread(db, row.id, thread_id)?;
+        touched.insert(thread_id);
+    }
+
+    for thread_id in touched {
+        threads_repo::recompute(db, thread_id)?;
+    }
+    Ok(())
+}
+
 pub async fn sync_folder(
     db: &Database,
     account_id: i64,
@@ -191,6 +218,7 @@ pub async fn sync_folder(
 
     let headers: Vec<NewMessageHeader> = fetched.iter().map(header_from_fetch).collect();
     let inserted = messages_repo::insert_headers(db, folder.id, &headers)?;
+    assign_threads(db, account_id)?;
 
     folders_repo::set_sync_markers(db, folder.id, state.uidvalidity, state.uidnext, None, now_secs())?;
     let unread = fetched.iter().filter(|h| !h.seen).count() as i64;
@@ -287,6 +315,7 @@ pub async fn incremental_sync_folder(
         session.logout().await?;
         let headers: Vec<NewMessageHeader> = fetched.iter().map(header_from_fetch).collect();
         messages_repo::insert_headers(db, folder_id, &headers)?;
+        assign_threads(db, account_id)?;
         folders_repo::set_sync_markers(db, folder_id, state.uidvalidity, state.uidnext, state.highestmodseq, now_secs())?;
         let unread = folders_repo::recount_unread(db, folder_id)?;
         folders_repo::set_counts(db, folder_id, unread, state.exists)?;
@@ -302,6 +331,7 @@ pub async fn incremental_sync_folder(
         let fetched = session.fetch_headers_by_uids(&new_uids).await?;
         let headers: Vec<NewMessageHeader> = fetched.iter().map(header_from_fetch).collect();
         messages_repo::insert_headers(db, folder_id, &headers)?;
+        assign_threads(db, account_id)?;
     }
 
     if let Some(modseq) = markers.highestmodseq.filter(|_| caps.condstore) {
