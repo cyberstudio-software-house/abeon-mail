@@ -1,11 +1,9 @@
 import { useRef } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useMessages } from "../../ipc/queries";
-import { useUiStore } from "../../app/store";
+import { useUiStore, type Density } from "../../app/store";
 import type { MessageHeader } from "../../ipc/bindings";
 import "./MessageListPane.css";
-
-type Density = "comfortable" | "cozy" | "compact" | "dense";
 
 const ROW_HEIGHT: Record<Density, number> = {
   comfortable: 72,
@@ -84,7 +82,7 @@ function SkeletonRow({ height }: { height: number }) {
 export function MessageListPane() {
   const selectedFolderId = useUiStore((s) => s.selectedFolderId);
   const selectedMessageId = useUiStore((s) => s.selectedMessageId);
-  const density = useUiStore((s) => s.density) as Density;
+  const density = useUiStore((s) => s.density);
   const setSelectedMessageId = useUiStore((s) => s.setSelectedMessageId);
 
   const { data: messages, isLoading } = useMessages(selectedFolderId);

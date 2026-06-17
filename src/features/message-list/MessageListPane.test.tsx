@@ -12,11 +12,9 @@ vi.mock("../../app/store", () => ({
 }));
 
 import { useMessages } from "../../ipc/queries";
-import { useUiStore } from "../../app/store";
+import { useUiStore, type Density } from "../../app/store";
 import { MessageListPane } from "./MessageListPane";
 import type { MessageHeader } from "../../ipc/bindings";
-
-type Density = "comfortable" | "cozy" | "compact" | "dense";
 
 type UiState = {
   selectedAccountId: number | null;
@@ -146,6 +144,7 @@ describe("MessageListPane", () => {
 
     expect(screen.getByLabelText("message-list")).toBeTruthy();
     expect(screen.getByText("Hello World")).toBeTruthy();
+    expect(screen.getByText("Second message")).toBeTruthy();
 
     const firstRow = screen.getByText("Hello World").closest("[data-message-id]");
     expect(firstRow).toBeTruthy();

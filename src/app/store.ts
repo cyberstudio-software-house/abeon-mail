@@ -1,6 +1,6 @@
 import { create } from "zustand";
 
-type Density = "comfortable" | "cozy" | "compact" | "dense";
+export type Density = "comfortable" | "cozy" | "compact" | "dense";
 
 type UiState = {
   selectedAccountId: number | null;
