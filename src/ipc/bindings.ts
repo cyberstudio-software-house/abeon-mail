@@ -9,6 +9,7 @@ export const commands = {
 	listAccounts: () => typedError<Account[], string>(__TAURI_INVOKE("list_accounts")),
 	resolveEndpoints: (email: string) => __TAURI_INVOKE<Endpoints>("resolve_endpoints", { email }),
 	addAccount: (email: string, displayName: string, password: string, endpoints: Endpoints) => typedError<Account, string>(__TAURI_INVOKE("add_account", { email, displayName, password, endpoints })),
+	beginGoogleOauth: () => typedError<Account, string>(__TAURI_INVOKE("begin_google_oauth")),
 	listFolders: (accountId: number) => typedError<Folder[], string>(__TAURI_INVOKE("list_folders", { accountId })),
 	listMessages: (folderId: number, limit: number, offset: number) => typedError<MessageHeader[], string>(__TAURI_INVOKE("list_messages", { folderId, limit, offset })),
 	getMessageBody: (messageId: number) => typedError<MessageBody, string>(__TAURI_INVOKE("get_message_body", { messageId })),

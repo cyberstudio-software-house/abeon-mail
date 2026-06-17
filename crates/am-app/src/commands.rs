@@ -1,5 +1,9 @@
 use std::sync::Arc;
 
+use rand::Rng;
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::net::TcpListener;
+
 use am_core::{
     account::Account,
     folder::Folder,
@@ -285,12 +289,205 @@ pub async fn pick_attachment(app: tauri::AppHandle) -> Result<Vec<OutgoingAttach
     Ok(attachments)
 }
 
+pub(crate) fn parse_redirect_line(line: &str) -> Option<(String, String)> {
+    let path = line.split_whitespace().nth(1)?;
+    let query = path.split_once('?')?.1;
+    let mut code = None;
+    let mut state = None;
+    for part in query.split('&') {
+        if let Some(v) = part.strip_prefix("code=") {
+            code = Some(url_decode(v));
+        } else if let Some(v) = part.strip_prefix("state=") {
+            state = Some(url_decode(v));
+        }
+    }
+    Some((code?, state?))
+}
+
+fn url_decode(s: &str) -> String {
+    let mut out = String::new();
+    let mut chars = s.bytes().peekable();
+    while let Some(b) = chars.next() {
+        if b == b'%' {
+            let h = chars.next().unwrap_or(b'0');
+            let l = chars.next().unwrap_or(b'0');
+            let hex = [h, l];
+            if let Ok(s) = std::str::from_utf8(&hex) {
+                if let Ok(v) = u8::from_str_radix(s, 16) {
+                    out.push(v as char);
+                    continue;
+                }
+            }
+            out.push('%');
+            out.push(h as char);
+            out.push(l as char);
+        } else if b == b'+' {
+            out.push(' ');
+        } else {
+            out.push(b as char);
+        }
+    }
+    out
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn begin_google_oauth(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+) -> Result<Account, String> {
+    let (tokens, email) = run_google_oauth_flow(&app).await?;
+
+    let refresh_token = tokens
+        .refresh_token
+        .clone()
+        .ok_or_else(|| "No refresh token in Google response".to_string())?;
+    am_auth::credentials::store_password(&email, &refresh_token)
+        .map_err(|_| "Keychain unavailable".to_string())?;
+
+    let db = Arc::clone(&state.db);
+    let endpoints_json = serde_json::json!({
+        "imap_host": "imap.gmail.com",
+        "imap_port": 993,
+        "imap_tls": true,
+        "smtp_host": "smtp.gmail.com",
+        "smtp_port": 465,
+        "smtp_tls": true
+    })
+    .to_string();
+
+    let new_account = am_core::account::NewAccount {
+        email: email.clone(),
+        display_name: email.clone(),
+        provider_type: am_core::account::ProviderType::GoogleOauth,
+        color: None,
+    };
+    let account =
+        am_storage::accounts_repo::insert_account_with_settings(&db, &new_account, &email, &endpoints_json)
+            .map_err(|e| e.to_string())?;
+
+    state.creds.token_manager().seed(&email, &tokens);
+
+    if let Some(engine) = state.engine.lock().unwrap().as_ref() {
+        engine.spawn_account(account.id);
+    }
+
+    Ok(account)
+}
+
+pub(crate) async fn run_google_oauth_flow(
+    _app: &tauri::AppHandle,
+) -> Result<(am_auth::oauth::client::OAuthTokens, String), String> {
+    let client_id = am_auth::oauth::google::google_client_id()
+        .map_err(|_| "Google client ID not configured".to_string())?;
+
+    let listener = TcpListener::bind("127.0.0.1:0")
+        .await
+        .map_err(|e| format!("Failed to bind loopback: {e}"))?;
+    let port = listener.local_addr().map_err(|e| e.to_string())?.port();
+    let redirect_uri = format!("http://127.0.0.1:{port}");
+
+    let pkce = am_auth::oauth::pkce::generate_pkce();
+    let csrf_state: String = rand::thread_rng()
+        .sample_iter(&rand::distributions::Alphanumeric)
+        .take(32)
+        .map(char::from)
+        .collect();
+
+    let auth_url = am_auth::oauth::pkce::authorize_url(
+        &client_id,
+        &redirect_uri,
+        &pkce.challenge,
+        &csrf_state,
+    );
+
+    tauri_plugin_opener::open_url(&auth_url, None::<&str>)
+        .map_err(|e| format!("Failed to open browser: {e}"))?;
+
+    accept_redirect(listener, &csrf_state, &client_id, &pkce.verifier, &redirect_uri).await
+}
+
+async fn accept_redirect(
+    listener: TcpListener,
+    expected_state: &str,
+    client_id: &str,
+    verifier: &str,
+    redirect_uri: &str,
+) -> Result<(am_auth::oauth::client::OAuthTokens, String), String> {
+    let accept_timeout = std::time::Duration::from_secs(300);
+    let (stream, _) = tokio::time::timeout(accept_timeout, listener.accept())
+        .await
+        .map_err(|_| "OAuth timeout: browser did not redirect in time".to_string())?
+        .map_err(|e| e.to_string())?;
+
+    let (reader, mut writer) = stream.into_split();
+    let mut buf_reader = BufReader::new(reader);
+    let mut request_line = String::new();
+    buf_reader
+        .read_line(&mut request_line)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let close_html = b"HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nConnection: close\r\n\r\n\
+        <html><body><p>Authentication complete. You may close this tab.</p></body></html>";
+
+    let (code, returned_state) = match parse_redirect_line(request_line.trim()) {
+        Some(v) => v,
+        None => {
+            let _ = writer
+                .write_all(b"HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\nBad request")
+                .await;
+            return Err("Invalid redirect request".to_string());
+        }
+    };
+
+    if returned_state != expected_state {
+        let _ = writer
+            .write_all(b"HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\nState mismatch")
+            .await;
+        return Err("OAuth state mismatch".to_string());
+    }
+
+    let _ = writer.write_all(close_html).await;
+
+    let http = am_auth::oauth::client::ReqwestHttp::new();
+    let tokens =
+        am_auth::oauth::client::exchange_code(&http, client_id, &code, verifier, redirect_uri)
+            .await
+            .map_err(|e| e.to_string())?;
+
+    let email = am_auth::oauth::client::fetch_email(&http, &tokens.access_token)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok((tokens, email))
+}
+
 #[cfg(test)]
 mod tests {
     use am_core::account::{NewAccount, ProviderType};
     use am_core::folder::FolderType;
     use am_core::message::{MessageBody, NewMessageHeader};
     use am_storage::{accounts_repo, folders_repo, messages_repo, Database};
+
+    #[test]
+    fn parse_redirect_line_extracts_code_and_state() {
+        let line = "GET /?code=AUTH_CODE_XYZ&state=CSRF_STATE_123 HTTP/1.1";
+        let (code, state) = super::parse_redirect_line(line).unwrap();
+        assert_eq!(code, "AUTH_CODE_XYZ");
+        assert_eq!(state, "CSRF_STATE_123");
+    }
+
+    #[test]
+    fn parse_redirect_line_missing_state_returns_none() {
+        let line = "GET /?code=AUTH_CODE_XYZ HTTP/1.1";
+        assert!(super::parse_redirect_line(line).is_none());
+    }
+
+    #[test]
+    fn parse_redirect_line_bad_format_returns_none() {
+        assert!(super::parse_redirect_line("not a request").is_none());
+    }
 
     #[test]
     fn add_account_persists_via_repo() {

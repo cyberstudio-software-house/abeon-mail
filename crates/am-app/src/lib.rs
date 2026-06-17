@@ -12,6 +12,7 @@ pub fn build_specta_builder() -> Builder<tauri::Wry> {
             commands::list_accounts,
             commands::resolve_endpoints,
             commands::add_account,
+            commands::begin_google_oauth,
             commands::list_folders,
             commands::list_messages,
             commands::get_message_body,

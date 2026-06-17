@@ -9,10 +9,13 @@ am-core = { path = "../am-core" }
 am-mime = { path = "../am-mime" }
 am-storage = { path = "../am-storage" }
 am-sync = { path = "../am-sync" }
+rand.workspace = true
 serde.workspace = true
+serde_json.workspace = true
 specta.workspace = true
 specta-typescript.workspace = true
 tauri.workspace = true
 tauri-specta.workspace = true
 tauri-plugin-dialog = "2"
+tauri-plugin-opener = "2"
 tokio.workspace = true
