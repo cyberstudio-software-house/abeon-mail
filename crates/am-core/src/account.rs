@@ -25,6 +25,23 @@ pub struct NewAccount {
     pub color: Option<String>,
 }
 
+impl ProviderType {
+    pub fn as_db_str(&self) -> &'static str {
+        match self {
+            ProviderType::ImapPassword => "imap_password",
+            ProviderType::GoogleOauth => "google_oauth",
+        }
+    }
+
+    pub fn from_db_str(value: &str) -> Option<Self> {
+        match value {
+            "imap_password" => Some(ProviderType::ImapPassword),
+            "google_oauth" => Some(ProviderType::GoogleOauth),
+            _ => None,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -48,5 +65,20 @@ mod tests {
     fn provider_type_google_oauth_serializes_as_snake_case() {
         let json = serde_json::to_string(&ProviderType::GoogleOauth).unwrap();
         assert_eq!(json, "\"google_oauth\"");
+    }
+
+    #[test]
+    fn provider_type_db_str_round_trips() {
+        assert_eq!(ProviderType::ImapPassword.as_db_str(), "imap_password");
+        assert_eq!(ProviderType::GoogleOauth.as_db_str(), "google_oauth");
+        assert_eq!(
+            ProviderType::from_db_str(ProviderType::ImapPassword.as_db_str()),
+            Some(ProviderType::ImapPassword)
+        );
+        assert_eq!(
+            ProviderType::from_db_str(ProviderType::GoogleOauth.as_db_str()),
+            Some(ProviderType::GoogleOauth)
+        );
+        assert_eq!(ProviderType::from_db_str("bogus"), None);
     }
 }

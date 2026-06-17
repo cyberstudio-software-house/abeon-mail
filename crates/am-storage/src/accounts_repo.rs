@@ -3,20 +3,6 @@ use rusqlite::params;
 
 use crate::db::{Database, StorageError};
 
-fn provider_to_str(p: &ProviderType) -> &'static str {
-    match p {
-        ProviderType::ImapPassword => "imappassword",
-        ProviderType::GoogleOauth => "googleoauth",
-    }
-}
-
-fn provider_from_str(s: &str) -> Result<ProviderType, StorageError> {
-    match s {
-        "imappassword" => Ok(ProviderType::ImapPassword),
-        "googleoauth" => Ok(ProviderType::GoogleOauth),
-        other => Err(StorageError::InvalidData(format!("unknown provider type: {other}"))),
-    }
-}
 
 fn row_to_account(row: &rusqlite::Row) -> rusqlite::Result<(i64, String, String, String, Option<String>, i64)> {
     Ok((
@@ -36,7 +22,8 @@ fn tuple_to_account(
         id,
         email,
         display_name,
-        provider_type: provider_from_str(&provider)?,
+        provider_type: ProviderType::from_db_str(&provider)
+            .ok_or_else(|| StorageError::InvalidData(format!("unknown provider type: {provider}")))?,
         color,
         position,
     })
@@ -50,7 +37,7 @@ pub fn insert_account(db: &Database, new: &NewAccount) -> Result<Account, Storag
         params![
             new.email,
             new.display_name,
-            provider_to_str(&new.provider_type),
+            new.provider_type.as_db_str(),
             new.color
         ],
     )?;
@@ -140,5 +127,22 @@ mod tests {
         let db = Database::open_in_memory().unwrap();
         let err = delete_account(&db, 999).unwrap_err();
         assert!(matches!(err, StorageError::NotFound));
+    }
+
+    #[test]
+    fn provider_type_round_trips_through_db() {
+        let db = Database::open_in_memory().unwrap();
+        let variants = [ProviderType::ImapPassword, ProviderType::GoogleOauth];
+        for variant in variants {
+            let new = NewAccount {
+                email: format!("{}@example.com", variant.as_db_str()),
+                display_name: "Test".into(),
+                provider_type: variant.clone(),
+                color: None,
+            };
+            let created = insert_account(&db, &new).unwrap();
+            let fetched = get_account(&db, created.id).unwrap();
+            assert_eq!(fetched.provider_type, variant);
+        }
     }
 }
