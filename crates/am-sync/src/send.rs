@@ -129,6 +129,20 @@ pub async fn drain_draft_sync(db: &Database, account_id: i64, now: i64) -> Resul
         }
     }
 
+    let all_folders = folders_repo::list_folders(db, account_id)?;
+    let drafts_folder = all_folders.iter().find(|f| {
+        f.folder_type == FolderType::Drafts
+            && folders_repo::get_sync_markers(db, f.id)
+                .ok()
+                .and_then(|m| m.uidvalidity)
+                .is_some()
+    });
+
+    let account = accounts_repo::get_account(db, account_id)?;
+    let endpoints = load_endpoints_pub(db, account_id)?;
+    let password = am_auth::credentials::load_password(&account.email)?;
+    let config = imap_config_pub(&endpoints, &account.email);
+
     for op in &draft_ops {
         let parsed: serde_json::Value = match serde_json::from_str(&op.payload) {
             Ok(v) => v,
@@ -159,16 +173,7 @@ pub async fn drain_draft_sync(db: &Database, account_id: i64, now: i64) -> Resul
             }
         };
 
-        let all_folders = folders_repo::list_folders(db, account_id)?;
-        let server_drafts = all_folders.iter().find(|f| {
-            f.folder_type == FolderType::Drafts
-                && folders_repo::get_sync_markers(db, f.id)
-                    .ok()
-                    .and_then(|m| m.uidvalidity)
-                    .is_some()
-        });
-
-        let drafts_folder = match server_drafts {
+        let drafts_folder = match drafts_folder {
             Some(f) => f,
             None => {
                 queue_repo::mark_done(db, op.id)?;
@@ -176,21 +181,16 @@ pub async fn drain_draft_sync(db: &Database, account_id: i64, now: i64) -> Resul
             }
         };
 
-        let account = accounts_repo::get_account(db, account_id)?;
-        let endpoints = load_endpoints_pub(db, account_id)?;
-        let password = am_auth::credentials::load_password(&account.email)?;
-        let config = imap_config_pub(&endpoints, &account.email);
-
         let bytes = am_mime::compose::build_message(&msg);
 
         let sync_result: Result<(), SyncError> = async {
             let mut session = ImapSession::connect(&config, &password).await?;
             let state = session.select(&drafts_folder.remote_path).await?;
-            let new_uid = state.uidnext;
-            let _ = session
-                .append_returning_uid(&drafts_folder.remote_path, "(\\Draft)", &bytes)
-                .await;
             let prev_uid = drafts_repo::get_server_uid(db, draft_id).ok().flatten();
+            let new_uid = state.uidnext;
+            session
+                .append_returning_uid(&drafts_folder.remote_path, "(\\Draft)", &bytes)
+                .await?;
             drafts_repo::set_server_uid(db, draft_id, Some(new_uid))?;
             if let Some(old_uid) = prev_uid {
                 let _ = session
