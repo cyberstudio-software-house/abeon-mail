@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { commands } from "./bindings";
-import type { Account, Endpoints, MessageFlag, OutgoingMessage } from "./bindings";
+import type { Account, Endpoints, MessageFlag, OutgoingMessage, SmartFolderKind, SmartMessageRow } from "./bindings";
 
 type ResultOk<T> = { status: "ok"; data: T };
 type ResultErr = { status: "error"; error: string };
@@ -150,5 +150,13 @@ export function useEnqueueSend() {
       queryClient.invalidateQueries({ queryKey: ["folders"] });
       queryClient.invalidateQueries({ queryKey: ["threads"] });
     },
+  });
+}
+
+export function useSmartFolder(kind: SmartFolderKind | null) {
+  return useQuery<SmartMessageRow[]>({
+    queryKey: ["smart", kind],
+    queryFn: () => commands.listSmartFolder(kind!, 100, 0).then(unwrap),
+    enabled: kind != null,
   });
 }

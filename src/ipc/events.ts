@@ -18,6 +18,7 @@ export function useSyncEvents() {
       queryClient.invalidateQueries({ queryKey: ["folders", account_id] });
       queryClient.invalidateQueries({ queryKey: ["messages", folder_id] });
       queryClient.invalidateQueries({ queryKey: ["threads"] });
+      queryClient.invalidateQueries({ queryKey: ["smart"] });
     });
 
     const mailboxPromise = events.mailboxChanged.listen((event) => {
@@ -25,6 +26,7 @@ export function useSyncEvents() {
       queryClient.invalidateQueries({ queryKey: ["folders", account_id] });
       queryClient.invalidateQueries({ queryKey: ["messages", folder_id] });
       queryClient.invalidateQueries({ queryKey: ["threads"] });
+      queryClient.invalidateQueries({ queryKey: ["smart"] });
     });
 
     return () => {
