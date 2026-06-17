@@ -13,6 +13,22 @@ function unwrap<T>(result: Result<T>): T {
   return result.data;
 }
 
+export function useThreads(folderId: number | null) {
+  return useQuery({
+    queryKey: ["threads", folderId],
+    queryFn: () => commands.listThreads(folderId!, 100, 0).then(unwrap),
+    enabled: folderId != null,
+  });
+}
+
+export function useThreadMessages(threadId: number | null) {
+  return useQuery({
+    queryKey: ["thread-messages", threadId],
+    queryFn: () => commands.listThreadMessages(threadId!).then(unwrap),
+    enabled: threadId != null,
+  });
+}
+
 export function useAccounts() {
   return useQuery({
     queryKey: ["accounts"],

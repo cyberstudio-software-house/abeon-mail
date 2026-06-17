@@ -10,18 +10,21 @@ export function useSyncEvents() {
       const { account_id, folder_id } = event.payload;
       queryClient.invalidateQueries({ queryKey: ["folders", account_id] });
       queryClient.invalidateQueries({ queryKey: ["messages", folder_id] });
+      queryClient.invalidateQueries({ queryKey: ["threads"] });
     });
 
     const messagesPromise = events.newMessages.listen((event) => {
       const { account_id, folder_id } = event.payload;
       queryClient.invalidateQueries({ queryKey: ["folders", account_id] });
       queryClient.invalidateQueries({ queryKey: ["messages", folder_id] });
+      queryClient.invalidateQueries({ queryKey: ["threads"] });
     });
 
     const mailboxPromise = events.mailboxChanged.listen((event) => {
       const { account_id, folder_id } = event.payload;
       queryClient.invalidateQueries({ queryKey: ["folders", account_id] });
       queryClient.invalidateQueries({ queryKey: ["messages", folder_id] });
+      queryClient.invalidateQueries({ queryKey: ["threads"] });
     });
 
     return () => {
