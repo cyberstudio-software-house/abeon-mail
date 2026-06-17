@@ -14,7 +14,6 @@ pub enum StorageError {
 }
 
 pub struct Database {
-    #[allow(dead_code)]
     conn: Mutex<Connection>,
 }
 
@@ -42,7 +41,6 @@ impl Database {
         Ok(Self { conn: Mutex::new(conn) })
     }
 
-    #[allow(dead_code)]
     pub(crate) fn conn(&self) -> std::sync::MutexGuard<'_, Connection> {
         self.conn.lock().expect("db mutex poisoned")
     }
