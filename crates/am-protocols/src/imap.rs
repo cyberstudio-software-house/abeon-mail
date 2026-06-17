@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::time::Duration;
 
 use async_imap::types::{Fetch, Flag, Name, NameAttribute};
 use async_imap::{Client, Session};
@@ -61,6 +62,12 @@ pub struct FlagState {
     pub uid: i64,
     pub seen: bool,
     pub flagged: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IdleOutcome {
+    Changed,
+    TimedOut,
 }
 
 enum SessionStream {
@@ -275,6 +282,33 @@ impl ImapSession {
             SessionStream::Tls(s) => s.uid_store(&uid_str, &query).await?.try_collect().await?,
         };
         Ok(())
+    }
+
+    pub async fn idle_wait(self, timeout: Duration) -> Result<(ImapSession, IdleOutcome), ProtocolError> {
+        match self.session {
+            SessionStream::Plain(s) => {
+                let mut handle = (*s).idle();
+                handle.init().await?;
+                let (result, _stop) = handle.wait_with_timeout(timeout);
+                let outcome = match result.await {
+                    Ok(async_imap::extensions::idle::IdleResponse::NewData(_)) => IdleOutcome::Changed,
+                    _ => IdleOutcome::TimedOut,
+                };
+                let session = handle.done().await?;
+                Ok((ImapSession { session: SessionStream::Plain(Box::new(session)), selected_exists: None }, outcome))
+            }
+            SessionStream::Tls(s) => {
+                let mut handle = (*s).idle();
+                handle.init().await?;
+                let (result, _stop) = handle.wait_with_timeout(timeout);
+                let outcome = match result.await {
+                    Ok(async_imap::extensions::idle::IdleResponse::NewData(_)) => IdleOutcome::Changed,
+                    _ => IdleOutcome::TimedOut,
+                };
+                let session = handle.done().await?;
+                Ok((ImapSession { session: SessionStream::Tls(Box::new(session)), selected_exists: None }, outcome))
+            }
+        }
     }
 }
 
