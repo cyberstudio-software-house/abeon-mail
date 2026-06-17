@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { render, screen, cleanup } from "@testing-library/react";
+import { render, screen, cleanup, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 vi.mock("../../ipc/bindings", () => ({
@@ -75,5 +75,14 @@ describe("ConversationView", () => {
 
     await screen.findByText("body");
     expect(screen.getByText("body")).toBeTruthy();
+  });
+
+  it("calls markMessageSeen for the newest message after thread loads", async () => {
+    const { commands } = await import("../../ipc/bindings");
+    render(<ConversationView threadId={1} />, { wrapper: Wrapper });
+
+    await waitFor(() => {
+      expect(commands.markMessageSeen).toHaveBeenCalledWith(2);
+    });
   });
 });
