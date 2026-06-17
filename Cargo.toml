@@ -1,5 +1,5 @@
 [workspace]
-members = ["src-tauri", "crates/am-core", "crates/am-storage", "crates/am-app"]
+members = ["src-tauri", "crates/am-core", "crates/am-storage", "crates/am-app", "crates/am-mime", "crates/am-auth", "crates/am-protocols", "crates/am-sync"]
 resolver = "2"
 
 [workspace.package]
@@ -16,3 +16,12 @@ tauri-specta = { version = "=2.0.0-rc.25", features = ["derive", "typescript"] }
 thiserror = "1"
 rusqlite = { version = "0.31", features = ["bundled"] }
 refinery = { version = "0.8", features = ["rusqlite"] }
+mail-parser = "0.11.3"
+ammonia = "4.1.2"
+tokio = { version = "1.52.3", features = ["rt-multi-thread", "net", "macros", "io-util", "time"] }
+async-imap = { version = "0.11.2", default-features = false, features = ["runtime-tokio"] }
+futures = "0.3.32"
+tokio-rustls = "0.26.4"
+rustls = "0.23.40"
+webpki-roots = "1.0.8"
+testcontainers = "0.27.3"

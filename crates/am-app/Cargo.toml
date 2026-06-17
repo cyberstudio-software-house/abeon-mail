@@ -4,9 +4,14 @@ edition.workspace = true
 version.workspace = true
 
 [dependencies]
+am-auth = { path = "../am-auth" }
 am-core = { path = "../am-core" }
+am-mime = { path = "../am-mime" }
 am-storage = { path = "../am-storage" }
+am-sync = { path = "../am-sync" }
+serde.workspace = true
 specta.workspace = true
 specta-typescript.workspace = true
 tauri.workspace = true
 tauri-specta.workspace = true
+tokio.workspace = true

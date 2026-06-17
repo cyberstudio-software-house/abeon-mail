@@ -1,0 +1,29 @@
+[package]
+name = "am-sync"
+edition.workspace = true
+version.workspace = true
+
+[dependencies]
+am-core = { path = "../am-core" }
+am-storage = { path = "../am-storage" }
+am-protocols = { path = "../am-protocols" }
+am-mime = { path = "../am-mime" }
+am-auth = { path = "../am-auth" }
+thiserror.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+
+[dev-dependencies]
+testcontainers.workspace = true
+async-imap.workspace = true
+tokio = { workspace = true, features = ["rt-multi-thread", "net", "macros", "io-util", "time"] }
+
+[target.'cfg(target_os = "linux")'.dev-dependencies]
+keyring = { version = "3", features = ["sync-secret-service", "crypto-rust"] }
+
+[target.'cfg(target_os = "macos")'.dev-dependencies]
+keyring = { version = "3", features = ["apple-native"] }
+
+[target.'cfg(target_os = "windows")'.dev-dependencies]
+keyring = { version = "3", features = ["windows-native"] }

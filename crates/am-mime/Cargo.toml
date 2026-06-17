@@ -1,0 +1,12 @@
+[package]
+name = "am-mime"
+edition.workspace = true
+version.workspace = true
+
+[dependencies]
+mail-parser.workspace = true
+ammonia.workspace = true
+serde.workspace = true
+specta.workspace = true
+
+[dev-dependencies]
