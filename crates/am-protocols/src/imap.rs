@@ -298,6 +298,38 @@ impl ImapSession {
         Ok(())
     }
 
+    pub async fn append_returning_uid(
+        &mut self,
+        folder: &str,
+        flags: &str,
+        bytes: &[u8],
+    ) -> Result<Option<i64>, ProtocolError> {
+        let flags_opt = if flags.is_empty() { None } else { Some(flags) };
+        match &mut self.session {
+            SessionStream::Plain(s) => s.append(folder, flags_opt, None, bytes).await?,
+            SessionStream::Tls(s) => s.append(folder, flags_opt, None, bytes).await?,
+        }
+        Ok(None)
+    }
+
+    pub async fn delete_uid(&mut self, folder: &str, uid: i64) -> Result<(), ProtocolError> {
+        let uid_str = uid.to_string();
+        let query = "+FLAGS (\\Deleted)";
+        match &mut self.session {
+            SessionStream::Plain(s) => {
+                s.select(folder).await?;
+                let _: Vec<_> = s.uid_store(&uid_str, query).await?.try_collect().await?;
+                s.expunge().await?.try_collect::<Vec<_>>().await?;
+            }
+            SessionStream::Tls(s) => {
+                s.select(folder).await?;
+                let _: Vec<_> = s.uid_store(&uid_str, query).await?.try_collect().await?;
+                s.expunge().await?.try_collect::<Vec<_>>().await?;
+            }
+        }
+        Ok(())
+    }
+
     pub async fn idle_wait(self, timeout: Duration) -> Result<(ImapSession, IdleOutcome), ProtocolError> {
         match self.session {
             SessionStream::Plain(s) => {
