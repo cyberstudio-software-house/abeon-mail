@@ -22,6 +22,7 @@ const fixedAccount = {
 
 let mockResolveMutateAsync: ReturnType<typeof vi.fn>;
 let mockAddMutateAsync: ReturnType<typeof vi.fn>;
+let mockBeginGoogleOauthMutateAsync: ReturnType<typeof vi.fn>;
 
 vi.mock("../../ipc/queries", () => ({
   useResolveEndpoints: () => ({
@@ -36,6 +37,12 @@ vi.mock("../../ipc/queries", () => ({
     error: null,
     data: undefined,
   }),
+  useBeginGoogleOauth: () => ({
+    mutateAsync: mockBeginGoogleOauthMutateAsync,
+    isPending: false,
+    error: null,
+    data: undefined,
+  }),
 }));
 
 import { AddAccountWizard } from "./AddAccountWizard";
@@ -44,6 +51,7 @@ describe("AddAccountWizard", () => {
   beforeEach(() => {
     mockResolveMutateAsync = vi.fn().mockResolvedValue(fixedEndpoints);
     mockAddMutateAsync = vi.fn().mockResolvedValue(fixedAccount);
+    mockBeginGoogleOauthMutateAsync = vi.fn().mockResolvedValue(fixedAccount);
   });
 
   afterEach(() => {
@@ -100,5 +108,26 @@ describe("AddAccountWizard", () => {
     });
 
     expect(onAdded).not.toHaveBeenCalled();
+  });
+
+  it("Sign in with Google button invokes beginGoogleOauth", async () => {
+    const user = userEvent.setup();
+    const onAdded = vi.fn();
+    const onClose = vi.fn();
+
+    render(<AddAccountWizard onClose={onClose} onAdded={onAdded} />);
+
+    const googleBtn = screen.getByRole("button", { name: /sign in with google/i });
+    expect(googleBtn).toBeTruthy();
+
+    await user.click(googleBtn);
+
+    await waitFor(() => {
+      expect(mockBeginGoogleOauthMutateAsync).toHaveBeenCalledTimes(1);
+    });
+
+    await waitFor(() => {
+      expect(onAdded).toHaveBeenCalledWith(7);
+    });
   });
 });

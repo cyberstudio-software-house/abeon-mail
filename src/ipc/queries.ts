@@ -110,6 +110,17 @@ export function useAddAccount() {
   });
 }
 
+export function useBeginGoogleOauth() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => commands.beginGoogleOauth().then(unwrap),
+    onSuccess: (account: Account) => {
+      queryClient.invalidateQueries({ queryKey: ["accounts"] });
+      queryClient.invalidateQueries({ queryKey: ["folders", account.id] });
+    },
+  });
+}
+
 export function useStartReply() {
   return useMutation({
     mutationFn: ({ messageId, mode }: { messageId: number; mode: string }) =>
