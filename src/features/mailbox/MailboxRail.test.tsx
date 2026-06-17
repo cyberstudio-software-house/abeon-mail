@@ -1,6 +1,20 @@
+import React from "react";
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen, cleanup } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+
+let capturedOnDragEnd: ((event: { active: { id: unknown }; over: { id: unknown } | null }) => void) | null = null;
+
+vi.mock("@dnd-kit/core", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@dnd-kit/core")>();
+  return {
+    ...actual,
+    DndContext: ({ children, onDragEnd }: { children: React.ReactNode; onDragEnd: (event: { active: { id: unknown }; over: { id: unknown } | null }) => void }) => {
+      capturedOnDragEnd = onDragEnd;
+      return <div>{children}</div>;
+    },
+  };
+});
 
 const mockSetSelectedAccountId = vi.fn();
 const mockSetSelectedFolderId = vi.fn();
@@ -134,6 +148,7 @@ describe("MailboxRail", () => {
   afterEach(() => {
     cleanup();
     vi.clearAllMocks();
+    capturedOnDragEnd = null;
   });
 
   it("renders 3 enabled smart folders (no Snoozed or Drafts)", () => {
@@ -331,5 +346,23 @@ describe("MailboxRail", () => {
     await user.click(screen.getByRole("button", { name: /cancel/i }));
 
     expect(mockRemoveAccount).not.toHaveBeenCalled();
+  });
+
+  it("drag-and-drop reorder calls reorderAccounts with swapped id order", () => {
+    setupStore(1);
+    setupMutations();
+    mockUseAccounts.mockReturnValue({
+      data: [accountWithReauth, accountNormal],
+      isLoading: false,
+      isError: false,
+      error: null,
+    } as unknown as ReturnType<typeof useAccounts>);
+
+    render(<MailboxRail />);
+
+    expect(capturedOnDragEnd).not.toBeNull();
+    capturedOnDragEnd!({ active: { id: 1 }, over: { id: 2 } });
+
+    expect(mockReorderAccounts).toHaveBeenCalledWith([2, 1]);
   });
 });

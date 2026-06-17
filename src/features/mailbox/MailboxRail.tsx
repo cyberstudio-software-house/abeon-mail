@@ -168,6 +168,7 @@ function SortableAccountRow({
               e.stopPropagation();
               onReauthClick(account.id);
             }}
+            aria-label={`Reconnect account ${account.display_name || account.email}`}
             style={{
               background: "transparent",
               border: "none",
