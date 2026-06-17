@@ -18,9 +18,14 @@ pub struct Database {
     conn: Mutex<Connection>,
 }
 
+fn apply_pragmas(conn: &Connection) -> Result<(), rusqlite::Error> {
+    conn.pragma_update(None, "foreign_keys", "ON")
+}
+
 impl Database {
     pub fn open_in_memory() -> Result<Self, StorageError> {
         let mut conn = Connection::open_in_memory()?;
+        apply_pragmas(&conn)?;
         migrations::runner()
             .run(&mut conn)
             .map_err(|e| StorageError::Migration(e.to_string()))?;
@@ -30,7 +35,7 @@ impl Database {
     pub fn open(path: &str) -> Result<Self, StorageError> {
         let mut conn = Connection::open(path)?;
         conn.pragma_update(None, "journal_mode", "WAL")?;
-        conn.pragma_update(None, "foreign_keys", "ON")?;
+        apply_pragmas(&conn)?;
         migrations::runner()
             .run(&mut conn)
             .map_err(|e| StorageError::Migration(e.to_string()))?;
@@ -59,5 +64,15 @@ mod tests {
             )
             .unwrap();
         assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn in_memory_enables_foreign_keys() {
+        let db = Database::open_in_memory().unwrap();
+        let conn = db.conn();
+        let fk_enabled: i64 = conn
+            .query_row("PRAGMA foreign_keys", [], |row| row.get::<_, i64>(0))
+            .unwrap();
+        assert_eq!(fk_enabled, 1);
     }
 }

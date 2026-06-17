@@ -120,8 +120,8 @@ CREATE TABLE sync_queue (
 
 CREATE VIRTUAL TABLE search_fts USING fts5(
     subject,
-    from_text,
-    to_text,
+    from_address,
+    to_addresses,
     body_text,
     attachment_names,
     content=''
@@ -130,3 +130,5 @@ CREATE VIRTUAL TABLE search_fts USING fts5(
 CREATE INDEX idx_messages_folder_date ON messages(folder_id, date DESC);
 CREATE INDEX idx_messages_thread ON messages(thread_id);
 CREATE INDEX idx_messages_account_seen ON messages(account_id, seen);
+CREATE INDEX idx_sync_queue_state_retry ON sync_queue(state, next_retry_at);
+CREATE INDEX idx_threads_account_lastdate ON threads(account_id, last_date DESC);
