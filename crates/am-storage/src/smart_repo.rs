@@ -11,8 +11,8 @@ pub fn list_smart_folder(
 ) -> Result<Vec<SmartMessageRow>, StorageError> {
     match kind {
         SmartFolderKind::AllInboxes => list_all_inboxes(db, limit, offset),
-        SmartFolderKind::Unread => Ok(Vec::new()),
-        SmartFolderKind::Flagged => Ok(Vec::new()),
+        SmartFolderKind::Unread => list_unread(db, limit, offset),
+        SmartFolderKind::Flagged => list_flagged(db, limit, offset),
     }
 }
 
@@ -43,6 +43,54 @@ fn list_all_inboxes(db: &Database, limit: i64, offset: i64) -> Result<Vec<SmartM
          JOIN folders f ON f.id = m.folder_id
          JOIN accounts a ON a.id = m.account_id
          WHERE f.folder_type = 'inbox'
+           AND m.draft = 0
+           AND m.deleted = 0
+         ORDER BY m.date DESC
+         LIMIT ?1 OFFSET ?2",
+    )?;
+    let rows = stmt.query_map(params![limit, offset], row_to_smart)?;
+    let mut out = Vec::new();
+    for r in rows {
+        out.push(r?);
+    }
+    Ok(out)
+}
+
+fn list_unread(db: &Database, limit: i64, offset: i64) -> Result<Vec<SmartMessageRow>, StorageError> {
+    let conn = db.conn();
+    let mut stmt = conn.prepare(
+        "SELECT m.id, m.account_id, m.folder_id, a.color,
+                m.from_address, m.from_name, m.subject, m.date,
+                m.seen, m.flagged, m.has_attachments, m.snippet
+         FROM messages m
+         JOIN folders f ON f.id = m.folder_id
+         JOIN accounts a ON a.id = m.account_id
+         WHERE m.seen = 0
+           AND f.folder_type NOT IN ('trash', 'spam')
+           AND m.draft = 0
+           AND m.deleted = 0
+         ORDER BY m.date DESC
+         LIMIT ?1 OFFSET ?2",
+    )?;
+    let rows = stmt.query_map(params![limit, offset], row_to_smart)?;
+    let mut out = Vec::new();
+    for r in rows {
+        out.push(r?);
+    }
+    Ok(out)
+}
+
+fn list_flagged(db: &Database, limit: i64, offset: i64) -> Result<Vec<SmartMessageRow>, StorageError> {
+    let conn = db.conn();
+    let mut stmt = conn.prepare(
+        "SELECT m.id, m.account_id, m.folder_id, a.color,
+                m.from_address, m.from_name, m.subject, m.date,
+                m.seen, m.flagged, m.has_attachments, m.snippet
+         FROM messages m
+         JOIN folders f ON f.id = m.folder_id
+         JOIN accounts a ON a.id = m.account_id
+         WHERE m.flagged = 1
+           AND f.folder_type NOT IN ('trash', 'spam')
            AND m.draft = 0
            AND m.deleted = 0
          ORDER BY m.date DESC
@@ -205,5 +253,139 @@ mod tests {
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].message_id > 0, true);
         assert_eq!(rows[0].date, 1000);
+    }
+
+    #[test]
+    fn unread_excludes_trash_and_spam() {
+        let db = Database::open_in_memory().unwrap();
+        let acc = make_account(&db, "f@example.com", None);
+        let inbox = make_folder(&db, acc, "INBOX", FolderType::Inbox);
+        let trash = make_folder(&db, acc, "Trash", FolderType::Trash);
+        let spam = make_folder(&db, acc, "Spam", FolderType::Spam);
+
+        insert_headers(&db, inbox, &[make_msg(1, 1000, false, false, false, false)]).unwrap();
+        insert_headers(&db, trash, &[make_msg(2, 2000, false, false, false, false)]).unwrap();
+        insert_headers(&db, spam, &[make_msg(3, 3000, false, false, false, false)]).unwrap();
+
+        let rows = list_smart_folder(&db, SmartFolderKind::Unread, 10, 0).unwrap();
+        assert_eq!(rows.len(), 1, "only inbox unseen message should appear");
+        assert_eq!(rows[0].date, 1000);
+    }
+
+    #[test]
+    fn unread_excludes_seen_messages() {
+        let db = Database::open_in_memory().unwrap();
+        let acc = make_account(&db, "g@example.com", None);
+        let inbox = make_folder(&db, acc, "INBOX", FolderType::Inbox);
+
+        insert_headers(&db, inbox, &[
+            make_msg(1, 1000, true, false, false, false),
+            make_msg(2, 2000, false, false, false, false),
+        ]).unwrap();
+
+        let rows = list_smart_folder(&db, SmartFolderKind::Unread, 10, 0).unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].date, 2000);
+        assert!(!rows[0].seen);
+    }
+
+    #[test]
+    fn unread_excludes_draft_and_deleted() {
+        let db = Database::open_in_memory().unwrap();
+        let acc = make_account(&db, "h@example.com", None);
+        let inbox = make_folder(&db, acc, "INBOX", FolderType::Inbox);
+
+        insert_headers(&db, inbox, &[
+            make_msg(1, 1000, false, false, false, false),
+            make_msg(2, 2000, false, false, false, false),
+            make_msg(3, 3000, false, false, false, false),
+        ]).unwrap();
+        raw_insert_flags(&db, inbox, 2, true, false);
+        raw_insert_flags(&db, inbox, 3, false, true);
+
+        let rows = list_smart_folder(&db, SmartFolderKind::Unread, 10, 0).unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].date, 1000);
+    }
+
+    #[test]
+    fn flagged_excludes_trash_and_spam() {
+        let db = Database::open_in_memory().unwrap();
+        let acc = make_account(&db, "i@example.com", None);
+        let inbox = make_folder(&db, acc, "INBOX", FolderType::Inbox);
+        let trash = make_folder(&db, acc, "Trash", FolderType::Trash);
+        let spam = make_folder(&db, acc, "Spam", FolderType::Spam);
+
+        insert_headers(&db, inbox, &[make_msg(1, 1000, false, true, false, false)]).unwrap();
+        insert_headers(&db, trash, &[make_msg(2, 2000, false, true, false, false)]).unwrap();
+        insert_headers(&db, spam, &[make_msg(3, 3000, false, true, false, false)]).unwrap();
+
+        let rows = list_smart_folder(&db, SmartFolderKind::Flagged, 10, 0).unwrap();
+        assert_eq!(rows.len(), 1, "only inbox flagged message should appear");
+        assert_eq!(rows[0].date, 1000);
+    }
+
+    #[test]
+    fn flagged_excludes_unflagged_messages() {
+        let db = Database::open_in_memory().unwrap();
+        let acc = make_account(&db, "j@example.com", None);
+        let inbox = make_folder(&db, acc, "INBOX", FolderType::Inbox);
+
+        insert_headers(&db, inbox, &[
+            make_msg(1, 1000, false, false, false, false),
+            make_msg(2, 2000, false, true, false, false),
+        ]).unwrap();
+
+        let rows = list_smart_folder(&db, SmartFolderKind::Flagged, 10, 0).unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].date, 2000);
+        assert!(rows[0].flagged);
+    }
+
+    #[test]
+    fn flagged_excludes_draft_and_deleted() {
+        let db = Database::open_in_memory().unwrap();
+        let acc = make_account(&db, "k@example.com", None);
+        let inbox = make_folder(&db, acc, "INBOX", FolderType::Inbox);
+
+        insert_headers(&db, inbox, &[
+            make_msg(1, 1000, false, true, false, false),
+            make_msg(2, 2000, false, true, false, false),
+            make_msg(3, 3000, false, true, false, false),
+        ]).unwrap();
+        raw_insert_flags(&db, inbox, 2, true, false);
+        raw_insert_flags(&db, inbox, 3, false, true);
+
+        let rows = list_smart_folder(&db, SmartFolderKind::Flagged, 10, 0).unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].date, 1000);
+    }
+
+    #[test]
+    fn unread_and_flagged_pagination() {
+        let db = Database::open_in_memory().unwrap();
+        let acc = make_account(&db, "l@example.com", None);
+        let inbox = make_folder(&db, acc, "INBOX", FolderType::Inbox);
+
+        insert_headers(&db, inbox, &[
+            make_msg(1, 1000, false, true, false, false),
+            make_msg(2, 3000, false, true, false, false),
+            make_msg(3, 2000, false, true, false, false),
+        ]).unwrap();
+
+        let page1 = list_smart_folder(&db, SmartFolderKind::Flagged, 2, 0).unwrap();
+        let page2 = list_smart_folder(&db, SmartFolderKind::Flagged, 2, 2).unwrap();
+        assert_eq!(page1.len(), 2);
+        assert_eq!(page1[0].date, 3000);
+        assert_eq!(page2.len(), 1);
+        assert_eq!(page2[0].date, 1000);
+
+        insert_headers(&db, inbox, &[
+            make_msg(4, 5000, false, false, false, false),
+            make_msg(5, 4000, false, false, false, false),
+        ]).unwrap();
+        let u_page1 = list_smart_folder(&db, SmartFolderKind::Unread, 2, 0).unwrap();
+        assert_eq!(u_page1.len(), 2);
+        assert_eq!(u_page1[0].date, 5000);
     }
 }
