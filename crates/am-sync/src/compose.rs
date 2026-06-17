@@ -69,8 +69,17 @@ fn sanitize_original(html: &str) -> String {
     am_mime::sanitize::sanitize_html(html).html
 }
 
+fn escape_html_text(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&#x27;")
+}
+
 pub fn quote_html(original_html: &str, attribution: &str) -> String {
     let safe = sanitize_original(original_html);
+    let attribution = escape_html_text(attribution);
     format!("<p>{attribution}</p><blockquote>{safe}</blockquote>")
 }
 
@@ -245,6 +254,14 @@ mod tests {
         let result = quote_html("<script>evil()</script><p>hi</p>", "Author wrote:");
         assert!(!result.contains("<script>"));
         assert!(!result.contains("evil()"));
+    }
+
+    #[test]
+    fn quote_html_escapes_attribution_to_prevent_xss() {
+        let out = quote_html("<p>body</p>", "On date, <img src=x onerror=alert(1)> <script>evil</script> wrote:");
+        assert!(!out.contains("<img"), "raw img tag leaked from attribution: {out}");
+        assert!(!out.contains("<script>"), "raw script tag leaked from attribution: {out}");
+        assert!(out.contains("&lt;img"), "attribution should be html-escaped");
     }
 
     #[test]
