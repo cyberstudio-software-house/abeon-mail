@@ -11,6 +11,8 @@ pub enum StorageError {
     Migration(String),
     #[error("not found")]
     NotFound,
+    #[error("invalid data: {0}")]
+    InvalidData(String),
 }
 
 pub struct Database {

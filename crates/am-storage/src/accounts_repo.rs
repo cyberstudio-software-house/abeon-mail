@@ -14,8 +14,32 @@ fn provider_from_str(s: &str) -> Result<ProviderType, StorageError> {
     match s {
         "imappassword" => Ok(ProviderType::ImapPassword),
         "googleoauth" => Ok(ProviderType::GoogleOauth),
-        _ => Err(StorageError::NotFound),
+        other => Err(StorageError::InvalidData(format!("unknown provider type: {other}"))),
     }
+}
+
+fn row_to_account(row: &rusqlite::Row) -> rusqlite::Result<(i64, String, String, String, Option<String>, i64)> {
+    Ok((
+        row.get::<_, i64>(0)?,
+        row.get::<_, String>(1)?,
+        row.get::<_, String>(2)?,
+        row.get::<_, String>(3)?,
+        row.get::<_, Option<String>>(4)?,
+        row.get::<_, i64>(5)?,
+    ))
+}
+
+fn tuple_to_account(
+    (id, email, display_name, provider, color, position): (i64, String, String, String, Option<String>, i64),
+) -> Result<Account, StorageError> {
+    Ok(Account {
+        id,
+        email,
+        display_name,
+        provider_type: provider_from_str(&provider)?,
+        color,
+        position,
+    })
 }
 
 pub fn insert_account(db: &Database, new: &NewAccount) -> Result<Account, StorageError> {
@@ -41,31 +65,13 @@ pub fn get_account(db: &Database, id: i64) -> Result<Account, StorageError> {
         "SELECT id, email, display_name, provider_type, color, position
          FROM accounts WHERE id = ?1",
         params![id],
-        |row| {
-            Ok((
-                row.get::<_, i64>(0)?,
-                row.get::<_, String>(1)?,
-                row.get::<_, String>(2)?,
-                row.get::<_, String>(3)?,
-                row.get::<_, Option<String>>(4)?,
-                row.get::<_, i64>(5)?,
-            ))
-        },
+        row_to_account,
     )
     .map_err(|e| match e {
         rusqlite::Error::QueryReturnedNoRows => StorageError::NotFound,
         other => StorageError::Sqlite(other),
     })
-    .and_then(|(id, email, display_name, provider, color, position)| {
-        Ok(Account {
-            id,
-            email,
-            display_name,
-            provider_type: provider_from_str(&provider)?,
-            color,
-            position,
-        })
-    })
+    .and_then(tuple_to_account)
 }
 
 pub fn list_accounts(db: &Database) -> Result<Vec<Account>, StorageError> {
@@ -74,27 +80,10 @@ pub fn list_accounts(db: &Database) -> Result<Vec<Account>, StorageError> {
         "SELECT id, email, display_name, provider_type, color, position
          FROM accounts ORDER BY position ASC",
     )?;
-    let rows = stmt.query_map([], |row| {
-        Ok((
-            row.get::<_, i64>(0)?,
-            row.get::<_, String>(1)?,
-            row.get::<_, String>(2)?,
-            row.get::<_, String>(3)?,
-            row.get::<_, Option<String>>(4)?,
-            row.get::<_, i64>(5)?,
-        ))
-    })?;
+    let rows = stmt.query_map([], row_to_account)?;
     let mut out = Vec::new();
     for r in rows {
-        let (id, email, display_name, provider, color, position) = r?;
-        out.push(Account {
-            id,
-            email,
-            display_name,
-            provider_type: provider_from_str(&provider)?,
-            color,
-            position,
-        });
+        out.push(tuple_to_account(r?)?);
     }
     Ok(out)
 }
@@ -144,5 +133,12 @@ mod tests {
         let created = insert_account(&db, &sample()).unwrap();
         delete_account(&db, created.id).unwrap();
         assert!(list_accounts(&db).unwrap().is_empty());
+    }
+
+    #[test]
+    fn delete_missing_account_returns_not_found() {
+        let db = Database::open_in_memory().unwrap();
+        let err = delete_account(&db, 999).unwrap_err();
+        assert!(matches!(err, StorageError::NotFound));
     }
 }
