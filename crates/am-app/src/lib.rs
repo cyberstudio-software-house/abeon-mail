@@ -18,6 +18,8 @@ pub fn build_specta_builder() -> Builder<tauri::Wry> {
             commands::sanitize_message_html,
             commands::set_message_flags,
             commands::mark_message_seen,
+            commands::list_threads,
+            commands::list_thread_messages,
         ])
         .events(collect_events![
             events::SyncProgress,

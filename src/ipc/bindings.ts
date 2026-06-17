@@ -15,6 +15,8 @@ export const commands = {
 	sanitizeMessageHtml: (html: string) => __TAURI_INVOKE<SanitizedHtml>("sanitize_message_html", { html }),
 	setMessageFlags: (messageId: number, flag: MessageFlag, value: boolean) => typedError<null, string>(__TAURI_INVOKE("set_message_flags", { messageId, flag, value })),
 	markMessageSeen: (messageId: number) => typedError<null, string>(__TAURI_INVOKE("mark_message_seen", { messageId })),
+	listThreads: (folderId: number, limit: number, offset: number) => typedError<ThreadSummary[], string>(__TAURI_INVOKE("list_threads", { folderId, limit, offset })),
+	listThreadMessages: (threadId: number) => typedError<MessageHeader[], string>(__TAURI_INVOKE("list_thread_messages", { threadId })),
 };
 
 /** Events */
@@ -100,6 +102,19 @@ export type SyncProgress = {
 	folder_id: number,
 	fetched: number,
 	total: number,
+};
+
+export type ThreadSummary = {
+	thread_id: number,
+	account_id: number,
+	subject: string,
+	last_date: number,
+	message_count: number,
+	unread_count: number,
+	participants: string[],
+	snippet: string,
+	has_attachments: boolean,
+	flagged: boolean,
 };
 
 /* Tauri Specta runtime */

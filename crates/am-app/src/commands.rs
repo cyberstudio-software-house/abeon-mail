@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use am_core::{account::Account, folder::Folder, message::{MessageBody, MessageFlag, MessageHeader}};
+use am_core::{account::Account, folder::Folder, message::{MessageBody, MessageFlag, MessageHeader}, thread::ThreadSummary};
 use am_storage::{accounts_repo, folders_repo, messages_repo};
 
 use crate::state::AppState;
@@ -87,6 +87,26 @@ pub fn set_message_flags(
 ) -> Result<(), String> {
     am_sync::service::enqueue_flag(&state.db, message_id, flag, value)
         .map_err(|_| "Failed to set flag".to_string())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn list_threads(
+    state: tauri::State<'_, AppState>,
+    folder_id: i64,
+    limit: i64,
+    offset: i64,
+) -> Result<Vec<ThreadSummary>, String> {
+    am_storage::threads_repo::list_for_folder(&state.db, folder_id, limit, offset).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn list_thread_messages(
+    state: tauri::State<'_, AppState>,
+    thread_id: i64,
+) -> Result<Vec<MessageHeader>, String> {
+    messages_repo::list_by_thread(&state.db, thread_id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]

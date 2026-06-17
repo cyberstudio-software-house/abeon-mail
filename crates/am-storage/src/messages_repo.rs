@@ -169,6 +169,18 @@ pub fn insert_headers(
     Ok(count)
 }
 
+pub fn list_by_thread(db: &Database, thread_id: i64) -> Result<Vec<MessageHeader>, StorageError> {
+    let conn = db.conn();
+    let mut stmt = conn.prepare(
+        "SELECT id, account_id, folder_id, subject, from_address, from_name, date, seen, flagged, has_attachments, snippet
+         FROM messages WHERE thread_id = ?1 ORDER BY date ASC",
+    )?;
+    let rows = stmt.query_map(params![thread_id], row_to_header)?;
+    let mut out = Vec::new();
+    for r in rows { out.push(tuple_to_header(r?)); }
+    Ok(out)
+}
+
 pub fn list_by_folder(
     db: &Database,
     folder_id: i64,

@@ -1,3 +1,4 @@
+use am_core::thread::ThreadSummary;
 use rusqlite::params;
 use crate::db::{Database, StorageError};
 
@@ -50,6 +51,45 @@ pub fn create(db: &Database, account_id: i64, subject_root: &str, last_date: i64
         params![account_id, subject_root, last_date],
     )?;
     Ok(conn.last_insert_rowid())
+}
+
+pub fn list_for_folder(db: &Database, folder_id: i64, limit: i64, offset: i64) -> Result<Vec<ThreadSummary>, StorageError> {
+    let conn = db.conn();
+    let mut stmt = conn.prepare(
+        "SELECT t.id, t.account_id, t.subject_root, t.last_date, t.message_count, t.unread_count,
+                MAX(m.has_attachments), MAX(m.flagged),
+                group_concat(DISTINCT COALESCE(m.from_name, m.from_address)),
+                (SELECT snippet FROM messages WHERE thread_id = t.id ORDER BY date DESC LIMIT 1),
+                (SELECT subject FROM messages WHERE thread_id = t.id ORDER BY date DESC LIMIT 1)
+         FROM threads t
+         JOIN messages m ON m.thread_id = t.id
+         WHERE t.id IN (SELECT DISTINCT thread_id FROM messages WHERE folder_id = ?1 AND thread_id IS NOT NULL)
+         GROUP BY t.id
+         ORDER BY t.last_date DESC
+         LIMIT ?2 OFFSET ?3",
+    )?;
+    let rows = stmt.query_map(params![folder_id, limit, offset], |row| {
+        let participants_csv: Option<String> = row.get(8)?;
+        let latest_subject: Option<String> = row.get(10)?;
+        let subject_root: String = row.get(2)?;
+        Ok(ThreadSummary {
+            thread_id: row.get(0)?,
+            account_id: row.get(1)?,
+            subject: latest_subject.filter(|s| !s.is_empty()).unwrap_or(subject_root),
+            last_date: row.get(3)?,
+            message_count: row.get(4)?,
+            unread_count: row.get(5)?,
+            participants: participants_csv
+                .map(|s| s.split(',').map(|p| p.to_string()).collect())
+                .unwrap_or_default(),
+            snippet: row.get::<_, Option<String>>(9)?.unwrap_or_default(),
+            has_attachments: row.get::<_, i64>(6)? != 0,
+            flagged: row.get::<_, i64>(7)? != 0,
+        })
+    })?;
+    let mut out = Vec::new();
+    for r in rows { out.push(r?); }
+    Ok(out)
 }
 
 pub fn recompute(db: &Database, thread_id: i64) -> Result<(), StorageError> {
@@ -170,6 +210,35 @@ mod tests {
         assert_eq!(last_date, 700);
         assert_eq!(msg_count, 2);
         assert_eq!(unread, 2);
+    }
+
+    #[test]
+    fn list_for_folder_groups_thread() {
+        let db = Database::open_in_memory().unwrap();
+        let account = crate::accounts_repo::insert_account(&db, &am_core::account::NewAccount {
+            email: "t@e.com".into(), display_name: "T".into(),
+            provider_type: am_core::account::ProviderType::ImapPassword, color: None,
+        }).unwrap();
+        let folder = crate::folders_repo::upsert_folder(&db, account.id, "INBOX", "Inbox", am_core::folder::FolderType::Inbox).unwrap();
+        crate::messages_repo::insert_headers(&db, folder.id, &[
+            am_core::message::NewMessageHeader { uid: 1, message_id_hdr: Some("<a@x>".into()), in_reply_to: None, references_hdr: None,
+                from_address: "x@e.com".into(), from_name: Some("X".into()), subject: "Hi".into(), date: 100,
+                seen: true, flagged: false, has_attachments: false, size: 0, snippet: "first".into() },
+            am_core::message::NewMessageHeader { uid: 2, message_id_hdr: Some("<b@x>".into()), in_reply_to: Some("<a@x>".into()), references_hdr: Some("<a@x>".into()),
+                from_address: "y@e.com".into(), from_name: Some("Y".into()), subject: "Re: Hi".into(), date: 200,
+                seen: false, flagged: true, has_attachments: false, size: 0, snippet: "second".into() },
+        ]).unwrap();
+        let tid = create(&db, account.id, "hi", 100).unwrap();
+        for h in crate::messages_repo::list_by_folder(&db, folder.id, 10, 0).unwrap() {
+            crate::messages_repo::assign_thread(&db, h.id, tid).unwrap();
+        }
+        recompute(&db, tid).unwrap();
+        let summaries = list_for_folder(&db, folder.id, 10, 0).unwrap();
+        assert_eq!(summaries.len(), 1);
+        assert_eq!(summaries[0].message_count, 2);
+        assert_eq!(summaries[0].unread_count, 1);
+        assert_eq!(summaries[0].snippet, "second");
+        assert!(summaries[0].flagged);
     }
 
     #[test]
