@@ -454,11 +454,11 @@ async fn accept_redirect(
     let tokens =
         am_auth::oauth::client::exchange_code(&http, client_id, &code, verifier, redirect_uri)
             .await
-            .map_err(|e| e.to_string())?;
+            .map_err(|_| "Token exchange failed".to_string())?;
 
     let email = am_auth::oauth::client::fetch_email(&http, &tokens.access_token)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|_| "Failed to fetch account email".to_string())?;
 
     Ok((tokens, email))
 }
@@ -487,6 +487,14 @@ mod tests {
     #[test]
     fn parse_redirect_line_bad_format_returns_none() {
         assert!(super::parse_redirect_line("not a request").is_none());
+    }
+
+    #[test]
+    fn parse_redirect_line_decodes_percent_encoded_code() {
+        let line = "GET /?code=AUTH%2BCODE&state=xyz HTTP/1.1";
+        let (code, state) = super::parse_redirect_line(line).unwrap();
+        assert_eq!(code, "AUTH+CODE");
+        assert_eq!(state, "xyz");
     }
 
     #[test]
