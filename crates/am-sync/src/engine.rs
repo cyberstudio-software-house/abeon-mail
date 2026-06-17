@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use am_protocols::imap::{IdleOutcome, ImapSession};
+use am_protocols::imap::{IdleOutcome, ImapAuth, ImapSession};
 use am_storage::{accounts_repo, folders_repo, Database};
 use tokio::sync::mpsc;
 
@@ -100,7 +100,7 @@ async fn idle_inbox(db: &Database, account_id: i64, remote_path: &str) -> Result
     let endpoints = load_endpoints_pub(db, account_id).map_err(|_| ())?;
     let password = am_auth::credentials::load_password(&account.email).map_err(|_| ())?;
     let config = imap_config_pub(&endpoints, &account.email);
-    let mut session = ImapSession::connect(&config, &password).await.map_err(|_| ())?;
+    let mut session = ImapSession::connect(&config, &ImapAuth::Password(password)).await.map_err(|_| ())?;
     let caps = session.server_caps().await.map_err(|_| ())?;
     if !caps.idle {
         let _ = session.logout().await;

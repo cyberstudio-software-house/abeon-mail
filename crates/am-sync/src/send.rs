@@ -1,6 +1,6 @@
 use am_core::folder::FolderType;
-use am_protocols::imap::ImapSession;
-use am_protocols::smtp::{send_raw, SmtpConfig};
+use am_protocols::imap::{ImapAuth, ImapSession};
+use am_protocols::smtp::{send_raw, SmtpAuth, SmtpConfig};
 use am_storage::{accounts_repo, drafts_repo, folders_repo, queue_repo, Database};
 
 use crate::service::{imap_config_pub, load_endpoints_pub, now_secs, SyncError};
@@ -69,14 +69,14 @@ pub async fn drain_outbox(db: &Database, account_id: i64, now: i64) -> Result<()
 
         let smtp = smtp_config(&endpoints, &account.email);
         let send_result =
-            send_raw(&smtp, &password, &msg.from_address, &recipients, &bytes).await;
+            send_raw(&smtp, &SmtpAuth::Password(password.clone()), &msg.from_address, &recipients, &bytes).await;
 
         match send_result {
             Ok(()) => {
                 let all_folders = folders_repo::list_folders(db, account_id)?;
                 if let Some(sent) = all_folders.iter().find(|f| f.folder_type == FolderType::Sent) {
                     let config = imap_config_pub(&endpoints, &account.email);
-                    if let Ok(mut session) = ImapSession::connect(&config, &password).await {
+                    if let Ok(mut session) = ImapSession::connect(&config, &ImapAuth::Password(password.clone())).await {
                         let _ = session.append(&sent.remote_path, "(\\Seen)", &bytes).await;
                         if let Ok(Some(server_uid)) = drafts_repo::get_server_uid(db, draft_id) {
                             if let Some(drafts_folder) = all_folders.iter().find(|f| {
@@ -184,7 +184,7 @@ pub async fn drain_draft_sync(db: &Database, account_id: i64, now: i64) -> Resul
         let bytes = am_mime::compose::build_message(&msg);
 
         let sync_result: Result<(), SyncError> = async {
-            let mut session = ImapSession::connect(&config, &password).await?;
+            let mut session = ImapSession::connect(&config, &ImapAuth::Password(password.clone())).await?;
             let state = session.select(&drafts_folder.remote_path).await?;
             let prev_uid = drafts_repo::get_server_uid(db, draft_id).ok().flatten();
             let new_uid = state.uidnext;

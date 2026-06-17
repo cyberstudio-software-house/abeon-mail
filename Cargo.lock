@@ -142,6 +142,7 @@ version = "0.1.0"
 dependencies = [
  "am-mime",
  "async-imap",
+ "base64 0.22.1",
  "chrono",
  "futures",
  "lettre",

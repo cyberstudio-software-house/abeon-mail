@@ -2,7 +2,7 @@ use std::process::Command;
 use std::time::Duration;
 
 use am_protocols::error::ProtocolError;
-use am_protocols::imap::{ImapConfig, ImapSession};
+use am_protocols::imap::{ImapAuth, ImapConfig, ImapSession};
 use async_imap::Client;
 use testcontainers::core::{ContainerPort, WaitFor};
 use testcontainers::runners::AsyncRunner;
@@ -101,7 +101,7 @@ async fn greenmail_end_to_end() {
         username: USER.to_string(),
     };
 
-    let mut session = ImapSession::connect(&config, PASSWORD)
+    let mut session = ImapSession::connect(&config, &ImapAuth::Password(PASSWORD.to_string()))
         .await
         .expect("connect failed");
 
