@@ -6,7 +6,6 @@ version.workspace = true
 [dependencies]
 am-core = { path = "../am-core" }
 am-storage = { path = "../am-storage" }
-serde.workspace = true
 specta.workspace = true
 specta-typescript.workspace = true
 tauri.workspace = true

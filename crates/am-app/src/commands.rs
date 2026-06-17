@@ -43,5 +43,7 @@ mod tests {
         let all = accounts_repo::list_accounts(&db).unwrap();
         assert_eq!(all.len(), 1);
         assert_eq!(created.email, "x@example.com");
+        assert!(created.id > 0);
+        assert_eq!(created.position, 0);
     }
 }
