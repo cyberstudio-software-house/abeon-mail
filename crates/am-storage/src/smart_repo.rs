@@ -362,6 +362,54 @@ mod tests {
     }
 
     #[test]
+    fn unread_cross_account_ordered_date_desc() {
+        let db = Database::open_in_memory().unwrap();
+
+        let acc1 = make_account(&db, "m@example.com", Some("#aa0000"));
+        let acc2 = make_account(&db, "n@example.com", Some("#0000bb"));
+
+        let inbox1 = make_folder(&db, acc1, "INBOX", FolderType::Inbox);
+        let inbox2 = make_folder(&db, acc2, "INBOX", FolderType::Inbox);
+
+        insert_headers(&db, inbox1, &[make_msg(1, 1000, false, false, false, false)]).unwrap();
+        insert_headers(&db, inbox2, &[make_msg(2, 5000, false, false, false, false)]).unwrap();
+
+        let rows = list_smart_folder(&db, SmartFolderKind::Unread, 10, 0).unwrap();
+
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0].date, 5000);
+        assert_eq!(rows[1].date, 1000);
+        assert_eq!(rows[0].account_id, acc2);
+        assert_eq!(rows[1].account_id, acc1);
+        assert!(!rows[0].seen);
+        assert!(!rows[1].seen);
+    }
+
+    #[test]
+    fn flagged_cross_account_ordered_date_desc() {
+        let db = Database::open_in_memory().unwrap();
+
+        let acc1 = make_account(&db, "o@example.com", Some("#cc0000"));
+        let acc2 = make_account(&db, "p@example.com", Some("#0000dd"));
+
+        let inbox1 = make_folder(&db, acc1, "INBOX", FolderType::Inbox);
+        let inbox2 = make_folder(&db, acc2, "INBOX", FolderType::Inbox);
+
+        insert_headers(&db, inbox1, &[make_msg(1, 2000, false, true, false, false)]).unwrap();
+        insert_headers(&db, inbox2, &[make_msg(2, 8000, false, true, false, false)]).unwrap();
+
+        let rows = list_smart_folder(&db, SmartFolderKind::Flagged, 10, 0).unwrap();
+
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0].date, 8000);
+        assert_eq!(rows[1].date, 2000);
+        assert_eq!(rows[0].account_id, acc2);
+        assert_eq!(rows[1].account_id, acc1);
+        assert!(rows[0].flagged);
+        assert!(rows[1].flagged);
+    }
+
+    #[test]
     fn unread_and_flagged_pagination() {
         let db = Database::open_in_memory().unwrap();
         let acc = make_account(&db, "l@example.com", None);
