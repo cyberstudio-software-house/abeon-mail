@@ -57,85 +57,7 @@ mod tests {
     use super::*;
     use crate::credentials::{delete_password, store_password};
     use crate::oauth::client::TokenHttp;
-    use keyring::credential::{
-        Credential, CredentialApi, CredentialBuilderApi, CredentialPersistence,
-    };
-    use std::any::Any;
     use std::collections::VecDeque;
-
-    static STORE: Mutex<Option<HashMap<(String, String), String>>> = Mutex::new(None);
-    static INIT: std::sync::Once = std::sync::Once::new();
-
-    fn install_in_mem_builder() {
-        INIT.call_once(|| {
-            *STORE.lock().unwrap() = Some(HashMap::new());
-            keyring::set_default_credential_builder(Box::new(InMemCredBuilder));
-        });
-    }
-
-    struct InMemCred {
-        service: String,
-        user: String,
-    }
-
-    impl CredentialApi for InMemCred {
-        fn set_secret(&self, secret: &[u8]) -> keyring::Result<()> {
-            let pw = String::from_utf8(secret.to_vec())
-                .map_err(|_| keyring::Error::BadEncoding(secret.to_vec()))?;
-            STORE
-                .lock()
-                .unwrap()
-                .as_mut()
-                .unwrap()
-                .insert((self.service.clone(), self.user.clone()), pw);
-            Ok(())
-        }
-        fn get_secret(&self) -> keyring::Result<Vec<u8>> {
-            STORE
-                .lock()
-                .unwrap()
-                .as_ref()
-                .unwrap()
-                .get(&(self.service.clone(), self.user.clone()))
-                .map(|s| s.as_bytes().to_vec())
-                .ok_or(keyring::Error::NoEntry)
-        }
-        fn delete_credential(&self) -> keyring::Result<()> {
-            STORE
-                .lock()
-                .unwrap()
-                .as_mut()
-                .unwrap()
-                .remove(&(self.service.clone(), self.user.clone()))
-                .map(|_| ())
-                .ok_or(keyring::Error::NoEntry)
-        }
-        fn as_any(&self) -> &dyn Any {
-            self
-        }
-    }
-
-    struct InMemCredBuilder;
-
-    impl CredentialBuilderApi for InMemCredBuilder {
-        fn build(
-            &self,
-            _target: Option<&str>,
-            service: &str,
-            user: &str,
-        ) -> keyring::Result<Box<Credential>> {
-            Ok(Box::new(InMemCred {
-                service: service.to_string(),
-                user: user.to_string(),
-            }))
-        }
-        fn as_any(&self) -> &dyn Any {
-            self
-        }
-        fn persistence(&self) -> CredentialPersistence {
-            CredentialPersistence::ProcessOnly
-        }
-    }
 
     struct FakeHttp {
         calls: Mutex<u32>,
@@ -182,12 +104,10 @@ mod tests {
         }
     }
 
-    static TEST_LOCK: Mutex<()> = Mutex::new(());
-
     #[tokio::test]
     async fn cached_not_expired_returns_without_http_call() {
-        install_in_mem_builder();
-        let _guard = TEST_LOCK.lock().unwrap();
+        crate::test_keychain::install_in_mem_builder();
+        let _guard = crate::test_keychain::TEST_LOCK.lock().unwrap();
 
         let http = Arc::new(FakeHttp::new(vec![]));
         let mgr = OAuthTokenManager::new(Arc::clone(&http) as Arc<dyn TokenHttp>);
@@ -207,8 +127,8 @@ mod tests {
 
     #[tokio::test]
     async fn expired_triggers_refresh_from_keychain() {
-        install_in_mem_builder();
-        let _guard = TEST_LOCK.lock().unwrap();
+        crate::test_keychain::install_in_mem_builder();
+        let _guard = crate::test_keychain::TEST_LOCK.lock().unwrap();
 
         let auth_ref = "expired@manager.test";
         let _ = delete_password(auth_ref);
@@ -235,8 +155,8 @@ mod tests {
 
     #[tokio::test]
     async fn invalid_grant_propagates() {
-        install_in_mem_builder();
-        let _guard = TEST_LOCK.lock().unwrap();
+        crate::test_keychain::install_in_mem_builder();
+        let _guard = crate::test_keychain::TEST_LOCK.lock().unwrap();
 
         let auth_ref = "revoked@manager.test";
         let _ = delete_password(auth_ref);

@@ -2,6 +2,8 @@ pub mod credentials;
 pub mod endpoints;
 pub mod oauth;
 pub mod provider;
+#[cfg(test)]
+mod test_keychain;
 
 use thiserror::Error;
 
