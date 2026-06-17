@@ -19,6 +19,8 @@ pub struct MessageHeader {
 pub struct NewMessageHeader {
     pub uid: i64,
     pub message_id_hdr: Option<String>,
+    pub in_reply_to: Option<String>,
+    pub references_hdr: Option<String>,
     pub from_address: String,
     pub from_name: Option<String>,
     pub subject: String,

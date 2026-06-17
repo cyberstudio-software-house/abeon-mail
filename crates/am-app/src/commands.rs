@@ -122,6 +122,8 @@ mod tests {
         messages_repo::insert_headers(&db, folder.id, &[NewMessageHeader {
             uid: 1,
             message_id_hdr: None,
+            in_reply_to: None,
+            references_hdr: None,
             from_address: "a@b.com".into(),
             from_name: None,
             subject: "Hello".into(),
@@ -151,6 +153,8 @@ mod tests {
         messages_repo::insert_headers(&db, folder.id, &[NewMessageHeader {
             uid: 1,
             message_id_hdr: None,
+            in_reply_to: None,
+            references_hdr: None,
             from_address: "a@b.com".into(),
             from_name: None,
             subject: "Hello".into(),

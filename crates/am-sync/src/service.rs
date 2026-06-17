@@ -88,6 +88,12 @@ fn header_from_fetch(fetched: &FetchedHeader) -> NewMessageHeader {
     NewMessageHeader {
         uid: fetched.uid,
         message_id_hdr: fetched.message_id_hdr.clone(),
+        in_reply_to: fetched.in_reply_to.clone(),
+        references_hdr: if fetched.references.is_empty() {
+            None
+        } else {
+            Some(fetched.references.join(" "))
+        },
         from_address: fetched.from_address.clone(),
         from_name: fetched.from_name.clone(),
         subject: fetched.subject.clone(),
@@ -210,6 +216,13 @@ pub async fn get_or_fetch_body(db: &Database, message_id: i64) -> Result<Message
         text_html: parsed.text_html,
     };
     messages_repo::store_body(db, message_id, &body)?;
+    messages_repo::backfill_body_meta(
+        db,
+        message_id,
+        &parsed.snippet,
+        !parsed.attachment_names.is_empty(),
+    )?;
+    am_storage::attachments_repo::replace_for_message(db, message_id, &parsed.attachment_names)?;
     Ok(body)
 }
 
@@ -242,6 +255,8 @@ mod tests {
             seen: true,
             flagged: false,
             size: 42,
+            in_reply_to: None,
+            references: vec![],
         };
         let header = header_from_fetch(&fetched);
         assert_eq!(header.uid, 7);

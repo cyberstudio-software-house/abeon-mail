@@ -61,8 +61,8 @@ pub fn insert_headers(
     {
         let mut stmt = tx.prepare(
             "INSERT OR IGNORE INTO messages
-             (account_id, folder_id, uid, message_id_hdr, from_address, from_name, subject, date, seen, flagged, has_attachments, size, snippet)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+             (account_id, folder_id, uid, message_id_hdr, in_reply_to, references_hdr, from_address, from_name, subject, date, seen, flagged, has_attachments, size, snippet)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
         )?;
         for h in headers {
             let inserted = stmt.execute(params![
@@ -70,6 +70,8 @@ pub fn insert_headers(
                 folder_id,
                 h.uid,
                 h.message_id_hdr,
+                h.in_reply_to,
+                h.references_hdr,
                 h.from_address,
                 h.from_name,
                 h.subject,
@@ -166,6 +168,23 @@ pub fn message_uid(db: &Database, message_id: i64) -> Result<(i64, i64), Storage
     })
 }
 
+pub fn backfill_body_meta(
+    db: &Database,
+    message_id: i64,
+    snippet: &str,
+    has_attachments: bool,
+) -> Result<(), StorageError> {
+    let conn = db.conn();
+    let changed = conn.execute(
+        "UPDATE messages SET snippet = ?2, has_attachments = ?3 WHERE id = ?1",
+        params![message_id, snippet, has_attachments as i64],
+    )?;
+    if changed == 0 {
+        return Err(StorageError::NotFound);
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -188,6 +207,8 @@ mod tests {
         NewMessageHeader {
             uid,
             message_id_hdr: Some(format!("<msg-{uid}@example.com>")),
+            in_reply_to: None,
+            references_hdr: None,
             from_address: "sender@example.com".into(),
             from_name: Some("Sender".into()),
             subject: format!("Subject {uid}"),
@@ -293,5 +314,17 @@ mod tests {
         let (fid, uid) = message_uid(&db, msg.id).unwrap();
         assert_eq!(fid, folder_id);
         assert_eq!(uid, 42);
+    }
+
+    #[test]
+    fn backfill_body_meta_updates_snippet_and_attachments() {
+        let db = Database::open_in_memory().unwrap();
+        let folder_id = setup(&db);
+        insert_headers(&db, folder_id, &[make_header(1, 1000)]).unwrap();
+        let msg = list_by_folder(&db, folder_id, 1, 0).unwrap().into_iter().next().unwrap();
+        backfill_body_meta(&db, msg.id, "new snippet", true).unwrap();
+        let updated = get_header(&db, msg.id).unwrap();
+        assert_eq!(updated.snippet, "new snippet");
+        assert!(updated.has_attachments);
     }
 }
