@@ -4,6 +4,7 @@ import { useUiStore } from "../../app/store";
 import { useMessageBody } from "../../ipc/queries";
 import { commands } from "../../ipc/bindings";
 import { SafeHtmlFrame } from "./SafeHtmlFrame";
+import "./reader.css";
 
 function RemoteContentBanner() {
   const [dismissed, setDismissed] = useState(false);

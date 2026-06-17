@@ -150,4 +150,29 @@ describe("ReaderPane", () => {
     expect(screen.getByText(/loading/i)).toBeTruthy();
     expect(document.querySelector("iframe")).toBeNull();
   });
+
+  it("sanitizes html and prevents raw html from reaching iframe", async () => {
+    setupStore(1);
+    mockUseMessageBody.mockReturnValue({
+      data: {
+        message_id: 1,
+        text_html: "<p>RAW</p>",
+        text_plain: null,
+      } as MessageBody,
+      isLoading: false,
+    } as ReturnType<typeof useMessageBody>);
+    mockSanitize.mockResolvedValue({ html: "<p>SAFE</p>", blocked_remote_content: false });
+
+    const { container } = render(<ReaderPane />, { wrapper: Wrapper });
+
+    await waitFor(() => {
+      const iframe = container.querySelector("iframe");
+      expect(iframe).toBeTruthy();
+    });
+
+    const iframe = container.querySelector("iframe");
+    const srcdoc = iframe?.getAttribute("srcdoc");
+    expect(srcdoc).toContain("<p>SAFE</p>");
+    expect(srcdoc).not.toContain("<p>RAW</p>");
+  });
 });
