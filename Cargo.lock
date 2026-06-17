@@ -79,12 +79,17 @@ dependencies = [
 name = "am-app"
 version = "0.1.0"
 dependencies = [
+ "am-auth",
  "am-core",
+ "am-mime",
  "am-storage",
+ "am-sync",
+ "serde",
  "specta",
  "specta-typescript",
  "tauri",
  "tauri-specta",
+ "tokio",
 ]
 
 [[package]]
