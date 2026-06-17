@@ -53,6 +53,7 @@ enum SessionStream {
 
 pub struct ImapSession {
     session: SessionStream,
+    selected_exists: Option<u32>,
 }
 
 impl std::fmt::Debug for ImapSession {
@@ -82,12 +83,14 @@ impl ImapSession {
             let session = login(client, &config.username, password).await?;
             Ok(ImapSession {
                 session: SessionStream::Tls(Box::new(session)),
+                selected_exists: None,
             })
         } else {
             let client = Client::new(tcp);
             let session = login(client, &config.username, password).await?;
             Ok(ImapSession {
                 session: SessionStream::Plain(Box::new(session)),
+                selected_exists: None,
             })
         }
     }
@@ -111,6 +114,7 @@ impl ImapSession {
             SessionStream::Plain(s) => s.select(remote_path).await?,
             SessionStream::Tls(s) => s.select(remote_path).await?,
         };
+        self.selected_exists = Some(mailbox.exists);
         Ok(MailboxState {
             uidvalidity: mailbox.uid_validity.unwrap_or(0) as i64,
             uidnext: mailbox.uid_next.unwrap_or(0) as i64,
@@ -122,10 +126,9 @@ impl ImapSession {
         &mut self,
         limit: u32,
     ) -> Result<Vec<FetchedHeader>, ProtocolError> {
-        let exists = match &mut self.session {
-            SessionStream::Plain(s) => s.select("INBOX").await?.exists,
-            SessionStream::Tls(s) => s.select("INBOX").await?.exists,
-        };
+        let exists = self
+            .selected_exists
+            .ok_or_else(|| ProtocolError::Protocol("no mailbox selected".into()))?;
 
         if exists == 0 || limit == 0 {
             return Ok(Vec::new());
