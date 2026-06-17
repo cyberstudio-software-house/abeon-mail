@@ -1,10 +1,12 @@
 use am_auth::endpoints::Endpoints;
 use am_core::account::{Account, NewAccount, ProviderType};
 use am_core::folder::FolderType;
-use am_core::message::{MessageBody, NewMessageHeader, SyncProgress};
+use am_core::message::{MessageBody, MessageFlag, NewMessageHeader, SyncProgress};
 use am_protocols::imap::{FetchedHeader, ImapConfig, ImapSession, RemoteFolder};
-use am_storage::{accounts_repo, folders_repo, messages_repo, Database, StorageError};
+use am_storage::{accounts_repo, folders_repo, messages_repo, queue_repo, Database, StorageError};
 use crate::events::{SyncEvent, SyncEventSink};
+
+const MAX_QUEUE_ATTEMPTS: i64 = 6;
 
 const INITIAL_SYNC_LIMIT: u32 = 200;
 const INBOX_PATH: &str = "INBOX";
@@ -323,6 +325,94 @@ pub async fn incremental_sync_folder(
         sink.emit(SyncEvent::NewMessages { account_id, folder_id, count: new_count });
     }
     sink.emit(SyncEvent::MailboxChanged { account_id, folder_id });
+    Ok(())
+}
+
+fn flag_label(flag: MessageFlag) -> &'static str {
+    match flag {
+        MessageFlag::Seen => "seen",
+        MessageFlag::Flagged => "flagged",
+    }
+}
+
+fn imap_flag(flag: MessageFlag) -> &'static str {
+    match flag {
+        MessageFlag::Seen => "\\Seen",
+        MessageFlag::Flagged => "\\Flagged",
+    }
+}
+
+pub fn enqueue_flag(db: &Database, message_id: i64, flag: MessageFlag, value: bool) -> Result<(), SyncError> {
+    let loc = messages_repo::locate(db, message_id)?;
+    let markers = folders_repo::get_sync_markers(db, loc.folder_id)?;
+    let uidvalidity = markers.uidvalidity.unwrap_or(0);
+
+    messages_repo::set_flag(db, message_id, flag, value)?;
+    folders_repo::recount_unread(db, loc.folder_id)?;
+
+    let payload = serde_json::json!({
+        "folder_id": loc.folder_id,
+        "uid": loc.uid,
+        "uidvalidity": uidvalidity,
+        "flag": flag_label(flag),
+        "value": value,
+    })
+    .to_string();
+    queue_repo::enqueue(db, loc.account_id, "set_flag", &payload)?;
+    Ok(())
+}
+
+pub async fn drain_queue(db: &Database, account_id: i64, now: i64) -> Result<(), SyncError> {
+    let due = queue_repo::list_due(db, account_id, now)?;
+    if due.is_empty() {
+        return Ok(());
+    }
+
+    let account = accounts_repo::get_account(db, account_id)?;
+    let endpoints = load_endpoints(db, account_id)?;
+    let password = am_auth::credentials::load_password(&account.email)?;
+    let config = imap_config(&endpoints, &account.email);
+
+    for op in due {
+        let parsed: serde_json::Value = match serde_json::from_str(&op.payload) {
+            Ok(v) => v,
+            Err(_) => { queue_repo::mark_done(db, op.id)?; continue; }
+        };
+        let folder_id = parsed["folder_id"].as_i64().unwrap_or(0);
+        let uid = parsed["uid"].as_i64().unwrap_or(0);
+        let payload_validity = parsed["uidvalidity"].as_i64().unwrap_or(-1);
+        let flag = match parsed["flag"].as_str() {
+            Some("seen") => MessageFlag::Seen,
+            Some("flagged") => MessageFlag::Flagged,
+            _ => { queue_repo::mark_done(db, op.id)?; continue; }
+        };
+        let value = parsed["value"].as_bool().unwrap_or(false);
+
+        let folder = folders_repo::get_folder(db, folder_id)?;
+        let current_validity = folders_repo::get_sync_markers(db, folder_id)?.uidvalidity.unwrap_or(-2);
+        if payload_validity != current_validity {
+            queue_repo::mark_done(db, op.id)?;
+            continue;
+        }
+
+        let result: Result<(), SyncError> = async {
+            let mut session = ImapSession::connect(&config, &password).await?;
+            session.select(&folder.remote_path).await?;
+            session.store_flag(uid, imap_flag(flag), value).await?;
+            session.logout().await?;
+            Ok(())
+        }
+        .await;
+
+        match result {
+            Ok(()) => queue_repo::mark_done(db, op.id)?,
+            Err(_) if op.attempts + 1 >= MAX_QUEUE_ATTEMPTS => queue_repo::mark_done(db, op.id)?,
+            Err(_) => {
+                let backoff = now + 2i64.pow((op.attempts + 1).min(5) as u32) * 30;
+                queue_repo::mark_retry(db, op.id, backoff)?;
+            }
+        }
+    }
     Ok(())
 }
 
