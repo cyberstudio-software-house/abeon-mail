@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { commands } from "./bindings";
-import type { Account, Endpoints } from "./bindings";
+import type { Account, Endpoints, MessageFlag } from "./bindings";
 
 type ResultOk<T> = { status: "ok"; data: T };
 type ResultErr = { status: "error"; error: string };
@@ -11,6 +11,22 @@ function unwrap<T>(result: Result<T>): T {
     throw new Error(result.error);
   }
   return result.data;
+}
+
+export function useThreads(folderId: number | null) {
+  return useQuery({
+    queryKey: ["threads", folderId],
+    queryFn: () => commands.listThreads(folderId!, 100, 0).then(unwrap),
+    enabled: folderId != null,
+  });
+}
+
+export function useThreadMessages(threadId: number | null) {
+  return useQuery({
+    queryKey: ["thread-messages", threadId],
+    queryFn: () => commands.listThreadMessages(threadId!).then(unwrap),
+    enabled: threadId != null,
+  });
 }
 
 export function useAccounts() {
@@ -47,6 +63,29 @@ export function useMessageBody(messageId: number | null) {
 export function useResolveEndpoints() {
   return useMutation({
     mutationFn: (email: string) => commands.resolveEndpoints(email),
+  });
+}
+
+export function useSetFlag() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ messageId, flag, value }: { messageId: number; flag: MessageFlag; value: boolean }) =>
+      commands.setMessageFlags(messageId, flag, value).then(unwrap),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["messages"] });
+      queryClient.invalidateQueries({ queryKey: ["folders"] });
+    },
+  });
+}
+
+export function useMarkSeen() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (messageId: number) => commands.markMessageSeen(messageId).then(unwrap),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["messages"] });
+      queryClient.invalidateQueries({ queryKey: ["folders"] });
+    },
   });
 }
 

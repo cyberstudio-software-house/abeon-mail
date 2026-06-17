@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::time::Duration;
 
 use async_imap::types::{Fetch, Flag, Name, NameAttribute};
 use async_imap::{Client, Session};
@@ -30,6 +31,8 @@ pub struct FetchedHeader {
     pub seen: bool,
     pub flagged: bool,
     pub size: i64,
+    pub in_reply_to: Option<String>,
+    pub references: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -44,6 +47,27 @@ pub struct MailboxState {
     pub uidvalidity: i64,
     pub uidnext: i64,
     pub exists: i64,
+    pub highestmodseq: Option<i64>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ServerCaps {
+    pub condstore: bool,
+    pub idle: bool,
+    pub qresync: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FlagState {
+    pub uid: i64,
+    pub seen: bool,
+    pub flagged: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IdleOutcome {
+    Changed,
+    TimedOut,
 }
 
 enum SessionStream {
@@ -119,6 +143,7 @@ impl ImapSession {
             uidvalidity: mailbox.uid_validity.unwrap_or(0) as i64,
             uidnext: mailbox.uid_next.unwrap_or(0) as i64,
             exists: mailbox.exists as i64,
+            highestmodseq: mailbox.highest_modseq.map(|v| v as i64),
         })
     }
 
@@ -136,7 +161,7 @@ impl ImapSession {
 
         let start = exists.saturating_sub(limit).saturating_add(1).max(1);
         let range = format!("{start}:{exists}");
-        let query = "(UID ENVELOPE FLAGS RFC822.SIZE INTERNALDATE)";
+        let query = "(UID ENVELOPE FLAGS RFC822.SIZE INTERNALDATE BODY.PEEK[HEADER.FIELDS (REFERENCES)])";
 
         let fetches: Vec<Fetch> = match &mut self.session {
             SessionStream::Plain(s) => {
@@ -181,6 +206,123 @@ impl ImapSession {
         }
         Ok(())
     }
+
+    pub async fn server_caps(&mut self) -> Result<ServerCaps, ProtocolError> {
+        let caps = match &mut self.session {
+            SessionStream::Plain(s) => s.capabilities().await?,
+            SessionStream::Tls(s) => s.capabilities().await?,
+        };
+        Ok(ServerCaps {
+            condstore: caps.has_str("CONDSTORE"),
+            idle: caps.has_str("IDLE"),
+            qresync: caps.has_str("QRESYNC"),
+        })
+    }
+
+    pub async fn search_new_uids(&mut self, since_uid: i64) -> Result<Vec<i64>, ProtocolError> {
+        let start = since_uid.max(1);
+        let query = format!("UID {start}:*");
+        let set = match &mut self.session {
+            SessionStream::Plain(s) => s.uid_search(&query).await?,
+            SessionStream::Tls(s) => s.uid_search(&query).await?,
+        };
+        let mut uids: Vec<i64> = set.into_iter().map(|u| u as i64).filter(|u| *u >= start).collect();
+        uids.sort_unstable();
+        Ok(uids)
+    }
+
+    pub async fn search_all_uids(&mut self) -> Result<Vec<i64>, ProtocolError> {
+        let set = match &mut self.session {
+            SessionStream::Plain(s) => s.uid_search("UID 1:*").await?,
+            SessionStream::Tls(s) => s.uid_search("UID 1:*").await?,
+        };
+        let mut uids: Vec<i64> = set.into_iter().map(|u| u as i64).collect();
+        uids.sort_unstable();
+        Ok(uids)
+    }
+
+    pub async fn fetch_headers_by_uids(&mut self, uids: &[i64]) -> Result<Vec<FetchedHeader>, ProtocolError> {
+        if uids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let list = uids.iter().map(|u| u.to_string()).collect::<Vec<_>>().join(",");
+        let query = "(UID ENVELOPE FLAGS RFC822.SIZE INTERNALDATE BODY.PEEK[HEADER.FIELDS (REFERENCES)])";
+        let fetches: Vec<Fetch> = match &mut self.session {
+            SessionStream::Plain(s) => s.uid_fetch(&list, query).await?.try_collect().await?,
+            SessionStream::Tls(s) => s.uid_fetch(&list, query).await?.try_collect().await?,
+        };
+        let mut headers: Vec<FetchedHeader> = fetches.iter().map(map_header).collect();
+        headers.sort_by(|a, b| b.uid.cmp(&a.uid));
+        Ok(headers)
+    }
+
+    pub async fn fetch_flag_changes(&mut self, since_modseq: i64) -> Result<Vec<FlagState>, ProtocolError> {
+        let query = format!("(UID FLAGS) (CHANGEDSINCE {since_modseq})");
+        let fetches: Vec<Fetch> = match &mut self.session {
+            SessionStream::Plain(s) => s.fetch("1:*", &query).await?.try_collect().await?,
+            SessionStream::Tls(s) => s.fetch("1:*", &query).await?.try_collect().await?,
+        };
+        Ok(fetches.iter().map(flag_state).collect())
+    }
+
+    pub async fn fetch_all_flags(&mut self) -> Result<Vec<FlagState>, ProtocolError> {
+        let fetches: Vec<Fetch> = match &mut self.session {
+            SessionStream::Plain(s) => s.fetch("1:*", "(UID FLAGS)").await?.try_collect().await?,
+            SessionStream::Tls(s) => s.fetch("1:*", "(UID FLAGS)").await?.try_collect().await?,
+        };
+        Ok(fetches.iter().map(flag_state).collect())
+    }
+
+    pub async fn store_flag(&mut self, uid: i64, flag: &str, value: bool) -> Result<(), ProtocolError> {
+        let op = if value { "+FLAGS" } else { "-FLAGS" };
+        let query = format!("{op} ({flag})");
+        let uid_str = uid.to_string();
+        let _: Vec<Fetch> = match &mut self.session {
+            SessionStream::Plain(s) => s.uid_store(&uid_str, &query).await?.try_collect().await?,
+            SessionStream::Tls(s) => s.uid_store(&uid_str, &query).await?.try_collect().await?,
+        };
+        Ok(())
+    }
+
+    pub async fn idle_wait(self, timeout: Duration) -> Result<(ImapSession, IdleOutcome), ProtocolError> {
+        match self.session {
+            SessionStream::Plain(s) => {
+                let mut handle = (*s).idle();
+                handle.init().await?;
+                let (result, _stop) = handle.wait_with_timeout(timeout);
+                let outcome = match result.await {
+                    Ok(async_imap::extensions::idle::IdleResponse::NewData(_)) => IdleOutcome::Changed,
+                    _ => IdleOutcome::TimedOut,
+                };
+                let session = handle.done().await?;
+                Ok((ImapSession { session: SessionStream::Plain(Box::new(session)), selected_exists: None }, outcome))
+            }
+            SessionStream::Tls(s) => {
+                let mut handle = (*s).idle();
+                handle.init().await?;
+                let (result, _stop) = handle.wait_with_timeout(timeout);
+                let outcome = match result.await {
+                    Ok(async_imap::extensions::idle::IdleResponse::NewData(_)) => IdleOutcome::Changed,
+                    _ => IdleOutcome::TimedOut,
+                };
+                let session = handle.done().await?;
+                Ok((ImapSession { session: SessionStream::Tls(Box::new(session)), selected_exists: None }, outcome))
+            }
+        }
+    }
+}
+
+fn flag_state(fetch: &Fetch) -> FlagState {
+    let mut seen = false;
+    let mut flagged = false;
+    for flag in fetch.flags() {
+        match flag {
+            Flag::Seen => seen = true,
+            Flag::Flagged => flagged = true,
+            _ => {}
+        }
+    }
+    FlagState { uid: fetch.uid.unwrap_or(0) as i64, seen, flagged }
 }
 
 async fn login<T>(
@@ -288,6 +430,16 @@ fn map_header(fetch: &Fetch) -> FetchedHeader {
         })
         .unwrap_or(0);
 
+    let in_reply_to = envelope
+        .and_then(|e| e.in_reply_to.as_ref())
+        .map(|s| decode_bytes(s))
+        .filter(|s| !s.trim().is_empty());
+
+    let references = fetch
+        .header()
+        .map(|h| parse_references(&String::from_utf8_lossy(h)))
+        .unwrap_or_default();
+
     FetchedHeader {
         uid,
         message_id_hdr,
@@ -298,11 +450,28 @@ fn map_header(fetch: &Fetch) -> FetchedHeader {
         seen,
         flagged,
         size,
+        in_reply_to,
+        references,
     }
 }
 
 fn decode_bytes(bytes: &[u8]) -> String {
-    String::from_utf8_lossy(bytes).into_owned()
+    am_mime::rfc2047::decode(&String::from_utf8_lossy(bytes))
+}
+
+fn parse_references(raw: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut rest = raw;
+    while let Some(open) = rest.find('<') {
+        let after = &rest[open..];
+        if let Some(close) = after.find('>') {
+            out.push(after[..=close].to_string());
+            rest = &after[close + 1..];
+        } else {
+            break;
+        }
+    }
+    out
 }
 
 fn parse_envelope_date(value: &str) -> Option<i64> {
@@ -325,5 +494,19 @@ mod tests {
         .with_safe_default_protocol_versions()
         .map(|b| b.with_root_certificates(roots).with_no_client_auth());
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn parse_references_extracts_all_ids() {
+        let raw = "<a@x.com> <b@y.com>\r\n <c@z.com>";
+        assert_eq!(
+            parse_references(raw),
+            vec!["<a@x.com>".to_string(), "<b@y.com>".to_string(), "<c@z.com>".to_string()]
+        );
+    }
+
+    #[test]
+    fn parse_references_empty_when_none() {
+        assert!(parse_references("   ").is_empty());
     }
 }

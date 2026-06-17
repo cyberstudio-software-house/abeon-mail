@@ -13,10 +13,15 @@ export const commands = {
 	listMessages: (folderId: number, limit: number, offset: number) => typedError<MessageHeader[], string>(__TAURI_INVOKE("list_messages", { folderId, limit, offset })),
 	getMessageBody: (messageId: number) => typedError<MessageBody, string>(__TAURI_INVOKE("get_message_body", { messageId })),
 	sanitizeMessageHtml: (html: string) => __TAURI_INVOKE<SanitizedHtml>("sanitize_message_html", { html }),
+	setMessageFlags: (messageId: number, flag: MessageFlag, value: boolean) => typedError<null, string>(__TAURI_INVOKE("set_message_flags", { messageId, flag, value })),
+	markMessageSeen: (messageId: number) => typedError<null, string>(__TAURI_INVOKE("mark_message_seen", { messageId })),
+	listThreads: (folderId: number, limit: number, offset: number) => typedError<ThreadSummary[], string>(__TAURI_INVOKE("list_threads", { folderId, limit, offset })),
+	listThreadMessages: (threadId: number) => typedError<MessageHeader[], string>(__TAURI_INVOKE("list_thread_messages", { threadId })),
 };
 
 /** Events */
 export const events = {
+	mailboxChanged: makeEvent<MailboxChanged>("mailbox-changed"),
 	newMessages: makeEvent<NewMessages>("new-messages"),
 	syncProgress: makeEvent<SyncProgress>("sync-progress"),
 };
@@ -52,11 +57,18 @@ export type Folder = {
 
 export type FolderType = "inbox" | "sent" | "drafts" | "trash" | "spam" | "archive" | "custom";
 
+export type MailboxChanged = {
+	account_id: number,
+	folder_id: number,
+};
+
 export type MessageBody = {
 	message_id: number,
 	text_plain: string | null,
 	text_html: string | null,
 };
+
+export type MessageFlag = "seen" | "flagged";
 
 export type MessageHeader = {
 	id: number,
@@ -90,6 +102,19 @@ export type SyncProgress = {
 	folder_id: number,
 	fetched: number,
 	total: number,
+};
+
+export type ThreadSummary = {
+	thread_id: number,
+	account_id: number,
+	subject: string,
+	last_date: number,
+	message_count: number,
+	unread_count: number,
+	participants: string[],
+	snippet: string,
+	has_attachments: boolean,
+	flagged: boolean,
 };
 
 /* Tauri Specta runtime */

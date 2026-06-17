@@ -1,8 +1,8 @@
 import { useRef } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { useMessages } from "../../ipc/queries";
+import { useThreads } from "../../ipc/queries";
 import { useUiStore, type Density } from "../../app/store";
-import type { MessageHeader } from "../../ipc/bindings";
+import type { ThreadSummary } from "../../ipc/bindings";
 import "./MessageListPane.css";
 
 const ROW_HEIGHT: Record<Density, number> = {
@@ -26,26 +26,25 @@ function formatDate(epochSeconds: number): string {
   return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
-function MessageRow({
-  message,
+function ThreadRow({
+  thread,
   isSelected,
   rowHeight,
   onSelect,
 }: {
-  message: MessageHeader;
+  thread: ThreadSummary;
   isSelected: boolean;
   rowHeight: number;
   onSelect: (id: number) => void;
 }) {
-  const sender = message.from_name || message.from_address;
-  const isUnread = !message.seen;
+  const isUnread = thread.unread_count > 0;
 
   return (
     <div
       className={`message-row${isUnread ? " message-row--unread" : ""}${isSelected ? " message-row--selected" : ""}`}
       style={{ height: rowHeight }}
-      data-message-id={message.id}
-      onClick={() => onSelect(message.id)}
+      data-thread-id={thread.thread_id}
+      onClick={() => onSelect(thread.thread_id)}
       role="option"
       aria-selected={isSelected}
     >
@@ -54,17 +53,26 @@ function MessageRow({
       </div>
       <div className="message-row__content">
         <div className="message-row__header">
-          <span className={`message-row__sender${isUnread ? " message-row__sender--bold" : ""}`}>{sender}</span>
-          <span className="message-row__date">{formatDate(message.date)}</span>
+          <span className={`message-row__sender${isUnread ? " message-row__sender--bold" : ""}`}>
+            {thread.participants.join(", ")}
+          </span>
+          <span className="message-row__date">{formatDate(thread.last_date)}</span>
         </div>
         <div className="message-row__meta">
-          <span className="message-row__subject">{message.subject}</span>
+          <span className="message-row__subject">{thread.subject}</span>
           <div className="message-row__badges">
-            {message.flagged && <span className="message-row__flag" aria-label="flagged">⚑</span>}
-            {message.has_attachments && <span className="message-row__attachment" aria-label="has attachments">📎</span>}
+            {thread.flagged && <span className="message-row__flag" aria-label="flagged">⚑</span>}
+            {thread.message_count > 1 && (
+              <span className="message-row__count" aria-label={`${thread.message_count} messages`}>
+                {thread.message_count}
+              </span>
+            )}
+            {thread.has_attachments && (
+              <span className="message-row__attachment" aria-label="has attachments">📎</span>
+            )}
           </div>
         </div>
-        <span className="message-row__snippet">{message.snippet}</span>
+        <span className="message-row__snippet">{thread.snippet}</span>
       </div>
     </div>
   );
@@ -81,17 +89,17 @@ function SkeletonRow({ height }: { height: number }) {
 
 export function MessageListPane() {
   const selectedFolderId = useUiStore((s) => s.selectedFolderId);
-  const selectedMessageId = useUiStore((s) => s.selectedMessageId);
+  const selectedThreadId = useUiStore((s) => s.selectedThreadId);
   const density = useUiStore((s) => s.density);
-  const setSelectedMessageId = useUiStore((s) => s.setSelectedMessageId);
+  const setSelectedThreadId = useUiStore((s) => s.setSelectedThreadId);
 
-  const { data: messages, isLoading } = useMessages(selectedFolderId);
+  const { data: threads, isLoading } = useThreads(selectedFolderId);
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const rowHeight = ROW_HEIGHT[density] ?? ROW_HEIGHT.comfortable;
 
   const virtualizer = useVirtualizer({
-    count: messages?.length ?? 0,
+    count: threads?.length ?? 0,
     getScrollElement: () => scrollContainerRef.current,
     estimateSize: () => rowHeight,
     overscan: 5,
@@ -113,11 +121,11 @@ export function MessageListPane() {
         </div>
       )}
 
-      {selectedFolderId != null && !isLoading && messages?.length === 0 && (
+      {selectedFolderId != null && !isLoading && threads?.length === 0 && (
         <div className="message-list__empty">No messages</div>
       )}
 
-      {selectedFolderId != null && !isLoading && messages && messages.length > 0 && (
+      {selectedFolderId != null && !isLoading && threads && threads.length > 0 && (
         <div
           ref={scrollContainerRef}
           className="message-list__scroll"
@@ -127,7 +135,7 @@ export function MessageListPane() {
         >
           <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
             {virtualItems.map((virtualItem) => {
-              const message = messages[virtualItem.index];
+              const thread = threads[virtualItem.index];
               return (
                 <div
                   key={virtualItem.key}
@@ -139,11 +147,11 @@ export function MessageListPane() {
                     height: virtualItem.size,
                   }}
                 >
-                  <MessageRow
-                    message={message}
-                    isSelected={selectedMessageId === message.id}
+                  <ThreadRow
+                    thread={thread}
+                    isSelected={selectedThreadId === thread.thread_id}
                     rowHeight={rowHeight}
-                    onSelect={setSelectedMessageId}
+                    onSelect={setSelectedThreadId}
                   />
                 </div>
               );

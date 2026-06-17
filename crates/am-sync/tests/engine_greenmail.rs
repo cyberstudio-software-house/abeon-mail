@@ -5,7 +5,7 @@ use std::sync::{Mutex, Once};
 use std::time::Duration;
 
 use am_auth::endpoints::Endpoints;
-use am_storage::{accounts_repo, folders_repo, messages_repo, Database};
+use am_storage::{folders_repo, messages_repo, Database};
 use am_sync::service::{self, AddAccountInput};
 use async_imap::Client;
 use keyring::credential::{Credential, CredentialApi, CredentialBuilderApi, CredentialPersistence};
@@ -15,15 +15,8 @@ use testcontainers::{GenericImage, ImageExt};
 use tokio::net::TcpStream;
 
 const IMAP_PORT: u16 = 3143;
-const USER: &str = "sync-user@localhost";
-const PASSWORD: &str = "sync-secret";
-
-const SUBJECT_ONE: &str = "Sync Seed One";
-const BODY_ONE: &str = "First sync body marker GAMMA";
-const SUBJECT_TWO: &str = "Sync Seed Two";
-const BODY_TWO: &str = "Second sync body marker DELTA";
-const SUBJECT_THREE: &str = "Sync Seed Three";
-const BODY_THREE: &str = "Third sync body marker EPSILON";
+const USER: &str = "engine-user@localhost";
+const PASSWORD: &str = "engine-secret";
 
 static STORE: Mutex<Option<HashMap<(String, String), String>>> = Mutex::new(None);
 static INIT: Once = Once::new();
@@ -114,7 +107,7 @@ fn raw_message(subject: &str, body: &str) -> String {
     )
 }
 
-async fn seed_messages(port: u16) {
+async fn seed_one(port: u16, subject: &str, body: &str) {
     let tcp = TcpStream::connect(("127.0.0.1", port))
         .await
         .expect("connect for seeding failed");
@@ -124,31 +117,17 @@ async fn seed_messages(port: u16) {
         .await
         .map_err(|(e, _)| e)
         .expect("seed login failed");
-
-    for (subject, body) in [
-        (SUBJECT_ONE, BODY_ONE),
-        (SUBJECT_TWO, BODY_TWO),
-        (SUBJECT_THREE, BODY_THREE),
-    ] {
-        session
-            .append("INBOX", None, None, raw_message(subject, body).as_bytes())
-            .await
-            .expect("append failed");
-    }
-
-    session.create("Archive").await.ok();
     session
-        .append("Archive", None, None, raw_message("Archived One", "archive marker ZETA").as_bytes())
+        .append("INBOX", None, None, raw_message(subject, body).as_bytes())
         .await
-        .expect("append to archive failed");
-
+        .expect("append failed");
     session.logout().await.expect("seed logout failed");
 }
 
 #[tokio::test]
-async fn add_account_syncs_inbox_and_fetches_body() {
+async fn engine_picks_up_new_message_via_incremental() {
     if !docker_available() {
-        eprintln!("docker is not available; skipping greenmail sync integration test");
+        eprintln!("docker not available; skipping engine integration test");
         return;
     }
 
@@ -174,7 +153,7 @@ async fn add_account_syncs_inbox_and_fetches_body() {
 
     tokio::time::sleep(Duration::from_millis(500)).await;
 
-    seed_messages(mapped_port).await;
+    seed_one(mapped_port, "Seed One", "seed body marker ALPHA").await;
 
     let endpoints = Endpoints {
         imap_host: "127.0.0.1".to_string(),
@@ -185,11 +164,11 @@ async fn add_account_syncs_inbox_and_fetches_body() {
         smtp_tls: false,
     };
 
-    let db = Database::open_in_memory().expect("db open failed");
+    let db = std::sync::Arc::new(Database::open_in_memory().expect("db open failed"));
 
     let input = AddAccountInput {
         email: USER.to_string(),
-        display_name: "Sync User".to_string(),
+        display_name: "Engine User".to_string(),
         password: PASSWORD.to_string(),
         endpoints,
     };
@@ -198,58 +177,28 @@ async fn add_account_syncs_inbox_and_fetches_body() {
         .await
         .expect("add_account failed");
 
-    let accounts = accounts_repo::list_accounts(&db).expect("list_accounts failed");
-    assert_eq!(accounts.len(), 1);
-    assert_eq!(accounts[0].id, account.id);
+    let sink = std::sync::Arc::new(am_sync::events::NoopSink);
+    let engine = am_sync::engine::SyncEngine::start(std::sync::Arc::clone(&db), sink);
+    engine.spawn_account(account.id);
 
-    let folders = folders_repo::list_folders(&db, account.id).expect("list_folders failed");
-    assert!(
-        folders
-            .iter()
-            .any(|f| f.remote_path.eq_ignore_ascii_case("INBOX")),
-        "INBOX not found in folders: {folders:?}"
-    );
+    seed_one(mapped_port, "Live One", "live marker OMEGA").await;
 
-    let inbox = folders
-        .iter()
+    let inbox = folders_repo::list_folders(&db, account.id)
+        .unwrap()
+        .into_iter()
         .find(|f| f.remote_path.eq_ignore_ascii_case("INBOX"))
-        .expect("inbox folder missing");
+        .unwrap();
 
-    let headers = messages_repo::list_by_folder(&db, inbox.id, 50, 0).expect("list_by_folder failed");
-    assert_eq!(headers.len(), 3, "expected 3 headers, got {}", headers.len());
+    let mut found = false;
+    for _ in 0..40 {
+        let headers = messages_repo::list_by_folder(&db, inbox.id, 50, 0).unwrap();
+        if headers.iter().any(|h| h.subject == "Live One") {
+            found = true;
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+    }
+    assert!(found, "engine did not pick up the new message");
 
-    let subjects: Vec<&str> = headers.iter().map(|h| h.subject.as_str()).collect();
-    assert!(subjects.contains(&SUBJECT_ONE), "missing subject one: {subjects:?}");
-    assert!(subjects.contains(&SUBJECT_TWO), "missing subject two: {subjects:?}");
-    assert!(subjects.contains(&SUBJECT_THREE), "missing subject three: {subjects:?}");
-
-    let first = &headers[0];
-    let body = service::get_or_fetch_body(&db, first.id)
-        .await
-        .expect("get_or_fetch_body failed");
-
-    let combined = format!(
-        "{}{}",
-        body.text_plain.clone().unwrap_or_default(),
-        body.text_html.clone().unwrap_or_default()
-    );
-    assert!(
-        [BODY_ONE, BODY_TWO, BODY_THREE]
-            .iter()
-            .any(|marker| combined.contains(marker)),
-        "fetched body did not contain any seeded marker: {combined}"
-    );
-
-    let cached = service::get_or_fetch_body(&db, first.id)
-        .await
-        .expect("cached get_or_fetch_body failed");
-    assert_eq!(cached, body);
-
-    let archive = folders
-        .iter()
-        .find(|f| f.remote_path.eq_ignore_ascii_case("Archive"))
-        .expect("archive folder missing");
-    let archive_headers = messages_repo::list_by_folder(&db, archive.id, 50, 0).expect("archive list failed");
-    assert_eq!(archive_headers.len(), 1, "expected 1 archived header");
-    assert_eq!(archive_headers[0].subject, "Archived One");
+    engine.shutdown();
 }

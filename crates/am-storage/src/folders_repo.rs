@@ -3,6 +3,13 @@ use rusqlite::params;
 
 use crate::db::{Database, StorageError};
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SyncMarkers {
+    pub uidvalidity: Option<i64>,
+    pub uidnext: Option<i64>,
+    pub highestmodseq: Option<i64>,
+}
+
 fn folder_type_to_str(ft: &FolderType) -> &'static str {
     match ft {
         FolderType::Inbox => "inbox",
@@ -115,23 +122,6 @@ pub fn get_folder(db: &Database, id: i64) -> Result<Folder, StorageError> {
     .and_then(tuple_to_folder)
 }
 
-pub fn set_uid_state(
-    db: &Database,
-    folder_id: i64,
-    uidvalidity: i64,
-    uidnext: i64,
-) -> Result<(), StorageError> {
-    let conn = db.conn();
-    let changed = conn.execute(
-        "UPDATE folders SET uidvalidity = ?2, uidnext = ?3 WHERE id = ?1",
-        params![folder_id, uidvalidity, uidnext],
-    )?;
-    if changed == 0 {
-        return Err(StorageError::NotFound);
-    }
-    Ok(())
-}
-
 pub fn set_counts(
     db: &Database,
     folder_id: i64,
@@ -147,6 +137,55 @@ pub fn set_counts(
         return Err(StorageError::NotFound);
     }
     Ok(())
+}
+
+pub fn set_sync_markers(
+    db: &Database,
+    folder_id: i64,
+    uidvalidity: i64,
+    uidnext: i64,
+    highestmodseq: Option<i64>,
+    last_synced_at: i64,
+) -> Result<(), StorageError> {
+    let conn = db.conn();
+    let changed = conn.execute(
+        "UPDATE folders SET uidvalidity = ?2, uidnext = ?3, highestmodseq = ?4, last_synced_at = ?5 WHERE id = ?1",
+        params![folder_id, uidvalidity, uidnext, highestmodseq, last_synced_at],
+    )?;
+    if changed == 0 {
+        return Err(StorageError::NotFound);
+    }
+    Ok(())
+}
+
+pub fn get_sync_markers(db: &Database, folder_id: i64) -> Result<SyncMarkers, StorageError> {
+    let conn = db.conn();
+    conn.query_row(
+        "SELECT uidvalidity, uidnext, highestmodseq FROM folders WHERE id = ?1",
+        params![folder_id],
+        |row| {
+            Ok(SyncMarkers {
+                uidvalidity: row.get(0)?,
+                uidnext: row.get(1)?,
+                highestmodseq: row.get(2)?,
+            })
+        },
+    )
+    .map_err(|e| match e {
+        rusqlite::Error::QueryReturnedNoRows => StorageError::NotFound,
+        other => StorageError::Sqlite(other),
+    })
+}
+
+pub fn recount_unread(db: &Database, folder_id: i64) -> Result<i64, StorageError> {
+    let conn = db.conn();
+    let unread: i64 = conn.query_row(
+        "SELECT count(*) FROM messages WHERE folder_id = ?1 AND seen = 0",
+        params![folder_id],
+        |row| row.get(0),
+    )?;
+    conn.execute("UPDATE folders SET unread_count = ?2 WHERE id = ?1", params![folder_id, unread])?;
+    Ok(unread)
 }
 
 #[cfg(test)]
@@ -205,22 +244,6 @@ mod tests {
     }
 
     #[test]
-    fn set_uid_state_updates_values() {
-        let db = Database::open_in_memory().unwrap();
-        let account = insert_account(&db, &sample_account()).unwrap();
-        let folder = upsert_folder(&db, account.id, "INBOX", "Inbox", FolderType::Inbox).unwrap();
-        set_uid_state(&db, folder.id, 12345, 100).unwrap();
-        let conn = db.conn();
-        let (uidvalidity, uidnext): (i64, i64) = conn.query_row(
-            "SELECT uidvalidity, uidnext FROM folders WHERE id = ?1",
-            params![folder.id],
-            |row| Ok((row.get(0)?, row.get(1)?)),
-        ).unwrap();
-        assert_eq!(uidvalidity, 12345);
-        assert_eq!(uidnext, 100);
-    }
-
-    #[test]
     fn set_counts_updates_values() {
         let db = Database::open_in_memory().unwrap();
         let account = insert_account(&db, &sample_account()).unwrap();
@@ -229,5 +252,53 @@ mod tests {
         let fetched = get_folder(&db, folder.id).unwrap();
         assert_eq!(fetched.unread_count, 3);
         assert_eq!(fetched.total_count, 10);
+    }
+
+    #[test]
+    fn sync_markers_roundtrip() {
+        let db = Database::open_in_memory().unwrap();
+        let account = insert_account(&db, &sample_account()).unwrap();
+        let folder = upsert_folder(&db, account.id, "INBOX", "Inbox", FolderType::Inbox).unwrap();
+        set_sync_markers(&db, folder.id, 555, 42, Some(900), 1718600000).unwrap();
+        let markers = get_sync_markers(&db, folder.id).unwrap();
+        assert_eq!(markers.uidvalidity, Some(555));
+        assert_eq!(markers.uidnext, Some(42));
+        assert_eq!(markers.highestmodseq, Some(900));
+    }
+
+    #[test]
+    fn sync_markers_missing_highestmodseq_is_none() {
+        let db = Database::open_in_memory().unwrap();
+        let account = insert_account(&db, &sample_account()).unwrap();
+        let folder = upsert_folder(&db, account.id, "INBOX", "Inbox", FolderType::Inbox).unwrap();
+        set_sync_markers(&db, folder.id, 1, 2, None, 100).unwrap();
+        assert_eq!(get_sync_markers(&db, folder.id).unwrap().highestmodseq, None);
+    }
+
+    #[test]
+    fn recount_unread_counts_unseen() {
+        use am_core::message::NewMessageHeader;
+        let db = Database::open_in_memory().unwrap();
+        let account = insert_account(&db, &sample_account()).unwrap();
+        let folder = upsert_folder(&db, account.id, "INBOX", "Inbox", FolderType::Inbox).unwrap();
+        crate::messages_repo::insert_headers(&db, folder.id, &[
+            NewMessageHeader {
+                uid: 1,
+                message_id_hdr: Some("<msg-1@example.com>".into()),
+                in_reply_to: None,
+                references_hdr: None,
+                from_address: "sender@example.com".into(),
+                from_name: Some("Sender".into()),
+                subject: "Subject 1".into(),
+                date: 1,
+                seen: false,
+                flagged: false,
+                has_attachments: false,
+                size: 1024,
+                snippet: "Preview text".into(),
+            },
+        ]).unwrap();
+        let unread = recount_unread(&db, folder.id).unwrap();
+        assert_eq!(unread, 1);
     }
 }

@@ -24,3 +24,4 @@ serde_json = { workspace = true }
 specta-typescript = { workspace = true }
 am-app = { path = "../crates/am-app" }
 am-storage = { path = "../crates/am-storage" }
+am-sync = { path = "../crates/am-sync" }

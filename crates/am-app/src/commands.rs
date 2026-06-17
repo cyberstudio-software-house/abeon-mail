@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use am_core::{account::Account, folder::Folder, message::{MessageBody, MessageHeader}};
+use am_core::{account::Account, folder::Folder, message::{MessageBody, MessageFlag, MessageHeader}, thread::ThreadSummary};
 use am_storage::{accounts_repo, folders_repo, messages_repo};
 
 use crate::state::AppState;
@@ -34,12 +34,16 @@ pub async fn add_account(
 ) -> Result<Account, String> {
     let db: Arc<am_storage::Database> = Arc::clone(&state.db);
     let input = am_sync::service::AddAccountInput { email, display_name, password, endpoints };
-    am_sync::service::add_account(&db, input).await.map_err(|e| match e {
+    let account = am_sync::service::add_account(&db, input).await.map_err(|e| match e {
         am_sync::service::SyncError::Auth => "Authentication failed".to_string(),
         am_sync::service::SyncError::CredentialMissing => "Credential not found".to_string(),
         am_sync::service::SyncError::Keychain => "Keychain unavailable".to_string(),
         _ => "Account setup failed".to_string(),
-    })
+    })?;
+    if let Some(engine) = state.engine.lock().unwrap().as_ref() {
+        engine.spawn_account(account.id);
+    }
+    Ok(account)
 }
 
 #[tauri::command]
@@ -75,6 +79,48 @@ pub async fn get_message_body(
 #[specta::specta]
 pub fn sanitize_message_html(html: String) -> am_mime::sanitize::SanitizedHtml {
     am_mime::sanitize::sanitize_html(&html)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn set_message_flags(
+    state: tauri::State<'_, AppState>,
+    message_id: i64,
+    flag: MessageFlag,
+    value: bool,
+) -> Result<(), String> {
+    am_sync::service::enqueue_flag(&state.db, message_id, flag, value)
+        .map_err(|_| "Failed to set flag".to_string())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn list_threads(
+    state: tauri::State<'_, AppState>,
+    folder_id: i64,
+    limit: i64,
+    offset: i64,
+) -> Result<Vec<ThreadSummary>, String> {
+    am_storage::threads_repo::list_for_folder(&state.db, folder_id, limit, offset).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn list_thread_messages(
+    state: tauri::State<'_, AppState>,
+    thread_id: i64,
+) -> Result<Vec<MessageHeader>, String> {
+    messages_repo::list_by_thread(&state.db, thread_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn mark_message_seen(
+    state: tauri::State<'_, AppState>,
+    message_id: i64,
+) -> Result<(), String> {
+    am_sync::service::enqueue_flag(&state.db, message_id, MessageFlag::Seen, true)
+        .map_err(|_| "Failed to mark seen".to_string())
 }
 
 #[cfg(test)]
@@ -122,6 +168,8 @@ mod tests {
         messages_repo::insert_headers(&db, folder.id, &[NewMessageHeader {
             uid: 1,
             message_id_hdr: None,
+            in_reply_to: None,
+            references_hdr: None,
             from_address: "a@b.com".into(),
             from_name: None,
             subject: "Hello".into(),
@@ -151,6 +199,8 @@ mod tests {
         messages_repo::insert_headers(&db, folder.id, &[NewMessageHeader {
             uid: 1,
             message_id_hdr: None,
+            in_reply_to: None,
+            references_hdr: None,
             from_address: "a@b.com".into(),
             from_name: None,
             subject: "Hello".into(),

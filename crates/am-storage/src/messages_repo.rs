@@ -1,7 +1,87 @@
-use am_core::message::{MessageBody, MessageHeader, NewMessageHeader};
+use am_core::message::{MessageBody, MessageFlag, MessageHeader, NewMessageHeader};
 use rusqlite::params;
 
 use crate::db::{Database, StorageError};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MessageLocator {
+    pub account_id: i64,
+    pub folder_id: i64,
+    pub uid: i64,
+}
+
+fn flag_column(flag: MessageFlag) -> &'static str {
+    match flag {
+        MessageFlag::Seen => "seen",
+        MessageFlag::Flagged => "flagged",
+    }
+}
+
+pub fn set_flag(db: &Database, message_id: i64, flag: MessageFlag, value: bool) -> Result<(), StorageError> {
+    let sql = format!("UPDATE messages SET {} = ?2 WHERE id = ?1", flag_column(flag));
+    let conn = db.conn();
+    let changed = conn.execute(&sql, params![message_id, value as i64])?;
+    if changed == 0 {
+        return Err(StorageError::NotFound);
+    }
+    Ok(())
+}
+
+pub fn set_flags_by_uid(db: &Database, folder_id: i64, uid: i64, seen: bool, flagged: bool) -> Result<(), StorageError> {
+    let conn = db.conn();
+    conn.execute(
+        "UPDATE messages SET seen = ?3, flagged = ?4 WHERE folder_id = ?1 AND uid = ?2",
+        params![folder_id, uid, seen as i64, flagged as i64],
+    )?;
+    Ok(())
+}
+
+pub fn list_uids(db: &Database, folder_id: i64) -> Result<Vec<i64>, StorageError> {
+    let conn = db.conn();
+    let mut stmt = conn.prepare("SELECT uid FROM messages WHERE folder_id = ?1 ORDER BY uid ASC")?;
+    let rows = stmt.query_map(params![folder_id], |row| row.get::<_, i64>(0))?;
+    let mut out = Vec::new();
+    for r in rows {
+        out.push(r?);
+    }
+    Ok(out)
+}
+
+pub fn delete_by_uids(db: &Database, folder_id: i64, uids: &[i64]) -> Result<usize, StorageError> {
+    let conn = db.conn();
+    let tx = conn.unchecked_transaction()?;
+    let mut count = 0usize;
+    {
+        let mut stmt = tx.prepare("DELETE FROM messages WHERE folder_id = ?1 AND uid = ?2")?;
+        for uid in uids {
+            count += stmt.execute(params![folder_id, uid])?;
+        }
+    }
+    tx.commit()?;
+    Ok(count)
+}
+
+pub fn delete_by_folder(db: &Database, folder_id: i64) -> Result<usize, StorageError> {
+    let conn = db.conn();
+    Ok(conn.execute("DELETE FROM messages WHERE folder_id = ?1", params![folder_id])?)
+}
+
+pub fn locate(db: &Database, message_id: i64) -> Result<MessageLocator, StorageError> {
+    let conn = db.conn();
+    conn.query_row(
+        "SELECT account_id, folder_id, uid FROM messages WHERE id = ?1",
+        params![message_id],
+        |row| Ok(MessageLocator {
+            account_id: row.get(0)?,
+            folder_id: row.get(1)?,
+            uid: row.get(2)?,
+        }),
+    )
+    .map_err(|e| match e {
+        rusqlite::Error::QueryReturnedNoRows => StorageError::NotFound,
+        other => StorageError::Sqlite(other),
+    })
+}
 
 fn row_to_header(row: &rusqlite::Row) -> rusqlite::Result<(i64, i64, i64, String, String, Option<String>, i64, i64, i64, i64, String)> {
     Ok((
@@ -61,8 +141,8 @@ pub fn insert_headers(
     {
         let mut stmt = tx.prepare(
             "INSERT OR IGNORE INTO messages
-             (account_id, folder_id, uid, message_id_hdr, from_address, from_name, subject, date, seen, flagged, has_attachments, size, snippet)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+             (account_id, folder_id, uid, message_id_hdr, in_reply_to, references_hdr, from_address, from_name, subject, date, seen, flagged, has_attachments, size, snippet)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
         )?;
         for h in headers {
             let inserted = stmt.execute(params![
@@ -70,6 +150,8 @@ pub fn insert_headers(
                 folder_id,
                 h.uid,
                 h.message_id_hdr,
+                h.in_reply_to,
+                h.references_hdr,
                 h.from_address,
                 h.from_name,
                 h.subject,
@@ -85,6 +167,18 @@ pub fn insert_headers(
     }
     tx.commit()?;
     Ok(count)
+}
+
+pub fn list_by_thread(db: &Database, thread_id: i64) -> Result<Vec<MessageHeader>, StorageError> {
+    let conn = db.conn();
+    let mut stmt = conn.prepare(
+        "SELECT id, account_id, folder_id, subject, from_address, from_name, date, seen, flagged, has_attachments, snippet
+         FROM messages WHERE thread_id = ?1 ORDER BY date ASC",
+    )?;
+    let rows = stmt.query_map(params![thread_id], row_to_header)?;
+    let mut out = Vec::new();
+    for r in rows { out.push(tuple_to_header(r?)); }
+    Ok(out)
 }
 
 pub fn list_by_folder(
@@ -166,6 +260,68 @@ pub fn message_uid(db: &Database, message_id: i64) -> Result<(i64, i64), Storage
     })
 }
 
+pub fn backfill_body_meta(
+    db: &Database,
+    message_id: i64,
+    snippet: &str,
+    has_attachments: bool,
+) -> Result<(), StorageError> {
+    let conn = db.conn();
+    let changed = conn.execute(
+        "UPDATE messages SET snippet = ?2, has_attachments = ?3 WHERE id = ?1",
+        params![message_id, snippet, has_attachments as i64],
+    )?;
+    if changed == 0 {
+        return Err(StorageError::NotFound);
+    }
+    Ok(())
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ThreadingRow {
+    pub id: i64,
+    pub message_id_hdr: Option<String>,
+    pub in_reply_to: Option<String>,
+    pub references_hdr: Option<String>,
+    pub subject: String,
+    pub date: i64,
+}
+
+pub fn list_unthreaded(db: &Database, account_id: i64) -> Result<Vec<ThreadingRow>, StorageError> {
+    let conn = db.conn();
+    let mut stmt = conn.prepare(
+        "SELECT id, message_id_hdr, in_reply_to, references_hdr, subject, date
+         FROM messages WHERE account_id = ?1 AND thread_id IS NULL ORDER BY date ASC",
+    )?;
+    let rows = stmt.query_map(params![account_id], |row| {
+        Ok(ThreadingRow {
+            id: row.get(0)?,
+            message_id_hdr: row.get(1)?,
+            in_reply_to: row.get(2)?,
+            references_hdr: row.get(3)?,
+            subject: row.get(4)?,
+            date: row.get(5)?,
+        })
+    })?;
+    let mut out = Vec::new();
+    for r in rows {
+        out.push(r?);
+    }
+    Ok(out)
+}
+
+pub fn assign_thread(db: &Database, message_id: i64, thread_id: i64) -> Result<(), StorageError> {
+    let conn = db.conn();
+    let changed = conn.execute(
+        "UPDATE messages SET thread_id = ?2 WHERE id = ?1",
+        params![message_id, thread_id],
+    )?;
+    if changed == 0 {
+        return Err(StorageError::NotFound);
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -188,6 +344,8 @@ mod tests {
         NewMessageHeader {
             uid,
             message_id_hdr: Some(format!("<msg-{uid}@example.com>")),
+            in_reply_to: None,
+            references_hdr: None,
             from_address: "sender@example.com".into(),
             from_name: Some("Sender".into()),
             subject: format!("Subject {uid}"),
@@ -293,5 +451,76 @@ mod tests {
         let (fid, uid) = message_uid(&db, msg.id).unwrap();
         assert_eq!(fid, folder_id);
         assert_eq!(uid, 42);
+    }
+
+    #[test]
+    fn backfill_body_meta_updates_snippet_and_attachments() {
+        let db = Database::open_in_memory().unwrap();
+        let folder_id = setup(&db);
+        insert_headers(&db, folder_id, &[make_header(1, 1000)]).unwrap();
+        let msg = list_by_folder(&db, folder_id, 1, 0).unwrap().into_iter().next().unwrap();
+        backfill_body_meta(&db, msg.id, "new snippet", true).unwrap();
+        let updated = get_header(&db, msg.id).unwrap();
+        assert_eq!(updated.snippet, "new snippet");
+        assert!(updated.has_attachments);
+    }
+
+    #[test]
+    fn set_flag_toggles_seen_column() {
+        let db = Database::open_in_memory().unwrap();
+        let folder_id = setup(&db);
+        insert_headers(&db, folder_id, &[make_header(1, 1000)]).unwrap();
+        let msg = list_by_folder(&db, folder_id, 1, 0).unwrap().into_iter().next().unwrap();
+        set_flag(&db, msg.id, am_core::message::MessageFlag::Seen, true).unwrap();
+        assert!(get_header(&db, msg.id).unwrap().seen);
+    }
+
+    #[test]
+    fn list_and_delete_by_uids() {
+        let db = Database::open_in_memory().unwrap();
+        let folder_id = setup(&db);
+        insert_headers(&db, folder_id, &[make_header(1, 1), make_header(2, 2), make_header(3, 3)]).unwrap();
+        assert_eq!(list_uids(&db, folder_id).unwrap(), vec![1, 2, 3]);
+        let removed = delete_by_uids(&db, folder_id, &[2, 3]).unwrap();
+        assert_eq!(removed, 2);
+        assert_eq!(list_uids(&db, folder_id).unwrap(), vec![1]);
+    }
+
+    #[test]
+    fn set_flags_by_uid_updates_both() {
+        let db = Database::open_in_memory().unwrap();
+        let folder_id = setup(&db);
+        insert_headers(&db, folder_id, &[make_header(9, 1)]).unwrap();
+        set_flags_by_uid(&db, folder_id, 9, true, true).unwrap();
+        let msg = list_by_folder(&db, folder_id, 1, 0).unwrap().into_iter().next().unwrap();
+        assert!(msg.seen && msg.flagged);
+    }
+
+    #[test]
+    fn locate_returns_account_folder_uid() {
+        let db = Database::open_in_memory().unwrap();
+        let folder_id = setup(&db);
+        insert_headers(&db, folder_id, &[make_header(7, 1)]).unwrap();
+        let msg = list_by_folder(&db, folder_id, 1, 0).unwrap().into_iter().next().unwrap();
+        let loc = locate(&db, msg.id).unwrap();
+        assert_eq!(loc.folder_id, folder_id);
+        assert_eq!(loc.uid, 7);
+    }
+
+    #[test]
+    fn list_unthreaded_then_assign() {
+        let db = Database::open_in_memory().unwrap();
+        let folder_id = setup(&db);
+        insert_headers(&db, folder_id, &[make_header(1, 100)]).unwrap();
+        let account_id = get_header(&db, list_by_folder(&db, folder_id, 1, 0).unwrap()[0].id).unwrap().account_id;
+        let unthreaded = list_unthreaded(&db, account_id).unwrap();
+        assert_eq!(unthreaded.len(), 1);
+        let conn_thread_id = {
+            let conn = db.conn();
+            conn.execute("INSERT INTO threads (account_id, subject_root, last_date) VALUES (?1, 's', 100)", params![account_id]).unwrap();
+            conn.last_insert_rowid()
+        };
+        assign_thread(&db, unthreaded[0].id, conn_thread_id).unwrap();
+        assert!(list_unthreaded(&db, account_id).unwrap().is_empty());
     }
 }

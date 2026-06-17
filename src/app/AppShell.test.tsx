@@ -17,14 +17,21 @@ vi.mock("../shared/theme/ThemeProvider", () => ({
 vi.mock("../ipc/queries", () => ({
   useAccounts: () => ({ data: [], isLoading: false, isError: false, error: null }),
   useFolders: () => ({ data: [], isLoading: false, isError: false, error: null }),
-  useMessages: () => ({ data: [], isLoading: false, isError: false, error: null }),
+  useThreads: () => ({ data: [], isLoading: false, isError: false, error: null }),
+  useThreadMessages: () => ({ data: [], isLoading: false, isError: false, error: null }),
   useMessageBody: () => ({ data: null, isLoading: false, isError: false, error: null }),
+  useSetFlag: () => ({ mutate: vi.fn() }),
+  useMarkSeen: () => ({ mutate: vi.fn() }),
 }));
 
 vi.mock("../ipc/bindings", () => ({
   commands: {
     sanitizeMessageHtml: vi.fn().mockResolvedValue({ html: "", blocked_remote_content: false }),
+    listThreadMessages: vi.fn().mockResolvedValue({ status: "ok", data: [] }),
+    getMessageBody: vi.fn().mockResolvedValue({ status: "ok", data: { message_id: 1, text_plain: null, text_html: null } }),
+    markMessageSeen: vi.fn().mockResolvedValue({ status: "ok", data: null }),
   },
+  events: {},
 }));
 
 vi.mock("../app/store", () => ({
@@ -33,9 +40,13 @@ vi.mock("../app/store", () => ({
       selectedAccountId: null,
       selectedFolderId: null,
       selectedMessageId: null,
+      selectedThreadId: null,
+      density: "comfortable",
       setSelectedAccountId: vi.fn(),
       setSelectedFolderId: vi.fn(),
       setSelectedMessageId: vi.fn(),
+      setSelectedThreadId: vi.fn(),
+      setDensity: vi.fn(),
     };
     return selector ? selector(state) : state;
   },

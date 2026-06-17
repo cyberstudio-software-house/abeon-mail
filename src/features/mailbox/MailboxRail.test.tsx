@@ -30,10 +30,12 @@ type UiState = {
   selectedAccountId: number | null;
   selectedFolderId: number | null;
   selectedMessageId: number | null;
+  selectedThreadId: number | null;
   density: "comfortable" | "cozy" | "compact" | "dense";
   setSelectedAccountId: (id: number | null) => void;
   setSelectedFolderId: (id: number | null) => void;
   setSelectedMessageId: (id: number | null) => void;
+  setSelectedThreadId: (id: number | null) => void;
   setDensity: (density: "comfortable" | "cozy" | "compact" | "dense") => void;
 };
 
@@ -69,10 +71,12 @@ function setupStore(selectedAccountId: number | null = 1) {
         selectedAccountId,
         selectedFolderId: null,
         selectedMessageId: null,
+        selectedThreadId: null,
         density: "comfortable",
         setSelectedAccountId: mockSetSelectedAccountId,
         setSelectedFolderId: mockSetSelectedFolderId,
         setSelectedMessageId: vi.fn(),
+        setSelectedThreadId: vi.fn(),
         setDensity: vi.fn(),
       };
       return selector ? selector(state) : state;

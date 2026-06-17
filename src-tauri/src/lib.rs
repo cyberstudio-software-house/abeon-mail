@@ -17,6 +17,10 @@ pub fn run() {
             let db = Database::open(db_path.to_str().expect("non-utf8 db path"))
                 .expect("cannot open database");
             app.manage(AppState::new(db));
+            let state: tauri::State<AppState> = app.state();
+            let sink = std::sync::Arc::new(am_app::sink::AppEventSink { app: app.handle().clone() });
+            let engine = am_sync::engine::SyncEngine::start(std::sync::Arc::clone(&state.db), sink);
+            *state.engine.lock().unwrap() = Some(engine);
             Ok(())
         })
         .run(tauri::generate_context!())
