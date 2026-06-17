@@ -15,6 +15,28 @@ pub struct MessageHeader {
     pub snippet: String,
 }
 
+#[derive(Serialize, Deserialize, specta::Type, Clone, Debug, PartialEq)]
+pub struct NewMessageHeader {
+    pub uid: i64,
+    pub message_id_hdr: Option<String>,
+    pub from_address: String,
+    pub from_name: Option<String>,
+    pub subject: String,
+    pub date: i64,
+    pub seen: bool,
+    pub flagged: bool,
+    pub has_attachments: bool,
+    pub size: i64,
+    pub snippet: String,
+}
+
+#[derive(Serialize, Deserialize, specta::Type, Clone, Debug, PartialEq)]
+pub struct MessageBody {
+    pub message_id: i64,
+    pub text_plain: Option<String>,
+    pub text_html: Option<String>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
