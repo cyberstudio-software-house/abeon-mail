@@ -10,9 +10,10 @@ use am_core::{
     message::{MessageBody, MessageFlag, MessageHeader},
     outgoing::{OutgoingAttachment, OutgoingMessage},
     signature::Signature,
+    smart::{SmartFolderKind, SmartMessageRow},
     thread::ThreadSummary,
 };
-use am_storage::{accounts_repo, drafts_repo, folders_repo, messages_repo, signatures_repo};
+use am_storage::{accounts_repo, drafts_repo, folders_repo, messages_repo, signatures_repo, smart_repo};
 use tauri_plugin_dialog::DialogExt;
 
 use crate::state::AppState;
@@ -115,6 +116,17 @@ pub fn list_threads(
     offset: i64,
 ) -> Result<Vec<ThreadSummary>, String> {
     am_storage::threads_repo::list_for_folder(&state.db, folder_id, limit, offset).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn list_smart_folder(
+    state: tauri::State<'_, AppState>,
+    kind: SmartFolderKind,
+    limit: i64,
+    offset: i64,
+) -> Result<Vec<SmartMessageRow>, String> {
+    smart_repo::list_smart_folder(&state.db, kind, limit, offset).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -551,6 +563,30 @@ mod tests {
         let msgs = messages_repo::list_by_folder(&db, folder.id, 10, 0).unwrap();
         assert_eq!(msgs.len(), 1);
         assert_eq!(msgs[0].subject, "Hello");
+    }
+
+    #[test]
+    fn list_smart_folder_all_inboxes_returns_empty_for_empty_db() {
+        use am_core::smart::SmartFolderKind;
+        use am_storage::{accounts_repo, folders_repo, Database};
+        use am_core::account::{NewAccount, ProviderType};
+        use am_core::folder::FolderType;
+
+        let db = std::sync::Arc::new(Database::open_in_memory().unwrap());
+        let acc = accounts_repo::insert_account(
+            &db,
+            &NewAccount {
+                email: "s@example.com".into(),
+                display_name: "S".into(),
+                provider_type: ProviderType::ImapPassword,
+                color: None,
+            },
+        )
+        .unwrap();
+        folders_repo::upsert_folder(&db, acc.id, "INBOX", "Inbox", FolderType::Inbox).unwrap();
+
+        let result = am_storage::smart_repo::list_smart_folder(&db, SmartFolderKind::AllInboxes, 100, 0).unwrap();
+        assert_eq!(result.len(), 0);
     }
 
     #[test]

@@ -26,6 +26,7 @@ export const commands = {
 	discardDraft: (draftId: number) => typedError<null, string>(__TAURI_INVOKE("discard_draft", { draftId })),
 	listSignatures: (accountId: number) => typedError<Signature[], string>(__TAURI_INVOKE("list_signatures", { accountId })),
 	pickAttachment: () => typedError<OutgoingAttachment[], string>(__TAURI_INVOKE("pick_attachment")),
+	listSmartFolder: (kind: SmartFolderKind, limit: number, offset: number) => typedError<SmartMessageRow[], string>(__TAURI_INVOKE("list_smart_folder", { kind, limit, offset })),
 };
 
 /** Events */
@@ -132,6 +133,23 @@ export type Signature = {
 	name: string,
 	html: string,
 	is_default: boolean,
+};
+
+export type SmartFolderKind = "all_inboxes" | "unread" | "flagged";
+
+export type SmartMessageRow = {
+	message_id: number,
+	account_id: number,
+	folder_id: number,
+	account_color: string | null,
+	from_address: string,
+	from_name: string | null,
+	subject: string,
+	date: number,
+	seen: boolean,
+	flagged: boolean,
+	has_attachments: boolean,
+	snippet: string,
 };
 
 export type SyncProgress = {
