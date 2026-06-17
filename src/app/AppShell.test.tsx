@@ -2,6 +2,10 @@ import { describe, it, expect, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
+vi.mock("../ipc/events", () => ({
+  useSyncEvents: vi.fn(),
+}));
+
 vi.mock("../ipc/client", () => ({
   health: vi.fn(async () => "ok"),
 }));
@@ -38,6 +42,7 @@ vi.mock("../app/store", () => ({
 }));
 
 import { AppShell } from "./AppShell";
+import { useSyncEvents } from "../ipc/events";
 
 function Wrapper({ children }: { children: React.ReactNode }) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -50,5 +55,10 @@ describe("AppShell", () => {
     expect(screen.getByLabelText("message-list")).toBeTruthy();
     expect(screen.getByLabelText("reader")).toBeTruthy();
     await waitFor(() => expect(screen.getByText("IPC: ok")).toBeTruthy());
+  });
+
+  it("mounts sync-event hook on render", () => {
+    render(<AppShell />, { wrapper: Wrapper });
+    expect(vi.mocked(useSyncEvents)).toHaveBeenCalled();
   });
 });

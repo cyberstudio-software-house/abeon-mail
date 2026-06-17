@@ -54,12 +54,13 @@ export function MailboxRail({ status }: Props) {
         {SMART_FOLDERS.map(({ label }) => (
           <div
             key={label}
+            aria-disabled="true"
             style={{
               padding: "var(--space-2) var(--space-4)",
-              cursor: "pointer",
               fontSize: "14px",
               borderRadius: "var(--radius-sm)",
               margin: "1px var(--space-2)",
+              opacity: 0.55,
             }}
           >
             {label}
