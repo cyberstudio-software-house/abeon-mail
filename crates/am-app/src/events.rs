@@ -14,3 +14,9 @@ pub struct NewMessages {
     pub folder_id: i64,
     pub count: i64,
 }
+
+#[derive(Serialize, Deserialize, Clone, Debug, specta::Type, tauri_specta::Event)]
+pub struct MailboxChanged {
+    pub account_id: i64,
+    pub folder_id: i64,
+}

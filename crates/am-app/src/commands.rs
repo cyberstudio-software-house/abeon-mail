@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use am_core::{account::Account, folder::Folder, message::{MessageBody, MessageHeader}};
+use am_core::{account::Account, folder::Folder, message::{MessageBody, MessageFlag, MessageHeader}};
 use am_storage::{accounts_repo, folders_repo, messages_repo};
 
 use crate::state::AppState;
@@ -75,6 +75,28 @@ pub async fn get_message_body(
 #[specta::specta]
 pub fn sanitize_message_html(html: String) -> am_mime::sanitize::SanitizedHtml {
     am_mime::sanitize::sanitize_html(&html)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn set_message_flags(
+    state: tauri::State<'_, AppState>,
+    message_id: i64,
+    flag: MessageFlag,
+    value: bool,
+) -> Result<(), String> {
+    am_sync::service::enqueue_flag(&state.db, message_id, flag, value)
+        .map_err(|_| "Failed to set flag".to_string())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn mark_message_seen(
+    state: tauri::State<'_, AppState>,
+    message_id: i64,
+) -> Result<(), String> {
+    am_sync::service::enqueue_flag(&state.db, message_id, MessageFlag::Seen, true)
+        .map_err(|_| "Failed to mark seen".to_string())
 }
 
 #[cfg(test)]
