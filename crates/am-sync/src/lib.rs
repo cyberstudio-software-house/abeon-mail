@@ -1,3 +1,4 @@
+pub mod compose;
 pub mod engine;
 pub mod events;
 pub mod send;

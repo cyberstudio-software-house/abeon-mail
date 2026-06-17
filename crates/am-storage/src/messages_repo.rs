@@ -322,6 +322,35 @@ pub fn assign_thread(db: &Database, message_id: i64, thread_id: i64) -> Result<(
     Ok(())
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ComposeSource {
+    pub account_id: i64,
+    pub from_address: String,
+    pub from_name: Option<String>,
+    pub subject: String,
+    pub message_id_hdr: Option<String>,
+    pub references_hdr: Option<String>,
+}
+
+pub fn get_compose_source(db: &Database, message_id: i64) -> Result<ComposeSource, StorageError> {
+    let conn = db.conn();
+    conn.query_row(
+        "SELECT account_id, from_address, from_name, subject, message_id_hdr, references_hdr FROM messages WHERE id=?1",
+        params![message_id],
+        |r| Ok(ComposeSource {
+            account_id: r.get(0)?,
+            from_address: r.get(1)?,
+            from_name: r.get(2)?,
+            subject: r.get(3)?,
+            message_id_hdr: r.get(4)?,
+            references_hdr: r.get(5)?,
+        }),
+    ).map_err(|e| match e {
+        rusqlite::Error::QueryReturnedNoRows => StorageError::NotFound,
+        o => StorageError::Sqlite(o),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -505,6 +534,35 @@ mod tests {
         let loc = locate(&db, msg.id).unwrap();
         assert_eq!(loc.folder_id, folder_id);
         assert_eq!(loc.uid, 7);
+    }
+
+    #[test]
+    fn get_compose_source_roundtrip() {
+        let db = Database::open_in_memory().unwrap();
+        let folder_id = setup(&db);
+        let h = NewMessageHeader {
+            uid: 1,
+            message_id_hdr: Some("<hello@example.com>".into()),
+            in_reply_to: None,
+            references_hdr: Some("<ref1@example.com>".into()),
+            from_address: "sender@example.com".into(),
+            from_name: Some("Sender Name".into()),
+            subject: "Test Subject".into(),
+            date: 1000,
+            seen: false,
+            flagged: false,
+            has_attachments: false,
+            size: 512,
+            snippet: "preview".into(),
+        };
+        insert_headers(&db, folder_id, &[h]).unwrap();
+        let msg = list_by_folder(&db, folder_id, 1, 0).unwrap().into_iter().next().unwrap();
+        let src = get_compose_source(&db, msg.id).unwrap();
+        assert_eq!(src.from_address, "sender@example.com");
+        assert_eq!(src.from_name.as_deref(), Some("Sender Name"));
+        assert_eq!(src.subject, "Test Subject");
+        assert_eq!(src.message_id_hdr.as_deref(), Some("<hello@example.com>"));
+        assert_eq!(src.references_hdr.as_deref(), Some("<ref1@example.com>"));
     }
 
     #[test]
