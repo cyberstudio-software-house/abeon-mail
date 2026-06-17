@@ -58,12 +58,14 @@ pub fn insert_headers(
     let conn = db.conn();
     let tx = conn.unchecked_transaction()?;
     let mut count = 0usize;
-    for h in headers {
-        let inserted = tx.execute(
+    {
+        let mut stmt = tx.prepare(
             "INSERT OR IGNORE INTO messages
              (account_id, folder_id, uid, message_id_hdr, from_address, from_name, subject, date, seen, flagged, has_attachments, size, snippet)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
-            params![
+        )?;
+        for h in headers {
+            let inserted = stmt.execute(params![
                 account_id,
                 folder_id,
                 h.uid,
@@ -77,9 +79,9 @@ pub fn insert_headers(
                 h.has_attachments as i64,
                 h.size,
                 h.snippet
-            ],
-        )?;
-        count += inserted;
+            ])?;
+            count += inserted;
+        }
     }
     tx.commit()?;
     Ok(count)
