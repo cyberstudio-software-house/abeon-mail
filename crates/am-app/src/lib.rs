@@ -35,5 +35,6 @@ pub fn build_specta_builder() -> Builder<tauri::Wry> {
             events::SyncProgress,
             events::NewMessages,
             events::MailboxChanged,
+            events::AccountAuthChanged,
         ])
 }

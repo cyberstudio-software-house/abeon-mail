@@ -31,6 +31,7 @@ export const commands = {
 
 /** Events */
 export const events = {
+	accountAuthChanged: makeEvent<AccountAuthChanged>("account-auth-changed"),
 	mailboxChanged: makeEvent<MailboxChanged>("mailbox-changed"),
 	newMessages: makeEvent<NewMessages>("new-messages"),
 	syncProgress: makeEvent<SyncProgress>("sync-progress"),
@@ -44,6 +45,12 @@ export type Account = {
 	provider_type: ProviderType,
 	color: string | null,
 	position: number,
+	requires_reauth: boolean,
+};
+
+export type AccountAuthChanged = {
+	account_id: number,
+	requires_reauth: boolean,
 };
 
 export type Endpoints = {

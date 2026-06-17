@@ -3,6 +3,7 @@ pub enum SyncEvent {
     Progress { account_id: i64, folder_id: i64, fetched: i64, total: i64 },
     NewMessages { account_id: i64, folder_id: i64, count: i64 },
     MailboxChanged { account_id: i64, folder_id: i64 },
+    AuthChanged { account_id: i64, requires_reauth: bool },
 }
 
 pub trait SyncEventSink: Send + Sync {
@@ -44,5 +45,11 @@ mod tests {
         let sink = RecordingSink::new();
         sink.emit(SyncEvent::MailboxChanged { account_id: 1, folder_id: 2 });
         assert_eq!(sink.events.lock().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn auth_changed_variant_stores_fields() {
+        let ev = SyncEvent::AuthChanged { account_id: 5, requires_reauth: true };
+        assert_eq!(ev, SyncEvent::AuthChanged { account_id: 5, requires_reauth: true });
     }
 }

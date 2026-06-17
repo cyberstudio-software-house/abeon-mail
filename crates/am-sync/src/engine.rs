@@ -54,37 +54,61 @@ impl SyncEngine {
         let sink = Arc::clone(&self.sink);
         let creds = Arc::clone(&self.creds);
         tokio::spawn(async move {
-            let _ = service::sync_all_folders(&db, account_id, creds.as_ref(), |_| {}).await;
+            if let Err(e) = service::sync_all_folders(&db, account_id, creds.as_ref(), |_| {}).await {
+                if matches!(e, service::SyncError::NeedsReauth) {
+                    let _ = am_storage::accounts_repo::set_requires_reauth(&db, account_id, true);
+                    sink.emit(crate::events::SyncEvent::AuthChanged { account_id, requires_reauth: true });
+                    return;
+                }
+            }
             loop {
                 let now = service::now_secs();
-                let _ = service::drain_queue(&db, account_id, creds.as_ref(), now).await;
+                if let Err(e) = service::drain_queue(&db, account_id, creds.as_ref(), now).await {
+                    if matches!(e, service::SyncError::NeedsReauth) {
+                        let _ = am_storage::accounts_repo::set_requires_reauth(&db, account_id, true);
+                        sink.emit(crate::events::SyncEvent::AuthChanged { account_id, requires_reauth: true });
+                        return;
+                    }
+                }
                 let _ = crate::send::drain_outbox(&db, account_id, creds.as_ref(), now).await;
                 let _ = crate::send::drain_draft_sync(&db, account_id, creds.as_ref(), now).await;
                 if let Ok(folders) = folders_repo::list_folders(&db, account_id) {
                     for folder in &folders {
                         if !folder.remote_path.eq_ignore_ascii_case(INBOX_PATH) {
-                            let _ = service::incremental_sync_folder(
+                            if let Err(e) = service::incremental_sync_folder(
                                 &db,
                                 account_id,
                                 folder.id,
                                 creds.as_ref(),
                                 sink.as_ref(),
                             )
-                            .await;
+                            .await {
+                                if matches!(e, service::SyncError::NeedsReauth) {
+                                    let _ = am_storage::accounts_repo::set_requires_reauth(&db, account_id, true);
+                                    sink.emit(crate::events::SyncEvent::AuthChanged { account_id, requires_reauth: true });
+                                    return;
+                                }
+                            }
                         }
                     }
                     if let Some(inbox) = folders
                         .iter()
                         .find(|f| f.remote_path.eq_ignore_ascii_case(INBOX_PATH))
                     {
-                        let _ = service::incremental_sync_folder(
+                        if let Err(e) = service::incremental_sync_folder(
                             &db,
                             account_id,
                             inbox.id,
                             creds.as_ref(),
                             sink.as_ref(),
                         )
-                        .await;
+                        .await {
+                            if matches!(e, service::SyncError::NeedsReauth) {
+                                let _ = am_storage::accounts_repo::set_requires_reauth(&db, account_id, true);
+                                sink.emit(crate::events::SyncEvent::AuthChanged { account_id, requires_reauth: true });
+                                return;
+                            }
+                        }
                         let idled = idle_inbox(&db, account_id, &inbox.remote_path, creds.as_ref(), token.clone()).await;
                         if matches!(idled, Ok(true)) {
                             continue;
