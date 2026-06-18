@@ -31,6 +31,7 @@ function rewriteInlineSrcs(html: string, srcToContentId: Map<string, string>): s
 export function Composer() {
   const composer = useUiStore((s) => s.composer);
   const closeComposer = useUiStore((s) => s.closeComposer);
+  const setComposerSend = useUiStore((s) => s.setComposerSend);
   const { data: accounts = [] } = useAccounts();
 
   const prefill = composer.prefill;
@@ -212,6 +213,13 @@ export function Composer() {
     setSubject(e.target.value);
     scheduleAutosave();
   }
+
+  useEffect(() => {
+    setComposerSend(() => {
+      void handleSend();
+    });
+    return () => setComposerSend(null);
+  }, [setComposerSend]);
 
   if (!composer.open) return null;
 

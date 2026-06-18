@@ -1,0 +1,173 @@
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, type ReactNode } from "react";
+import { commands } from "../../ipc/bindings";
+import { useStartReply, useSetFlag } from "../../ipc/queries";
+import { useUiStore } from "../../app/store";
+import { resolveBindings, parseShortcutSettings, SHORTCUT_KEYS, type Profile } from "./bindings";
+import { type ActionId } from "./registry";
+import { useKeyboardEngine } from "./useKeyboardEngine";
+import { CommandPalette } from "./CommandPalette";
+import { CheatSheet } from "./CheatSheet";
+
+export type ShortcutsContextValue = {
+  profile: Profile;
+  resolved: Record<ActionId, string | null>;
+  overrides: Record<string, string | null>;
+  setProfile: (p: Profile) => void;
+  setBinding: (id: ActionId, binding: string | null) => void;
+  resetBinding: (id: ActionId) => void;
+};
+
+const ShortcutsContext = createContext<ShortcutsContextValue | null>(null);
+
+function persistOverrides(overrides: Record<string, string | null>) {
+  void commands.setSetting(SHORTCUT_KEYS.overrides, JSON.stringify(overrides)).catch(() => undefined);
+}
+
+export function ShortcutsProvider({ children }: { children: ReactNode }) {
+  const profile = useUiStore((s) => s.shortcutProfile);
+  const overrides = useUiStore((s) => s.shortcutOverrides);
+  const hydrateShortcuts = useUiStore((s) => s.hydrateShortcuts);
+  const setShortcutProfile = useUiStore((s) => s.setShortcutProfile);
+  const setShortcutOverride = useUiStore((s) => s.setShortcutOverride);
+  const resetShortcut = useUiStore((s) => s.resetShortcut);
+
+  const startReply = useStartReply();
+  const setFlag = useSetFlag();
+
+  useEffect(() => {
+    let active = true;
+    commands
+      .getSettings()
+      .then((res) => {
+        if (active && res.status === "ok") hydrateShortcuts(parseShortcutSettings(res.data));
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, [hydrateShortcuts]);
+
+  const resolved = useMemo(() => resolveBindings(profile, overrides), [profile, overrides]);
+
+  const move = useCallback((delta: number) => {
+    const s = useUiStore.getState();
+    const ids = s.visibleMessageIds;
+    if (ids.length === 0) return;
+    const current = s.selectMode === "thread" ? s.selectedThreadId : s.selectedMessageId;
+    const idx = current == null ? -1 : ids.indexOf(current);
+    const nextIdx = idx < 0 ? 0 : Math.min(Math.max(idx + delta, 0), ids.length - 1);
+    const next = ids[nextIdx];
+    if (next == null) return;
+    if (s.selectMode === "thread") s.setSelectedThreadId(next);
+    else s.setSelectedMessageId(next);
+  }, []);
+
+  const jumpTo = useCallback((edge: "first" | "last") => {
+    const s = useUiStore.getState();
+    const ids = s.visibleMessageIds;
+    if (ids.length === 0) return;
+    const id = edge === "first" ? ids[0] : ids[ids.length - 1];
+    if (s.selectMode === "thread") s.setSelectedThreadId(id);
+    else s.setSelectedMessageId(id);
+  }, []);
+
+  const doReply = useCallback(
+    async (mode: "reply" | "reply_all" | "forward") => {
+      const s = useUiStore.getState();
+      if (s.replyTargetId == null) return;
+      const prefill = await startReply.mutateAsync({ messageId: s.replyTargetId, mode });
+      s.openComposer(null, prefill);
+    },
+    [startReply]
+  );
+
+  const setSeen = useCallback(
+    (value: boolean) => {
+      const s = useUiStore.getState();
+      if (s.replyTargetId == null) return;
+      setFlag.mutate({ messageId: s.replyTargetId, flag: "seen", value });
+    },
+    [setFlag]
+  );
+
+  const toggleFlag = useCallback(() => {
+    const s = useUiStore.getState();
+    if (s.replyTargetId == null) return;
+    setFlag.mutate({ messageId: s.replyTargetId, flag: "flagged", value: true });
+  }, [setFlag]);
+
+  const handlers = useMemo<Partial<Record<ActionId, () => void>>>(() => {
+    return {
+      "command-palette": () => useUiStore.getState().togglePalette(),
+      "cheat-sheet": () => useUiStore.getState().toggleCheatSheet(),
+      compose: () => useUiStore.getState().openComposer(null),
+      "go-inbox": () => useUiStore.getState().setSelectedSmartFolder("all_inboxes"),
+      "go-starred": () => useUiStore.getState().setSelectedSmartFolder("flagged"),
+      "open-settings": () => useUiStore.getState().openSettings(),
+      "next-message": () => move(1),
+      "prev-message": () => move(-1),
+      "first-message": () => jumpTo("first"),
+      "last-message": () => jumpTo("last"),
+      reply: () => void doReply("reply"),
+      "reply-all": () => void doReply("reply_all"),
+      forward: () => void doReply("forward"),
+      "back-to-list": () => useUiStore.getState().setSelectedThreadId(null),
+      "toggle-flag": () => toggleFlag(),
+      "mark-read": () => setSeen(true),
+      "mark-unread": () => setSeen(false),
+      "send-message": () => useUiStore.getState().composerSend?.(),
+      "close-composer": () => useUiStore.getState().closeComposer(),
+    };
+  }, [move, jumpTo, doReply, toggleFlag, setSeen]);
+
+  const resolvedRef = useRef(resolved);
+  resolvedRef.current = resolved;
+  const handlersRef = useRef(handlers);
+  handlersRef.current = handlers;
+
+  useKeyboardEngine({
+    getResolved: useCallback(() => resolvedRef.current, []),
+    getHandlers: useCallback(() => handlersRef.current, []),
+    getContext: useCallback(() => {
+      const s = useUiStore.getState();
+      if (s.composer.open) return "composer";
+      if (s.replyTargetId != null) return "reader";
+      return "list";
+    }, []),
+  });
+
+  const value = useMemo<ShortcutsContextValue>(
+    () => ({
+      profile,
+      resolved,
+      overrides,
+      setProfile: (p) => {
+        setShortcutProfile(p);
+        void commands.setSetting(SHORTCUT_KEYS.profile, p).catch(() => undefined);
+      },
+      setBinding: (id, binding) => {
+        setShortcutOverride(id, binding);
+        persistOverrides({ ...useUiStore.getState().shortcutOverrides });
+      },
+      resetBinding: (id) => {
+        resetShortcut(id);
+        persistOverrides({ ...useUiStore.getState().shortcutOverrides });
+      },
+    }),
+    [profile, resolved, overrides, setShortcutProfile, setShortcutOverride, resetShortcut]
+  );
+
+  return (
+    <ShortcutsContext.Provider value={value}>
+      {children}
+      <CommandPalette />
+      <CheatSheet />
+    </ShortcutsContext.Provider>
+  );
+}
+
+export function useShortcuts(): ShortcutsContextValue {
+  const ctx = useContext(ShortcutsContext);
+  if (!ctx) throw new Error("useShortcuts must be used within ShortcutsProvider");
+  return ctx;
+}

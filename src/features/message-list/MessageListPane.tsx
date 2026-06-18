@@ -1,4 +1,4 @@
-import { useRef, useMemo } from "react";
+import { useRef, useMemo, useEffect } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { PencilLine, ChevronDown } from "lucide-react";
 import { useThreads, useSmartFolder } from "../../ipc/queries";
@@ -192,6 +192,7 @@ export function MessageListPane() {
   const setSelectedThreadId = useUiStore((s) => s.setSelectedThreadId);
   const setSelectedMessageId = useUiStore((s) => s.setSelectedMessageId);
   const openComposer = useUiStore((s) => s.openComposer);
+  const setListContext = useUiStore((s) => s.setListContext);
 
   const { data: threads, isLoading: threadsLoading } = useThreads(selectedFolderId);
   const { data: smartRows, isLoading: smartLoading } = useSmartFolder(selectedSmartFolder);
@@ -217,6 +218,13 @@ export function MessageListPane() {
         : [],
     [rawItems, isSmartMode, nowSeconds, hasSelection, isLoading]
   );
+
+  useEffect(() => {
+    const ids = isSmartMode
+      ? (rawItems as SmartMessageRow[]).map((r) => r.message_id)
+      : (rawItems as ThreadSummary[]).map((t) => t.thread_id);
+    setListContext(ids, isSmartMode ? "message" : "thread");
+  }, [rawItems, isSmartMode, setListContext]);
 
   const virtualizer = useVirtualizer({
     count: entries.length,
