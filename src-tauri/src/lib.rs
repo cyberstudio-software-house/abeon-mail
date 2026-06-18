@@ -22,6 +22,8 @@ pub fn run() {
             app.manage(AppState::new(db));
             let state: tauri::State<AppState> = app.state();
             let sink = std::sync::Arc::new(am_app::sink::AppEventSink { app: app.handle().clone() });
+            let rt = tauri::async_runtime::handle();
+            let _rt_guard = rt.inner().enter();
             let engine = am_sync::engine::SyncEngine::start(
                 std::sync::Arc::clone(&state.db),
                 sink,
