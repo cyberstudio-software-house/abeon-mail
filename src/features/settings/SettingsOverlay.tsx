@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useUiStore } from "../../app/store";
 import { AppearanceSection } from "./AppearanceSection";
+import { ShortcutsSection } from "./ShortcutsSection";
 import "./Settings.css";
 
 type SettingsSection =
@@ -68,6 +69,8 @@ export function SettingsOverlay() {
           </header>
           {active === "appearance" ? (
             <AppearanceSection />
+          ) : active === "shortcuts" ? (
+            <ShortcutsSection />
           ) : (
             <div className="settings-placeholder">Coming soon</div>
           )}
