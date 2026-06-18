@@ -107,6 +107,11 @@ pub fn list_folders(db: &Database, account_id: i64) -> Result<Vec<Folder>, Stora
     Ok(out)
 }
 
+pub fn delete_folder(db: &Database, id: i64) -> Result<usize, StorageError> {
+    let conn = db.conn();
+    Ok(conn.execute("DELETE FROM folders WHERE id = ?1", params![id])?)
+}
+
 pub fn get_folder(db: &Database, id: i64) -> Result<Folder, StorageError> {
     let conn = db.conn();
     conn.query_row(

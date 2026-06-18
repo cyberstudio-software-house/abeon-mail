@@ -275,6 +275,16 @@ pub async fn discover_folders(
     let folders = session.list_folders().await?;
     session.logout().await?;
     upsert_remote_folders(db, account_id, &folders)?;
+
+    let server_paths: std::collections::HashSet<&str> =
+        folders.iter().map(|f| f.remote_path.as_str()).collect();
+    for existing in folders_repo::list_folders(db, account_id)? {
+        if !server_paths.contains(existing.remote_path.as_str())
+            && messages_repo::count_by_folder(db, existing.id)? == 0
+        {
+            folders_repo::delete_folder(db, existing.id)?;
+        }
+    }
     Ok(())
 }
 
@@ -288,7 +298,11 @@ pub async fn sync_all_folders(
     let folders = folders_repo::list_folders(db, account_id)?;
     let mut total = 0usize;
     for folder in folders {
-        total += sync_folder(db, account_id, folder.id, creds, progress).await?;
+        match sync_folder(db, account_id, folder.id, creds, progress).await {
+            Ok(synced) => total += synced,
+            Err(SyncError::NeedsReauth) => return Err(SyncError::NeedsReauth),
+            Err(_) => continue,
+        }
     }
     Ok(total)
 }

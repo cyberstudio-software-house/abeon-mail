@@ -47,6 +47,15 @@ pub fn list_uids(db: &Database, folder_id: i64) -> Result<Vec<i64>, StorageError
     Ok(out)
 }
 
+pub fn count_by_folder(db: &Database, folder_id: i64) -> Result<i64, StorageError> {
+    let conn = db.conn();
+    Ok(conn.query_row(
+        "SELECT COUNT(*) FROM messages WHERE folder_id = ?1",
+        params![folder_id],
+        |row| row.get::<_, i64>(0),
+    )?)
+}
+
 pub fn delete_by_uids(db: &Database, folder_id: i64, uids: &[i64]) -> Result<usize, StorageError> {
     let conn = db.conn();
     let tx = conn.unchecked_transaction()?;
