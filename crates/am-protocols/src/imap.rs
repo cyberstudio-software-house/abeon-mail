@@ -3,7 +3,6 @@ use std::time::Duration;
 
 use async_imap::types::{Fetch, Flag, Name, NameAttribute};
 use async_imap::{Client, Session};
-use base64::{engine::general_purpose::STANDARD, Engine};
 use futures::TryStreamExt;
 use tokio::net::TcpStream;
 use tokio_rustls::client::TlsStream;
@@ -95,19 +94,25 @@ enum SessionStream {
 
 struct Xoauth2Authenticator {
     sasl: String,
+    calls: usize,
 }
 
 impl Xoauth2Authenticator {
     fn new(user: &str, access_token: &str) -> Self {
         let raw = format!("user={user}\x01auth=Bearer {access_token}\x01\x01");
-        Self { sasl: STANDARD.encode(raw.as_bytes()) }
+        Self { sasl: raw, calls: 0 }
     }
 }
 
 impl async_imap::Authenticator for Xoauth2Authenticator {
     type Response = String;
     fn process(&mut self, _challenge: &[u8]) -> Self::Response {
-        self.sasl.clone()
+        self.calls += 1;
+        if self.calls == 1 {
+            self.sasl.clone()
+        } else {
+            String::new()
+        }
     }
 }
 
@@ -139,14 +144,16 @@ impl ImapSession {
                 .connect(domain, tcp)
                 .await
                 .map_err(|e| ProtocolError::Tls(e.to_string()))?;
-            let client = Client::new(tls_stream);
+            let mut client = Client::new(tls_stream);
+            read_greeting(&mut client).await?;
             let session = authenticate(client, &config.username, auth).await?;
             Ok(ImapSession {
                 session: SessionStream::Tls(Box::new(session)),
                 selected_exists: None,
             })
         } else {
-            let client = Client::new(tcp);
+            let mut client = Client::new(tcp);
+            read_greeting(&mut client).await?;
             let session = authenticate(client, &config.username, auth).await?;
             Ok(ImapSession {
                 session: SessionStream::Plain(Box::new(session)),
@@ -393,6 +400,18 @@ fn flag_state(fetch: &Fetch) -> FlagState {
     FlagState { uid: fetch.uid.unwrap_or(0) as i64, seen, flagged }
 }
 
+async fn read_greeting<T>(client: &mut Client<T>) -> Result<(), ProtocolError>
+where
+    T: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + std::fmt::Debug + Send,
+{
+    client
+        .read_response()
+        .await
+        .map_err(|e| ProtocolError::Connect(e.to_string()))?
+        .ok_or_else(|| ProtocolError::Connect("no server greeting".into()))?;
+    Ok(())
+}
+
 async fn authenticate<T>(
     client: Client<T>,
     username: &str,
@@ -560,14 +579,16 @@ fn parse_envelope_date(value: &str) -> Option<i64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use base64::{engine::general_purpose::STANDARD, Engine};
 
     #[test]
-    fn xoauth2_sasl_base64_matches_expected() {
+    fn xoauth2_sasl_is_raw_and_encodes_as_expected() {
         let user = "user@gmail.com";
         let token = "ya29.some_token";
         let auth = Xoauth2Authenticator::new(user, token);
+        assert_eq!(auth.sasl, "user=user@gmail.com\x01auth=Bearer ya29.some_token\x01\x01");
         assert_eq!(
-            auth.sasl,
+            STANDARD.encode(auth.sasl.as_bytes()),
             "dXNlcj11c2VyQGdtYWlsLmNvbQFhdXRoPUJlYXJlciB5YTI5LnNvbWVfdG9rZW4BAQ=="
         );
     }
