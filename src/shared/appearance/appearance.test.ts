@@ -41,6 +41,18 @@ describe("parseSettings", () => {
     const parsed = parseSettings([["appearance.theme", "rainbow"]]);
     expect(parsed.theme).toBeUndefined();
   });
+  it("maps a valid accent preset", () => {
+    const parsed = parseSettings([["appearance.accent", "#10b981"]]);
+    expect(parsed.accent).toBe("#10b981");
+  });
+  it("rejects an accent value not in ACCENT_PRESETS", () => {
+    const parsed = parseSettings([["appearance.accent", "#123456"]]);
+    expect(parsed.accent).toBeUndefined();
+  });
+  it("leaves showPreview undefined for a bogus boolean value", () => {
+    const parsed = parseSettings([["appearance.showPreview", "garbage"]]);
+    expect(parsed.showPreview).toBeUndefined();
+  });
 });
 
 describe("DEFAULT_APPEARANCE", () => {

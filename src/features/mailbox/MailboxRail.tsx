@@ -418,6 +418,7 @@ export function MailboxRail({ status }: Props) {
           Add account
         </button>
         <button
+          type="button"
           onClick={openSettings}
           aria-label="Open settings"
           style={{

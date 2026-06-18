@@ -47,6 +47,7 @@ export function AppearanceSection() {
           <button
             key={m.value}
             type="button"
+            aria-pressed={a.theme === m.value}
             className={`theme-card${a.theme === m.value ? " theme-card--active" : ""}`}
             onClick={() => a.setTheme(m.value)}
           >
@@ -67,7 +68,7 @@ export function AppearanceSection() {
             style={{ background: hex }}
             onClick={() => a.setAccent(hex)}
           >
-            {a.accent === hex && <span className="accent-swatch__check">✓</span>}
+            {a.accent === hex && <span className="accent-swatch__check" aria-hidden="true">✓</span>}
           </button>
         ))}
       </div>
@@ -78,6 +79,7 @@ export function AppearanceSection() {
           <button
             key={d.value}
             type="button"
+            aria-pressed={a.density === d.value}
             className={`density-card${a.density === d.value ? " density-card--active" : ""}`}
             onClick={() => a.setDensity(d.value)}
           >

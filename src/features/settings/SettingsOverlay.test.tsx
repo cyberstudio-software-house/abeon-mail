@@ -29,9 +29,19 @@ afterEach(cleanup);
 describe("SettingsOverlay", () => {
   it("shows the eight nav sections with Appearance active by default", () => {
     renderOverlay();
-    expect(screen.getByRole("button", { name: "Appearance" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "General" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Shortcuts" })).toBeTruthy();
+    const sections = [
+      "General",
+      "Accounts",
+      "Appearance",
+      "Signatures",
+      "Notifications",
+      "Rules & Filters",
+      "Snooze",
+      "Shortcuts",
+    ];
+    for (const name of sections) {
+      expect(screen.getByRole("button", { name })).toBeTruthy();
+    }
     expect(screen.getByRole("heading", { name: "Appearance" })).toBeTruthy();
   });
 

@@ -99,10 +99,10 @@ export function parseSettings(pairs: [string, string][]): Partial<AppearanceFiel
         if (isDensity(value)) out.density = value;
         break;
       case SETTINGS_KEYS.showPreview:
-        out.showPreview = value === "true";
+        if (value === "true" || value === "false") out.showPreview = value === "true";
         break;
       case SETTINGS_KEYS.showAvatars:
-        out.showAvatars = value === "true";
+        if (value === "true" || value === "false") out.showAvatars = value === "true";
         break;
       default:
         break;

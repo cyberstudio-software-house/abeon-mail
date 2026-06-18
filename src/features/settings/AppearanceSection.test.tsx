@@ -60,4 +60,15 @@ describe("AppearanceSection", () => {
     fireEvent.click(screen.getByRole("switch", { name: "Show sender avatars" }));
     expect(setShowAvatars).toHaveBeenCalledWith(false);
   });
+
+  it("active controls reflect the current appearance state", () => {
+    render(<AppearanceSection />);
+    expect(screen.getByRole("button", { name: "Auto" }).getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByRole("button", { name: "Light" }).getAttribute("aria-pressed")).toBe("false");
+    expect(screen.getByRole("button", { name: "Dark" }).getAttribute("aria-pressed")).toBe("false");
+    expect(screen.getByRole("button", { name: "Accent #4f46e5" }).getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByRole("button", { name: "Accent #10b981" }).getAttribute("aria-pressed")).toBe("false");
+    expect(screen.getByRole("button", { name: /Comfortable/ }).getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByRole("button", { name: /Dense/ }).getAttribute("aria-pressed")).toBe("false");
+  });
 });

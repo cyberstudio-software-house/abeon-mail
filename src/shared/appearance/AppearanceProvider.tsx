@@ -54,7 +54,7 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
       .then((res) => {
         if (!active) return;
         if (res.status === "ok") {
-          hydrateAppearance(parseSettings(res.data as [string, string][]));
+          hydrateAppearance(parseSettings(res.data));
         }
       })
       .catch(() => undefined);

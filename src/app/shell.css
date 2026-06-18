@@ -4,10 +4,6 @@
   height: 100%;
 }
 
-.shell[data-density="compact"] {
-  grid-template-columns: 220px minmax(280px, 1fr) minmax(320px, 1.4fr);
-}
-
 .rail {
   background: var(--bg-rail);
   color: var(--text-on-rail);
