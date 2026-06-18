@@ -4,6 +4,8 @@ use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let _ = dotenvy::dotenv();
+
     let builder = build_specta_builder();
 
     tauri::Builder::default()

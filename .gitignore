@@ -3,3 +3,9 @@ dist/
 target/
 .DS_Store
 *.log
+
+.env
+.env.*
+!.env.example
+docs/Google.md
+docs/client_secret_*.json
