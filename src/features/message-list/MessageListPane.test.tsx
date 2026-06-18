@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import { render, screen, cleanup, fireEvent } from "@testing-library/react";
 
+const mockOpenComposer = vi.fn();
+
 const mockSetSelectedThreadId = vi.fn();
 const mockSetSelectedMessageId = vi.fn();
 
@@ -22,6 +24,11 @@ import type { ThreadSummary, SmartMessageRow } from "../../ipc/bindings";
 const mockUseThreads = vi.mocked(useThreads);
 const mockUseSmartFolder = vi.mocked(useSmartFolder);
 const mockUseUiStore = vi.mocked(useUiStore);
+
+const nowSeconds = Math.floor(Date.now() / 1000);
+const todaySeconds = nowSeconds - 3600;
+const yesterdaySeconds = nowSeconds - 86400 - 3600;
+const earlierSeconds = nowSeconds - 86400 * 3;
 
 const sampleThreads: ThreadSummary[] = [
   {
@@ -47,6 +54,45 @@ const sampleThreads: ThreadSummary[] = [
     snippet: "Second snippet",
     has_attachments: true,
     flagged: true,
+  },
+];
+
+const groupedThreads: ThreadSummary[] = [
+  {
+    thread_id: 10,
+    account_id: 1,
+    subject: "Today Thread",
+    last_date: todaySeconds,
+    message_count: 1,
+    unread_count: 0,
+    participants: ["Today Sender"],
+    snippet: "Today snippet",
+    has_attachments: false,
+    flagged: false,
+  },
+  {
+    thread_id: 11,
+    account_id: 1,
+    subject: "Yesterday Thread",
+    last_date: yesterdaySeconds,
+    message_count: 1,
+    unread_count: 0,
+    participants: ["Yesterday Sender"],
+    snippet: "Yesterday snippet",
+    has_attachments: false,
+    flagged: false,
+  },
+  {
+    thread_id: 12,
+    account_id: 1,
+    subject: "Earlier Thread",
+    last_date: earlierSeconds,
+    message_count: 1,
+    unread_count: 0,
+    participants: ["Earlier Sender"],
+    snippet: "Earlier snippet",
+    has_attachments: false,
+    flagged: false,
   },
 ];
 
@@ -113,7 +159,7 @@ function setupStore(
       settingsOpen: false,
       openSettings: vi.fn(),
       closeSettings: vi.fn(),
-      openComposer: vi.fn(),
+      openComposer: mockOpenComposer,
       closeComposer: vi.fn(),
     };
     return selector ? selector(state) : state;
@@ -272,5 +318,71 @@ describe("MessageListPane", () => {
     expect(firstRow).toBeTruthy();
     fireEvent.click(firstRow!);
     expect(mockSetSelectedMessageId).toHaveBeenCalledWith(100);
+  });
+
+  it("renders date group headers", () => {
+    setupStore(10);
+    mockUseThreads.mockReturnValue({
+      data: groupedThreads,
+      isLoading: false,
+      isError: false,
+      error: null,
+    } as unknown as ReturnType<typeof useThreads>);
+    mockUseSmartFolder.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isError: false,
+      error: null,
+    } as unknown as ReturnType<typeof useSmartFolder>);
+
+    render(<MessageListPane />);
+
+    expect(screen.getByText("Today")).toBeTruthy();
+    expect(screen.getByText("Yesterday")).toBeTruthy();
+    expect(screen.getByText("Earlier")).toBeTruthy();
+  });
+
+  it("Compose button in list header opens composer", () => {
+    setupStore(10);
+    mockUseThreads.mockReturnValue({
+      data: sampleThreads,
+      isLoading: false,
+      isError: false,
+      error: null,
+    } as unknown as ReturnType<typeof useThreads>);
+    mockUseSmartFolder.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isError: false,
+      error: null,
+    } as unknown as ReturnType<typeof useSmartFolder>);
+
+    render(<MessageListPane />);
+
+    const composeBtn = screen.getByRole("button", { name: "New message" });
+    fireEvent.click(composeBtn);
+    expect(mockOpenComposer).toHaveBeenCalledWith(null);
+  });
+
+  it("sort label is a non-interactive placeholder", () => {
+    setupStore(10);
+    mockUseThreads.mockReturnValue({
+      data: sampleThreads,
+      isLoading: false,
+      isError: false,
+      error: null,
+    } as unknown as ReturnType<typeof useThreads>);
+    mockUseSmartFolder.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isError: false,
+      error: null,
+    } as unknown as ReturnType<typeof useSmartFolder>);
+
+    render(<MessageListPane />);
+
+    const newestEl = screen.getByText("Newest", { exact: false });
+    const ariaDisabledEl = newestEl.closest("[aria-disabled='true']");
+    expect(ariaDisabledEl).toBeTruthy();
   });
 });

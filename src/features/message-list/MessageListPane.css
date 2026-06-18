@@ -33,7 +33,7 @@
 }
 
 .message-row--selected {
-  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  background: var(--selection-bg);
   border-left: 3px solid var(--accent);
 }
 
@@ -96,7 +96,7 @@
 
 .message-row__subject {
   font-size: 0.875rem;
-  color: var(--text-primary);
+  color: var(--text-subject);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -116,7 +116,7 @@
 
 .message-row__snippet {
   font-size: 0.75rem;
-  color: var(--text-muted);
+  color: var(--text-preview);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -171,4 +171,48 @@
 
 .shell[data-density="dense"] .message-row__meta {
   margin-top: 0;
+}
+
+.message-list__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+}
+
+.message-list__compose {
+  height: 36px;
+  padding: 0 16px;
+  border: none;
+  border-radius: 9px;
+  background: var(--accent);
+  color: #fff;
+  font-family: inherit;
+  font-weight: 700;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  cursor: pointer;
+  box-shadow: var(--shadow-accent);
+}
+
+.message-list__sort {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.message-list__group {
+  padding: 12px 18px 6px;
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--section-label);
 }

@@ -1,9 +1,11 @@
 import { useRef } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
+import { PencilLine, ChevronDown } from "lucide-react";
 import { useThreads, useSmartFolder } from "../../ipc/queries";
 import { useUiStore, type Density } from "../../app/store";
 import type { ThreadSummary, SmartMessageRow } from "../../ipc/bindings";
 import { Avatar } from "../../shared/appearance/Avatar";
+import { groupIntoEntries, type ListEntry } from "./grouping";
 import "./MessageListPane.css";
 
 const ROW_HEIGHT: Record<Density, number> = {
@@ -11,6 +13,8 @@ const ROW_HEIGHT: Record<Density, number> = {
   compact: 48,
   dense: 36,
 };
+
+const HEADER_HEIGHT = 28;
 
 function formatDate(epochSeconds: number): string {
   const date = new Date(epochSeconds * 1000);
@@ -187,23 +191,32 @@ export function MessageListPane() {
   const showAvatars = useUiStore((s) => s.showAvatars);
   const setSelectedThreadId = useUiStore((s) => s.setSelectedThreadId);
   const setSelectedMessageId = useUiStore((s) => s.setSelectedMessageId);
+  const openComposer = useUiStore((s) => s.openComposer);
 
   const { data: threads, isLoading: threadsLoading } = useThreads(selectedFolderId);
   const { data: smartRows, isLoading: smartLoading } = useSmartFolder(selectedSmartFolder);
 
   const isSmartMode = selectedSmartFolder != null;
   const isLoading = isSmartMode ? smartLoading : threadsLoading;
-  const items = isSmartMode ? (smartRows ?? []) : (threads ?? []);
+  const rawItems = isSmartMode ? (smartRows ?? []) : (threads ?? []);
   const hasSelection = isSmartMode ? selectedSmartFolder != null : selectedFolderId != null;
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const rowHeight = ROW_HEIGHT[density] ?? ROW_HEIGHT.comfortable;
   const showSnippet = showPreview && density !== "dense";
 
+  const nowSeconds = Math.floor(Date.now() / 1000);
+
+  const entries: ListEntry<ThreadSummary | SmartMessageRow>[] = hasSelection && !isLoading && rawItems.length > 0
+    ? isSmartMode
+      ? groupIntoEntries(rawItems as SmartMessageRow[], (r) => (r as SmartMessageRow).date, nowSeconds)
+      : groupIntoEntries(rawItems as ThreadSummary[], (t) => (t as ThreadSummary).last_date, nowSeconds)
+    : [];
+
   const virtualizer = useVirtualizer({
-    count: items.length,
+    count: entries.length,
     getScrollElement: () => scrollContainerRef.current,
-    estimateSize: () => rowHeight,
+    estimateSize: (i) => (entries[i]?.kind === "header" ? HEADER_HEIGHT : rowHeight),
     overscan: 5,
   });
 
@@ -211,6 +224,20 @@ export function MessageListPane() {
 
   return (
     <section className="pane message-list-pane" aria-label="message-list">
+      <div className="message-list__header">
+        <button
+          type="button"
+          className="message-list__compose"
+          aria-label="New message"
+          onClick={() => openComposer(null)}
+        >
+          <PencilLine size={15} /> Compose
+        </button>
+        <span className="message-list__sort" aria-disabled="true">
+          Newest <ChevronDown size={13} />
+        </span>
+      </div>
+
       {!hasSelection && (
         <div className="message-list__empty">Select a folder</div>
       )}
@@ -223,11 +250,11 @@ export function MessageListPane() {
         </div>
       )}
 
-      {hasSelection && !isLoading && items.length === 0 && (
+      {hasSelection && !isLoading && rawItems.length === 0 && (
         <div className="message-list__empty">No messages</div>
       )}
 
-      {hasSelection && !isLoading && items.length > 0 && (
+      {hasSelection && !isLoading && rawItems.length > 0 && (
         <div
           ref={scrollContainerRef}
           className="message-list__scroll"
@@ -237,8 +264,25 @@ export function MessageListPane() {
         >
           <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
             {virtualItems.map((virtualItem) => {
+              const entry = entries[virtualItem.index];
+              if (entry.kind === "header") {
+                return (
+                  <div
+                    key={virtualItem.key}
+                    style={{
+                      position: "absolute",
+                      top: virtualItem.start,
+                      left: 0,
+                      right: 0,
+                      height: virtualItem.size,
+                    }}
+                  >
+                    <div className="message-list__group">{entry.label}</div>
+                  </div>
+                );
+              }
               if (isSmartMode) {
-                const row = (items as SmartMessageRow[])[virtualItem.index];
+                const row = entry.data as SmartMessageRow;
                 return (
                   <div
                     key={virtualItem.key}
@@ -261,7 +305,7 @@ export function MessageListPane() {
                   </div>
                 );
               }
-              const thread = (items as ThreadSummary[])[virtualItem.index];
+              const thread = entry.data as ThreadSummary;
               return (
                 <div
                   key={virtualItem.key}
