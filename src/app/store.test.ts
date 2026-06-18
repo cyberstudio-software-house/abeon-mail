@@ -14,6 +14,14 @@ beforeEach(() => {
     showPreview: true,
     showAvatars: true,
     composer: { open: false, draftId: null, prefill: null },
+    visibleMessageIds: [],
+    selectMode: "thread",
+    replyTargetId: null,
+    composerSend: null,
+    paletteOpen: false,
+    cheatSheetOpen: false,
+    shortcutProfile: "default",
+    shortcutOverrides: {},
   });
 });
 
@@ -84,5 +92,47 @@ describe("appearance state", () => {
     expect(s.theme).toBe("light");
     expect(s.density).toBe("compact");
     expect(s.accent).toBe("#4f46e5");
+  });
+});
+
+describe("shortcuts store slice", () => {
+  it("setListContext stores ordered ids and mode", () => {
+    useUiStore.getState().setListContext([3, 1, 2], "message");
+    const s = useUiStore.getState();
+    expect(s.visibleMessageIds).toEqual([3, 1, 2]);
+    expect(s.selectMode).toBe("message");
+  });
+
+  it("palette toggles and closes", () => {
+    useUiStore.getState().togglePalette();
+    expect(useUiStore.getState().paletteOpen).toBe(true);
+    useUiStore.getState().togglePalette();
+    expect(useUiStore.getState().paletteOpen).toBe(false);
+    useUiStore.setState({ paletteOpen: true });
+    useUiStore.getState().closePalette();
+    expect(useUiStore.getState().paletteOpen).toBe(false);
+  });
+
+  it("cheat sheet toggles and closes", () => {
+    useUiStore.getState().toggleCheatSheet();
+    expect(useUiStore.getState().cheatSheetOpen).toBe(true);
+    useUiStore.getState().closeCheatSheet();
+    expect(useUiStore.getState().cheatSheetOpen).toBe(false);
+  });
+
+  it("override set / reset and profile change", () => {
+    useUiStore.getState().setShortcutProfile("vim");
+    useUiStore.getState().setShortcutOverride("compose", "n");
+    expect(useUiStore.getState().shortcutProfile).toBe("vim");
+    expect(useUiStore.getState().shortcutOverrides.compose).toBe("n");
+    useUiStore.getState().resetShortcut("compose");
+    expect("compose" in useUiStore.getState().shortcutOverrides).toBe(false);
+  });
+
+  it("hydrateShortcuts merges profile and overrides", () => {
+    useUiStore.getState().hydrateShortcuts({ profile: "vim", overrides: { reply: null } });
+    const s = useUiStore.getState();
+    expect(s.shortcutProfile).toBe("vim");
+    expect(s.shortcutOverrides.reply).toBeNull();
   });
 });
