@@ -158,3 +158,17 @@
   margin-right: var(--space-2);
   align-self: center;
 }
+
+.shell[data-density="compact"] .message-row {
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+.shell[data-density="dense"] .message-row {
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+.shell[data-density="dense"] .message-row__meta {
+  margin-top: 0;
+}
