@@ -23,13 +23,15 @@ function RemoteContentBanner() {
   );
 }
 
-export function MessageBodyView({ messageId }: { messageId: number }) {
+export function MessageBodyView({ messageId, shouldMarkSeen }: { messageId: number; shouldMarkSeen: boolean }) {
   const { data: body, isLoading: bodyLoading } = useMessageBody(messageId);
   const markSeen = useMarkSeen();
 
   useEffect(() => {
-    markSeen.mutate(messageId);
-  }, [messageId]);
+    if (shouldMarkSeen) {
+      markSeen.mutate(messageId);
+    }
+  }, [messageId, shouldMarkSeen]);
 
   const htmlSource = body?.text_html ?? null;
 

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   DndContext,
   closestCenter,
@@ -15,6 +15,23 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import {
+  Search,
+  Layers,
+  MailOpen,
+  Flag,
+  Clock,
+  Settings,
+  ChevronRight,
+  ChevronDown,
+  Inbox,
+  Send,
+  FileText,
+  Archive,
+  ShieldAlert,
+  Trash2,
+  Folder,
+} from "lucide-react";
+import {
   useAccounts,
   useFolders,
   useRemoveAccount,
@@ -23,13 +40,89 @@ import {
 } from "../../ipc/queries";
 import { useUiStore } from "../../app/store";
 import { AddAccountWizard } from "../accounts/AddAccountWizard";
+import { Avatar } from "../../shared/appearance/Avatar";
+import { buildFolderTree } from "./folder-tree";
+import type { FolderNode } from "./folder-tree";
 import type { Account, SmartFolderKind } from "../../ipc/bindings";
+import "./MailboxRail.css";
 
-const SMART_FOLDERS: { label: string; kind: SmartFolderKind }[] = [
-  { label: "All Inboxes", kind: "all_inboxes" },
-  { label: "Unread", kind: "unread" },
-  { label: "Flagged", kind: "flagged" },
+const SMART_FOLDERS: { label: string; kind: SmartFolderKind; Icon: React.ElementType }[] = [
+  { label: "All Inboxes", kind: "all_inboxes", Icon: Layers },
+  { label: "Unread", kind: "unread", Icon: MailOpen },
+  { label: "Flagged", kind: "flagged", Icon: Flag },
 ];
+
+function FolderIcon({ folderType }: { folderType?: string }) {
+  const Icon =
+    folderType === "inbox" ? Inbox :
+    folderType === "sent" ? Send :
+    folderType === "drafts" ? FileText :
+    folderType === "archive" ? Archive :
+    folderType === "spam" ? ShieldAlert :
+    folderType === "trash" ? Trash2 :
+    Folder;
+  return <Icon size={15} className="rail__item-icon" />;
+}
+
+function FolderTreeNodes({
+  nodes,
+  depth,
+  expanded,
+  toggle,
+  selectedFolderId,
+  onFolderClick,
+}: {
+  nodes: FolderNode[];
+  depth: number;
+  expanded: Set<string>;
+  toggle: (path: string) => void;
+  selectedFolderId: number | null;
+  onFolderClick: (folderId: number, accountId: number) => void;
+}) {
+  return (
+    <>
+      {nodes.map((node) => {
+        const hasChildren = node.children.length > 0;
+        const isOpen = expanded.has(node.fullPath);
+        const isSelected = node.folder != null && selectedFolderId === node.folder.id;
+        return (
+          <div key={node.fullPath}>
+            <div
+              className={`rail__item${isSelected ? " rail__item--active" : ""}`}
+              style={{ paddingLeft: `${12 + depth * 14}px` }}
+              aria-disabled={node.folder == null ? true : undefined}
+              onClick={() => {
+                if (hasChildren) toggle(node.fullPath);
+                if (node.folder) onFolderClick(node.folder.id, node.folder.account_id);
+              }}
+            >
+              {hasChildren ? (
+                isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />
+              ) : (
+                <span className="rail__chevron-spacer" />
+              )}
+              <FolderIcon folderType={node.folder?.folder_type} />
+              <span className="rail__item-label">{node.segment}</span>
+              {node.folder != null && node.folder.unread_count > 0 && (
+                <span className="rail__count">{node.folder.unread_count}</span>
+              )}
+            </div>
+            {hasChildren && isOpen && (
+              <FolderTreeNodes
+                nodes={node.children}
+                depth={depth + 1}
+                expanded={expanded}
+                toggle={toggle}
+                selectedFolderId={selectedFolderId}
+                onFolderClick={onFolderClick}
+              />
+            )}
+          </div>
+        );
+      })}
+    </>
+  );
+}
 
 interface RemoveConfirmProps {
   account: Account;
@@ -105,7 +198,6 @@ interface SortableAccountRowProps {
   onAccountClick: (id: number) => void;
   onRemoveClick: (account: Account) => void;
   onReauthClick: (id: number) => void;
-  children?: React.ReactNode;
 }
 
 function SortableAccountRow({
@@ -114,7 +206,6 @@ function SortableAccountRow({
   onAccountClick,
   onRemoveClick,
   onReauthClick,
-  children,
 }: SortableAccountRowProps) {
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({
     id: account.id,
@@ -128,18 +219,8 @@ function SortableAccountRow({
   return (
     <div ref={setNodeRef} style={style}>
       <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: "var(--space-2)",
-          padding: "var(--space-2) var(--space-4)",
-          cursor: "pointer",
-          fontSize: "14px",
-          borderRadius: "var(--radius-sm)",
-          margin: "1px var(--space-2)",
-          fontWeight: isSelected ? 600 : 400,
-          color: isSelected ? "var(--accent)" : "var(--text-on-rail)",
-        }}
+        className={`rail__account-row${isSelected ? " rail__account-row--active" : ""}`}
+        onClick={() => onAccountClick(account.id)}
       >
         <span
           {...attributes}
@@ -149,19 +230,12 @@ function SortableAccountRow({
         >
           ⠿
         </span>
-        <span
-          style={{
-            width: "8px",
-            height: "8px",
-            borderRadius: "50%",
-            background: account.color ?? "var(--accent)",
-            flexShrink: 0,
-          }}
-          onClick={() => onAccountClick(account.id)}
+        <Avatar
+          seed={account.email}
+          label={account.display_name || account.email}
+          size={22}
         />
-        <span style={{ flex: 1 }} onClick={() => onAccountClick(account.id)}>
-          {account.display_name || account.email}
-        </span>
+        <span className="rail__item-label">{account.display_name || account.email}</span>
         {account.requires_reauth && (
           <button
             onClick={(e) => {
@@ -200,7 +274,6 @@ function SortableAccountRow({
           ✕
         </button>
       </div>
-      {children}
     </div>
   );
 }
@@ -212,6 +285,7 @@ interface Props {
 export function MailboxRail({ status }: Props) {
   const [wizardOpen, setWizardOpen] = useState(false);
   const [confirmAccount, setConfirmAccount] = useState<Account | null>(null);
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
   const selectedAccountId = useUiStore((s) => s.selectedAccountId);
   const selectedFolderId = useUiStore((s) => s.selectedFolderId);
@@ -228,6 +302,21 @@ export function MailboxRail({ status }: Props) {
   const reorderAccounts = useReorderAccounts();
 
   const sensors = useSensors(useSensor(PointerSensor));
+
+  const folderIds = folders.map((f) => f.id).join(",");
+  useEffect(() => {
+    const tree = buildFolderTree(folders);
+    setExpanded(new Set(tree.map((n) => n.fullPath)));
+  }, [folderIds]);
+
+  function toggle(path: string) {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(path)) next.delete(path);
+      else next.add(path);
+      return next;
+    });
+  }
 
   function handleAccountClick(accountId: number) {
     setSelectedAccountId(accountId);
@@ -273,66 +362,47 @@ export function MailboxRail({ status }: Props) {
     reorderAccounts.mutate(reordered.map((a) => a.id));
   }
 
+  const headerAccount = accounts.find((a) => a.id === selectedAccountId) ?? accounts[0];
+
   return (
-    <aside
-      className="rail"
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        height: "100%",
-        background: "var(--bg-rail)",
-        color: "var(--text-on-rail)",
-      }}
-    >
-      <div style={{ padding: "var(--space-4)", fontWeight: 700, fontSize: "15px" }}>
-        AbeonMail
+    <aside className="rail">
+      <header className="rail__header">
+        <div className="rail__logo">A</div>
+        <span className="rail__title">AbeonMail</span>
+        {headerAccount && (
+          <Avatar
+            seed={headerAccount.email}
+            label={headerAccount.display_name || headerAccount.email}
+            size={30}
+          />
+        )}
+      </header>
+
+      <div className="rail__search" aria-disabled="true">
+        <Search size={15} />
+        <span>Search</span>
       </div>
 
-      <nav style={{ flex: 1, overflowY: "auto" }}>
-        <div
-          style={{
-            padding: "var(--space-2) var(--space-3)",
-            fontSize: "11px",
-            textTransform: "uppercase",
-            letterSpacing: "0.08em",
-            color: "var(--text-muted)",
-            marginTop: "var(--space-2)",
-          }}
-        >
-          Smart Folders
-        </div>
-        {SMART_FOLDERS.map(({ label, kind }) => (
+      <nav className="rail__scroll">
+        <div className="rail__section">Smart Folders</div>
+        {SMART_FOLDERS.map(({ label, kind, Icon }) => (
           <div
             key={kind}
+            className={`rail__item${selectedSmartFolder === kind ? " rail__item--active" : ""}`}
             onClick={() => setSelectedSmartFolder(kind)}
-            style={{
-              padding: "var(--space-2) var(--space-4)",
-              fontSize: "14px",
-              borderRadius: "var(--radius-sm)",
-              margin: "1px var(--space-2)",
-              cursor: "pointer",
-              fontWeight: selectedSmartFolder === kind ? 600 : 400,
-              color: selectedSmartFolder === kind ? "var(--accent)" : "var(--text-on-rail)",
-            }}
           >
-            {label}
+            <Icon size={15} className="rail__item-icon" />
+            <span className="rail__item-label">{label}</span>
           </div>
         ))}
+        <div className="rail__item" aria-disabled="true">
+          <Clock size={15} className="rail__item-icon" />
+          <span className="rail__item-label">Snoozed</span>
+        </div>
 
         {!accountsLoading && accounts.length > 0 && (
           <>
-            <div
-              style={{
-                padding: "var(--space-2) var(--space-3)",
-                fontSize: "11px",
-                textTransform: "uppercase",
-                letterSpacing: "0.08em",
-                color: "var(--text-muted)",
-                marginTop: "var(--space-3)",
-              }}
-            >
-              Accounts
-            </div>
+            <div className="rail__section">Accounts</div>
             <DndContext
               sensors={sensors}
               collisionDetection={closestCenter}
@@ -343,44 +413,25 @@ export function MailboxRail({ status }: Props) {
                 strategy={verticalListSortingStrategy}
               >
                 {accounts.map((account) => (
-                  <SortableAccountRow
-                    key={account.id}
-                    account={account}
-                    isSelected={selectedAccountId === account.id}
-                    onAccountClick={handleAccountClick}
-                    onRemoveClick={handleRemoveClick}
-                    onReauthClick={handleReauthClick}
-                  >
-                    {selectedAccountId === account.id &&
-                      folders.map((folder) => (
-                        <div
-                          key={folder.id}
-                          onClick={() => handleFolderClick(folder.id, account.id)}
-                          style={{
-                            padding: "var(--space-1) var(--space-4)",
-                            paddingLeft: "calc(var(--space-4) + 20px)",
-                            cursor: "pointer",
-                            fontSize: "13px",
-                            borderRadius: "var(--radius-sm)",
-                            margin: "1px var(--space-2)",
-                            color:
-                              selectedFolderId === folder.id
-                                ? "var(--accent)"
-                                : "var(--text-on-rail)",
-                            fontWeight: selectedFolderId === folder.id ? 600 : 400,
-                          }}
-                        >
-                          {folder.name}
-                          {folder.unread_count > 0 && (
-                            <span
-                              style={{ marginLeft: "var(--space-2)", fontSize: "11px", opacity: 0.7 }}
-                            >
-                              {folder.unread_count}
-                            </span>
-                          )}
-                        </div>
-                      ))}
-                  </SortableAccountRow>
+                  <div key={account.id}>
+                    <SortableAccountRow
+                      account={account}
+                      isSelected={selectedAccountId === account.id}
+                      onAccountClick={handleAccountClick}
+                      onRemoveClick={handleRemoveClick}
+                      onReauthClick={handleReauthClick}
+                    />
+                    {selectedAccountId === account.id && (
+                      <FolderTreeNodes
+                        nodes={buildFolderTree(folders)}
+                        depth={0}
+                        expanded={expanded}
+                        toggle={toggle}
+                        selectedFolderId={selectedFolderId}
+                        onFolderClick={handleFolderClick}
+                      />
+                    )}
+                  </div>
                 ))}
               </SortableContext>
             </DndContext>
@@ -399,41 +450,27 @@ export function MailboxRail({ status }: Props) {
             No accounts yet
           </div>
         )}
+
+        <div className="rail__section">Labels</div>
+        <div className="rail__placeholder" aria-disabled="true">Coming soon</div>
       </nav>
 
-      <div style={{ display: "flex", gap: "var(--space-2)", padding: "var(--space-3)" }}>
+      <footer className="rail__footer">
         <button
+          className="rail__add"
           onClick={() => setWizardOpen(true)}
-          style={{
-            flex: 1,
-            background: "var(--accent)",
-            border: "none",
-            borderRadius: "var(--radius-sm)",
-            color: "var(--color-white)",
-            cursor: "pointer",
-            fontSize: "13px",
-            padding: "var(--space-2) var(--space-3)",
-          }}
         >
           Add account
         </button>
         <button
           type="button"
+          className="rail__settings"
           onClick={openSettings}
           aria-label="Open settings"
-          style={{
-            background: "transparent",
-            border: "1px solid var(--border-subtle)",
-            borderRadius: "var(--radius-sm)",
-            color: "var(--text-on-rail)",
-            cursor: "pointer",
-            fontSize: "14px",
-            padding: "var(--space-2) var(--space-3)",
-          }}
         >
-          ⚙
+          <Settings size={16} />
         </button>
-      </div>
+      </footer>
 
       {status !== undefined && (
         <div

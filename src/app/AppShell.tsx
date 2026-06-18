@@ -13,7 +13,6 @@ export function AppShell() {
   useSyncEvents();
 
   const [status, setStatus] = useState("…");
-  const openComposer = useUiStore((s) => s.openComposer);
   const composerOpen = useUiStore((s) => s.composer.open);
   const settingsOpen = useUiStore((s) => s.settingsOpen);
   const density = useUiStore((s) => s.density);
@@ -33,16 +32,6 @@ export function AppShell() {
       <MailboxRail status={status} />
       <MessageListPane />
       <ReaderPane />
-      <div className="shell-compose-action">
-        <button
-          type="button"
-          className="btn-new-message"
-          aria-label="New message"
-          onClick={() => openComposer(null)}
-        >
-          New
-        </button>
-      </div>
       {settingsOpen && <SettingsOverlay />}
       {composerOpen && <Composer />}
     </div>

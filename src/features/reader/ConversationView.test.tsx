@@ -29,7 +29,7 @@ vi.mock("../../ipc/bindings", () => ({
           from_name: "B",
           date: 2,
           seen: false,
-          flagged: false,
+          flagged: true,
           has_attachments: false,
           snippet: "",
         },
@@ -56,6 +56,7 @@ vi.mock("../../ipc/bindings", () => ({
         attachments: [],
       },
     }),
+    setMessageFlags: vi.fn().mockResolvedValue({ status: "ok", data: null }),
   },
   events: {},
 }));
@@ -94,14 +95,14 @@ describe("ConversationView", () => {
   it("renders both message senders and last item is expanded with body", async () => {
     render(<ConversationView threadId={1} />, { wrapper: Wrapper });
 
-    await screen.findByText("A");
-    await screen.findByText("B");
+    await screen.findAllByText("A");
+    await screen.findAllByText("B");
 
-    expect(screen.getByText("A")).toBeTruthy();
-    expect(screen.getByText("B")).toBeTruthy();
+    expect(screen.getAllByText("A").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("B").length).toBeGreaterThan(0);
 
-    await screen.findByText("body");
-    expect(screen.getByText("body")).toBeTruthy();
+    await screen.findAllByText("body");
+    expect(screen.getAllByText("body").length).toBeGreaterThan(0);
   });
 
   it("calls markMessageSeen for the newest message after thread loads", async () => {
@@ -113,12 +114,22 @@ describe("ConversationView", () => {
     });
   });
 
+  it("does not call markMessageSeen for non-latest message id 1", async () => {
+    const { commands } = await import("../../ipc/bindings");
+    render(<ConversationView threadId={1} />, { wrapper: Wrapper });
+
+    await waitFor(() => {
+      expect(commands.markMessageSeen).toHaveBeenCalledWith(2);
+    });
+
+    expect(commands.markMessageSeen).not.toHaveBeenCalledWith(1);
+  });
+
   it("clicking Reply calls startReply with message id and mode reply and opens composer", async () => {
     const { commands } = await import("../../ipc/bindings");
     render(<ConversationView threadId={1} />, { wrapper: Wrapper });
 
-    await screen.findByText("B");
-    await screen.findByText("body");
+    await screen.findAllByText("B");
 
     const replyButton = await screen.findByRole("button", { name: "Reply" });
     fireEvent.click(replyButton);
@@ -140,8 +151,7 @@ describe("ConversationView", () => {
     const { commands } = await import("../../ipc/bindings");
     render(<ConversationView threadId={1} />, { wrapper: Wrapper });
 
-    await screen.findByText("B");
-    await screen.findByText("body");
+    await screen.findAllByText("B");
 
     const replyAllButton = await screen.findByRole("button", { name: "Reply all" });
     fireEvent.click(replyAllButton);
@@ -155,14 +165,59 @@ describe("ConversationView", () => {
     const { commands } = await import("../../ipc/bindings");
     render(<ConversationView threadId={1} />, { wrapper: Wrapper });
 
-    await screen.findByText("B");
-    await screen.findByText("body");
+    await screen.findAllByText("B");
 
     const forwardButton = await screen.findByRole("button", { name: "Forward" });
     fireEvent.click(forwardButton);
 
     await waitFor(() => {
       expect(commands.startReply).toHaveBeenCalledWith(2, "forward");
+    });
+  });
+
+  it("Star toggles the flag on the latest message", async () => {
+    const { commands } = await import("../../ipc/bindings");
+    render(<ConversationView threadId={1} />, { wrapper: Wrapper });
+
+    await screen.findAllByText("B");
+
+    const flagButton = await screen.findByRole("button", { name: "Flag" });
+    fireEvent.click(flagButton);
+
+    await waitFor(() => {
+      expect(commands.setMessageFlags).toHaveBeenCalledWith(2, "flagged", false);
+    });
+  });
+
+  it("reader toolbar Archive/Snooze/Delete/More are disabled placeholders", async () => {
+    render(<ConversationView threadId={1} />, { wrapper: Wrapper });
+
+    await screen.findAllByText("B");
+
+    const archive = await screen.findByRole("button", { name: "Archive" });
+    expect(archive.getAttribute("aria-disabled")).toBe("true");
+
+    const snooze = await screen.findByRole("button", { name: "Snooze" });
+    expect(snooze.getAttribute("aria-disabled")).toBe("true");
+
+    const del = await screen.findByRole("button", { name: "Delete" });
+    expect(del.getAttribute("aria-disabled")).toBe("true");
+
+    const more = await screen.findByRole("button", { name: "More" });
+    expect(more.getAttribute("aria-disabled")).toBe("true");
+  });
+
+  it("bottom reply trigger starts a reply", async () => {
+    const { commands } = await import("../../ipc/bindings");
+    render(<ConversationView threadId={1} />, { wrapper: Wrapper });
+
+    await screen.findAllByText("B");
+
+    const trigger = await screen.findByRole("button", { name: /Reply to/ });
+    fireEvent.click(trigger);
+
+    await waitFor(() => {
+      expect(commands.startReply).toHaveBeenCalledWith(2, "reply");
     });
   });
 });
