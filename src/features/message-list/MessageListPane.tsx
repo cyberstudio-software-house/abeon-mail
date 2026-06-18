@@ -7,7 +7,6 @@ import "./MessageListPane.css";
 
 const ROW_HEIGHT: Record<Density, number> = {
   comfortable: 72,
-  cozy: 60,
   compact: 48,
   dense: 36,
 };
