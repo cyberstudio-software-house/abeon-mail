@@ -96,7 +96,7 @@
 }
 .rail__count {
   font-size: 11.5px;
-  color: var(--rail-count);
+  color: var(--text-count);
   font-weight: 700;
 }
 .rail__chevron-spacer {

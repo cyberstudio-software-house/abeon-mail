@@ -114,6 +114,17 @@ describe("ConversationView", () => {
     });
   });
 
+  it("does not call markMessageSeen for non-latest message id 1", async () => {
+    const { commands } = await import("../../ipc/bindings");
+    render(<ConversationView threadId={1} />, { wrapper: Wrapper });
+
+    await waitFor(() => {
+      expect(commands.markMessageSeen).toHaveBeenCalledWith(2);
+    });
+
+    expect(commands.markMessageSeen).not.toHaveBeenCalledWith(1);
+  });
+
   it("clicking Reply calls startReply with message id and mode reply and opens composer", async () => {
     const { commands } = await import("../../ipc/bindings");
     render(<ConversationView threadId={1} />, { wrapper: Wrapper });

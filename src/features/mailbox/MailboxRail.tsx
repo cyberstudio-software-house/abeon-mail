@@ -88,7 +88,7 @@ function FolderTreeNodes({
         return (
           <div key={node.fullPath}>
             <div
-              className={`rail__item rail__folder${isSelected ? " rail__item--active" : ""}`}
+              className={`rail__item${isSelected ? " rail__item--active" : ""}`}
               style={{ paddingLeft: `${12 + depth * 14}px` }}
               aria-disabled={node.folder == null ? true : undefined}
               onClick={() => {

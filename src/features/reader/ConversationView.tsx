@@ -1,6 +1,5 @@
-import { useEffect } from "react";
 import { Reply, ReplyAll, Forward, Star, Archive, Clock, Trash2, MoreHorizontal, SendHorizontal } from "lucide-react";
-import { useThreadMessages, useStartReply, useSetFlag, useMarkSeen } from "../../ipc/queries";
+import { useThreadMessages, useStartReply, useSetFlag } from "../../ipc/queries";
 import { useUiStore } from "../../app/store";
 import { Avatar } from "../../shared/appearance/Avatar";
 import { MessageBodyView } from "./MessageBodyView";
@@ -15,16 +14,6 @@ export function ConversationView({ threadId }: { threadId: number }) {
   const openComposer = useUiStore((s) => s.openComposer);
   const startReplyMutation = useStartReply();
   const setFlag = useSetFlag();
-  const markSeen = useMarkSeen();
-
-  const latestId = messages?.[messages.length - 1]?.id;
-  const latestSeen = messages?.[messages.length - 1]?.seen;
-
-  useEffect(() => {
-    if (latestId != null && !latestSeen) {
-      markSeen.mutate(latestId);
-    }
-  }, [latestId]);
 
   if (isLoading) return <p className="loading-state">Loading…</p>;
   if (!messages || messages.length === 0) return <p className="empty-state">No messages</p>;
@@ -88,7 +77,7 @@ export function ConversationView({ threadId }: { threadId: number }) {
                 </div>
                 <span className="reader__sender-time">{formatTime(m.date)}</span>
               </div>
-              <MessageBodyView messageId={m.id} />
+              <MessageBodyView messageId={m.id} shouldMarkSeen={m.id === last.id} />
             </div>
           ))}
         </div>
