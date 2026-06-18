@@ -4,6 +4,7 @@ version.workspace = true
 edition.workspace = true
 description = "AbeonMail desktop email client"
 authors = []
+default-run = "abeonmail"
 
 [lib]
 name = "abeonmail_lib"
