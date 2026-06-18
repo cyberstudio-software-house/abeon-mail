@@ -178,11 +178,97 @@ describe("MailboxRail", () => {
     expect(screen.getByText("All Inboxes")).toBeTruthy();
     expect(screen.getByText("Unread")).toBeTruthy();
     expect(screen.getByText("Flagged")).toBeTruthy();
-    expect(screen.queryByText("Snoozed")).toBeNull();
     expect(screen.queryByText("Drafts")).toBeNull();
 
     const allInboxesEl = screen.getByText("All Inboxes");
     expect(allInboxesEl.closest("[aria-disabled]")).toBeNull();
+  });
+
+  it("smart folders remain clickable and select the smart folder", async () => {
+    const user = userEvent.setup();
+    setupStore(null);
+    setupMutations();
+    mockUseAccounts.mockReturnValue({
+      data: [],
+      isLoading: false,
+      isError: false,
+      error: null,
+    } as unknown as ReturnType<typeof useAccounts>);
+
+    render(<MailboxRail />);
+
+    await user.click(screen.getByText("All Inboxes"));
+    expect(mockSetSelectedSmartFolder).toHaveBeenCalledWith("all_inboxes");
+  });
+
+  it("Search and Snoozed and LABELS are non-interactive placeholders", () => {
+    setupStore(null);
+    setupMutations();
+    mockUseAccounts.mockReturnValue({
+      data: [],
+      isLoading: false,
+      isError: false,
+      error: null,
+    } as unknown as ReturnType<typeof useAccounts>);
+
+    render(<MailboxRail />);
+
+    const searchEl = screen.getByText("Search");
+    expect(searchEl.closest("[aria-disabled='true']")).toBeTruthy();
+
+    const snoozedEl = screen.getByText("Snoozed");
+    expect(snoozedEl.closest("[aria-disabled='true']")).toBeTruthy();
+
+    expect(screen.getByText("Coming soon")).toBeTruthy();
+  });
+
+  it("Open settings button calls openSettings", async () => {
+    const user = userEvent.setup();
+    const mockOpenSettings = vi.fn();
+    mockUseUiStore.mockImplementation((selector: (s: UiState) => unknown) => {
+      const state: UiState = {
+        selectedAccountId: null,
+        selectedFolderId: null,
+        selectedMessageId: null,
+        selectedThreadId: null,
+        selectedSmartFolder: null,
+        theme: "auto",
+        accent: "#4f46e5",
+        density: "comfortable",
+        showPreview: true,
+        showAvatars: true,
+        composer: { open: false, draftId: null, prefill: null },
+        setSelectedAccountId: vi.fn(),
+        setSelectedFolderId: vi.fn(),
+        setSelectedMessageId: vi.fn(),
+        setSelectedThreadId: vi.fn(),
+        setSelectedSmartFolder: vi.fn(),
+        setTheme: vi.fn(),
+        setAccent: vi.fn(),
+        setDensity: vi.fn(),
+        setShowPreview: vi.fn(),
+        setShowAvatars: vi.fn(),
+        hydrateAppearance: vi.fn(),
+        settingsOpen: false,
+        openSettings: mockOpenSettings,
+        closeSettings: vi.fn(),
+        openComposer: vi.fn(),
+        closeComposer: vi.fn(),
+      };
+      return selector ? selector(state) : state;
+    });
+    setupMutations();
+    mockUseAccounts.mockReturnValue({
+      data: [],
+      isLoading: false,
+      isError: false,
+      error: null,
+    } as unknown as ReturnType<typeof useAccounts>);
+
+    render(<MailboxRail />);
+
+    await user.click(screen.getByRole("button", { name: /open settings/i }));
+    expect(mockOpenSettings).toHaveBeenCalled();
   });
 
   it("clicking All Inboxes calls setSelectedSmartFolder('all_inboxes')", async () => {
@@ -251,7 +337,7 @@ describe("MailboxRail", () => {
     } as unknown as ReturnType<typeof useFolders>);
 
     render(<MailboxRail />);
-    expect(screen.getByText("A")).toBeTruthy();
+    expect(screen.getAllByText("A").length).toBeGreaterThan(0);
     expect(screen.getByText("Inbox")).toBeTruthy();
     await user.click(screen.getByText("Inbox"));
     expect(mockSetSelectedFolderId).toHaveBeenCalledWith(10);
