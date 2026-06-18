@@ -10,10 +10,6 @@ vi.mock("../ipc/client", () => ({
   health: vi.fn(async () => "ok"),
 }));
 
-vi.mock("../shared/theme/ThemeProvider", () => ({
-  useTheme: () => ({ mode: "light", setMode: vi.fn(), resolved: "light" }),
-}));
-
 vi.mock("../ipc/queries", () => ({
   useAccounts: () => ({ data: [], isLoading: false, isError: false, error: null }),
   useFolders: () => ({ data: [], isLoading: false, isError: false, error: null }),
@@ -50,6 +46,11 @@ vi.mock("../app/store", () => ({
       selectedThreadId: null,
       selectedSmartFolder: null,
       density: "comfortable",
+      theme: "auto",
+      accent: "#4f46e5",
+      showPreview: true,
+      showAvatars: true,
+      settingsOpen: false,
       composer: { open: false, draftId: null, prefill: null },
       setSelectedAccountId: vi.fn(),
       setSelectedFolderId: vi.fn(),
@@ -57,6 +58,13 @@ vi.mock("../app/store", () => ({
       setSelectedThreadId: vi.fn(),
       setSelectedSmartFolder: vi.fn(),
       setDensity: vi.fn(),
+      setTheme: vi.fn(),
+      setAccent: vi.fn(),
+      setShowPreview: vi.fn(),
+      setShowAvatars: vi.fn(),
+      hydrateAppearance: vi.fn(),
+      openSettings: vi.fn(),
+      closeSettings: vi.fn(),
       openComposer: vi.fn(),
       closeComposer: vi.fn(),
     };

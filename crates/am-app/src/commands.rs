@@ -13,7 +13,7 @@ use am_core::{
     smart::{SmartFolderKind, SmartMessageRow},
     thread::ThreadSummary,
 };
-use am_storage::{accounts_repo, drafts_repo, folders_repo, messages_repo, signatures_repo, smart_repo};
+use am_storage::{accounts_repo, drafts_repo, folders_repo, messages_repo, settings_repo, signatures_repo, smart_repo};
 use tauri_plugin_dialog::DialogExt;
 
 use crate::state::AppState;
@@ -505,6 +505,18 @@ pub(crate) async fn run_google_oauth_flow(
         &redirect_uri,
     )
     .await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn get_settings(state: tauri::State<'_, AppState>) -> Result<Vec<(String, String)>, String> {
+    settings_repo::get_all_settings(&state.db).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn set_setting(state: tauri::State<'_, AppState>, key: String, value: String) -> Result<(), String> {
+    settings_repo::set_setting(&state.db, &key, &value).map_err(|e| e.to_string())
 }
 
 async fn accept_redirect(

@@ -3,11 +3,11 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { useThreads, useSmartFolder } from "../../ipc/queries";
 import { useUiStore, type Density } from "../../app/store";
 import type { ThreadSummary, SmartMessageRow } from "../../ipc/bindings";
+import { Avatar } from "../../shared/appearance/Avatar";
 import "./MessageListPane.css";
 
 const ROW_HEIGHT: Record<Density, number> = {
   comfortable: 72,
-  cozy: 60,
   compact: 48,
   dense: 36,
 };
@@ -30,11 +30,15 @@ function ThreadRow({
   thread,
   isSelected,
   rowHeight,
+  showAvatars,
+  showSnippet,
   onSelect,
 }: {
   thread: ThreadSummary;
   isSelected: boolean;
   rowHeight: number;
+  showAvatars: boolean;
+  showSnippet: boolean;
   onSelect: (id: number) => void;
 }) {
   const isUnread = thread.unread_count > 0;
@@ -51,6 +55,12 @@ function ThreadRow({
       <div className="message-row__indicators">
         {isUnread && <span className="message-row__unread-dot" aria-label="unread" />}
       </div>
+      {showAvatars && (
+        <Avatar
+          seed={thread.participants[0] ?? thread.subject}
+          label={thread.participants[0] ?? "?"}
+        />
+      )}
       <div className="message-row__content">
         <div className="message-row__header">
           <span className={`message-row__sender${isUnread ? " message-row__sender--bold" : ""}`}>
@@ -81,7 +91,7 @@ function ThreadRow({
             )}
           </div>
         </div>
-        <span className="message-row__snippet">{thread.snippet}</span>
+        {showSnippet && <span className="message-row__snippet">{thread.snippet}</span>}
       </div>
     </div>
   );
@@ -91,11 +101,15 @@ function SmartRow({
   row,
   isSelected,
   rowHeight,
+  showAvatars,
+  showSnippet,
   onSelect,
 }: {
   row: SmartMessageRow;
   isSelected: boolean;
   rowHeight: number;
+  showAvatars: boolean;
+  showSnippet: boolean;
   onSelect: (id: number) => void;
 }) {
   const senderLabel = row.from_name ?? row.from_address;
@@ -112,6 +126,7 @@ function SmartRow({
       <div className="message-row__indicators">
         {!row.seen && <span className="message-row__unread-dot" aria-label="unread" />}
       </div>
+      {showAvatars && <Avatar seed={row.from_address} label={row.from_name ?? row.from_address} />}
       <div className="message-row__content">
         <div className="message-row__header">
           <span
@@ -147,7 +162,7 @@ function SmartRow({
             )}
           </div>
         </div>
-        <span className="message-row__snippet">{row.snippet}</span>
+        {showSnippet && <span className="message-row__snippet">{row.snippet}</span>}
       </div>
     </div>
   );
@@ -168,6 +183,8 @@ export function MessageListPane() {
   const selectedThreadId = useUiStore((s) => s.selectedThreadId);
   const selectedMessageId = useUiStore((s) => s.selectedMessageId);
   const density = useUiStore((s) => s.density);
+  const showPreview = useUiStore((s) => s.showPreview);
+  const showAvatars = useUiStore((s) => s.showAvatars);
   const setSelectedThreadId = useUiStore((s) => s.setSelectedThreadId);
   const setSelectedMessageId = useUiStore((s) => s.setSelectedMessageId);
 
@@ -181,6 +198,7 @@ export function MessageListPane() {
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const rowHeight = ROW_HEIGHT[density] ?? ROW_HEIGHT.comfortable;
+  const showSnippet = showPreview && density !== "dense";
 
   const virtualizer = useVirtualizer({
     count: items.length,
@@ -236,6 +254,8 @@ export function MessageListPane() {
                       row={row}
                       isSelected={selectedMessageId === row.message_id}
                       rowHeight={rowHeight}
+                      showAvatars={showAvatars}
+                      showSnippet={showSnippet}
                       onSelect={setSelectedMessageId}
                     />
                   </div>
@@ -257,6 +277,8 @@ export function MessageListPane() {
                     thread={thread}
                     isSelected={selectedThreadId === thread.thread_id}
                     rowHeight={rowHeight}
+                    showAvatars={showAvatars}
+                    showSnippet={showSnippet}
                     onSelect={setSelectedThreadId}
                   />
                 </div>

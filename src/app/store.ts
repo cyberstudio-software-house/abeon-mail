@@ -1,7 +1,13 @@
 import { create } from "zustand";
 import type { OutgoingMessage, SmartFolderKind } from "../ipc/bindings";
+import type { ThemeMode } from "../shared/theme/theme";
+import {
+  DEFAULT_APPEARANCE,
+  type AppearanceFields,
+  type Density,
+} from "../shared/appearance/appearance";
 
-export type Density = "comfortable" | "cozy" | "compact" | "dense";
+export type { Density };
 
 type ComposerState = {
   open: boolean;
@@ -15,14 +21,26 @@ export type UiState = {
   selectedMessageId: number | null;
   selectedThreadId: number | null;
   selectedSmartFolder: SmartFolderKind | null;
+  theme: ThemeMode;
+  accent: string;
   density: Density;
+  showPreview: boolean;
+  showAvatars: boolean;
+  settingsOpen: boolean;
   composer: ComposerState;
   setSelectedAccountId: (id: number | null) => void;
   setSelectedFolderId: (id: number | null) => void;
   setSelectedMessageId: (id: number | null) => void;
   setSelectedThreadId: (id: number | null) => void;
   setSelectedSmartFolder: (kind: SmartFolderKind | null) => void;
+  setTheme: (theme: ThemeMode) => void;
+  setAccent: (accent: string) => void;
   setDensity: (density: Density) => void;
+  setShowPreview: (value: boolean) => void;
+  setShowAvatars: (value: boolean) => void;
+  hydrateAppearance: (partial: Partial<AppearanceFields>) => void;
+  openSettings: () => void;
+  closeSettings: () => void;
   openComposer: (draftId: number | null, prefill?: OutgoingMessage | null) => void;
   closeComposer: () => void;
 };
@@ -33,7 +51,12 @@ export const useUiStore = create<UiState>((set) => ({
   selectedMessageId: null,
   selectedThreadId: null,
   selectedSmartFolder: null,
-  density: "comfortable",
+  theme: DEFAULT_APPEARANCE.theme,
+  accent: DEFAULT_APPEARANCE.accent,
+  density: DEFAULT_APPEARANCE.density,
+  showPreview: DEFAULT_APPEARANCE.showPreview,
+  showAvatars: DEFAULT_APPEARANCE.showAvatars,
+  settingsOpen: false,
   composer: { open: false, draftId: null, prefill: null },
   setSelectedAccountId: (id) =>
     set({ selectedAccountId: id, selectedSmartFolder: null }),
@@ -48,7 +71,14 @@ export const useUiStore = create<UiState>((set) => ({
       selectedFolderId: null,
       selectedThreadId: null,
     }),
+  setTheme: (theme) => set({ theme }),
+  setAccent: (accent) => set({ accent }),
   setDensity: (density) => set({ density }),
+  setShowPreview: (showPreview) => set({ showPreview }),
+  setShowAvatars: (showAvatars) => set({ showAvatars }),
+  hydrateAppearance: (partial) => set(partial),
+  openSettings: () => set({ settingsOpen: true }),
+  closeSettings: () => set({ settingsOpen: false }),
   openComposer: (draftId, prefill = null) =>
     set({ composer: { open: true, draftId, prefill } }),
   closeComposer: () =>

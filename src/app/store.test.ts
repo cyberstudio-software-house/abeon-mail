@@ -8,7 +8,11 @@ beforeEach(() => {
     selectedMessageId: null,
     selectedThreadId: null,
     selectedSmartFolder: null,
+    theme: "auto",
+    accent: "#4f46e5",
     density: "comfortable",
+    showPreview: true,
+    showAvatars: true,
     composer: { open: false, draftId: null, prefill: null },
   });
 });
@@ -56,5 +60,29 @@ describe("selectedSmartFolder mutual exclusion", () => {
     useUiStore.setState({ selectedSmartFolder: "all_inboxes" });
     useUiStore.getState().setSelectedAccountId(null);
     expect(useUiStore.getState().selectedSmartFolder).toBeNull();
+  });
+});
+
+describe("appearance state", () => {
+  it("setters update individual appearance fields", () => {
+    useUiStore.getState().setTheme("dark");
+    useUiStore.getState().setAccent("#10b981");
+    useUiStore.getState().setDensity("dense");
+    useUiStore.getState().setShowPreview(false);
+    useUiStore.getState().setShowAvatars(false);
+    const s = useUiStore.getState();
+    expect(s.theme).toBe("dark");
+    expect(s.accent).toBe("#10b981");
+    expect(s.density).toBe("dense");
+    expect(s.showPreview).toBe(false);
+    expect(s.showAvatars).toBe(false);
+  });
+
+  it("hydrateAppearance applies a partial without touching others", () => {
+    useUiStore.getState().hydrateAppearance({ theme: "light", density: "compact" });
+    const s = useUiStore.getState();
+    expect(s.theme).toBe("light");
+    expect(s.density).toBe("compact");
+    expect(s.accent).toBe("#4f46e5");
   });
 });

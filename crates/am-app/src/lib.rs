@@ -33,6 +33,8 @@ pub fn build_specta_builder() -> Builder<tauri::Wry> {
             commands::list_signatures,
             commands::pick_attachment,
             commands::list_smart_folder,
+            commands::get_settings,
+            commands::set_setting,
         ])
         .events(collect_events![
             events::SyncProgress,
