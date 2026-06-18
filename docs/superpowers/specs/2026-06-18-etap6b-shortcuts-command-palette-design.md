@@ -126,24 +126,33 @@ type Action = {
 | `open-settings` | `g ,` | global | enabled |
 | `next-message` | `j` | list | enabled |
 | `prev-message` | `k` | list | enabled |
-| `open-message` | `Enter` | list | enabled |
-| `toggle-flag` | `s` | list/reader | enabled |
-| `mark-read` | `Shift+I` | list/reader | enabled (markSeen) |
-| `mark-unread` | `Shift+U` | list/reader | enabled |
+| `first-message` | (none / vim `g g`) | list | enabled |
+| `last-message` | (none / vim `Shift+G`) | list | enabled |
+| `toggle-flag` | `s` | reader | enabled |
+| `mark-read` | `Shift+I` | reader | enabled |
+| `mark-unread` | `Shift+U` | reader | enabled |
 | `reply` | `r` | reader | enabled |
 | `reply-all` | `a` | reader | enabled |
 | `forward` | `f` | reader | enabled |
 | `back-to-list` | `u` | reader | enabled |
 | `send-message` | `Mod+Enter` | composer | enabled |
 | `close-composer` | `Escape` | composer | enabled |
-| `archive` | `e` | list/reader | disabled (future etap) |
-| `delete` | `#` | list/reader | disabled (future etap) |
+| `archive` | `e` | reader | disabled (future etap) |
+| `delete` | `#` | reader | disabled (future etap) |
 | `search` | `/` | global | disabled (6c) |
-| `snooze` | `b` | list/reader | disabled (6e) |
-| `label` | `l` | list/reader | disabled (6d) |
+| `snooze` | `b` | reader | disabled (6e) |
+| `label` | `l` | reader | disabled (6d) |
 
-Actions registered in both `list` and `reader` are represented once with both
-contexts active (handler resolves the target from the action-context slice).
+Two refinements made during planning (data/architecture-driven):
+
+- `toggle-flag` / `mark-read` / `mark-unread` are **reader-context only**. They need
+  a concrete `messageId`; a thread row in the list has no single message id,
+  whereas the open conversation publishes its latest message as `replyTargetId`.
+  List-context flagging is deferred.
+- `open-message` (Enter) is **dropped**; `j`/`k` already move the selection, which
+  opens the reader (Gmail-like navigate-and-open). In its place `first-message` /
+  `last-message` are added — unbound in the Default profile, bound to `g g` /
+  `Shift+G` in the Vim profile so that profile has real distinguishing actions.
 
 ## Command palette (cmdk)
 
@@ -177,16 +186,18 @@ contexts active (handler resolves the target from the action-context slice).
 - `src/features/shortcuts/useKeyboardEngine.ts` — global listener, sequence
   buffer/timeout, context detection, focus-guard, dispatch.
 - `src/features/shortcuts/ShortcutsProvider.tsx` — loads profile + overrides from
-  settings, builds the handler map, mounts the engine, owns palette/cheat-sheet
-  open state.
-- `src/features/shortcuts/useShortcutsConfig.ts` — load/save profile + overrides
-  (mirrors `useAppearance`).
+  settings (mirrors `useAppearance`), builds the handler map, mounts the engine,
+  exposes the `useShortcuts()` context (resolved bindings + persisting setters),
+  renders the palette + cheat sheet.
+- `src/features/shortcuts/useRecorder.ts` — captures a chord/sequence for the
+  settings editor (same buffer/timeout model as the engine).
 - `src/features/shortcuts/CommandPalette.tsx` + `CommandPalette.css`.
 - `src/features/shortcuts/CheatSheet.tsx` + `CheatSheet.css`.
 - `src/features/settings/ShortcutsSection.tsx` — bindings editor.
 - `src/app/store.ts` — add action-context slice (`visibleMessageIds`,
-  `replyTargetId`), palette/cheat-sheet open flags, shortcut profile + overrides
-  runtime state (pure setters; persistence in `useShortcutsConfig`).
+  `selectMode`, `replyTargetId`, `composerSend`), palette/cheat-sheet open flags,
+  shortcut profile + overrides runtime state (pure setters; persistence in
+  `ShortcutsProvider`).
 - `src/test/lucide-stub.js` — add every new lucide icon used (else vitest OOM).
 
 ## Testing
