@@ -153,3 +153,8 @@
   0% { background-position: 200% 0; }
   100% { background-position: -200% 0; }
 }
+
+.message-row .avatar {
+  margin-right: var(--space-2);
+  align-self: center;
+}

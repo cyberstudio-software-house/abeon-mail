@@ -1,0 +1,35 @@
+import { initials, avatarColor } from "./appearance";
+
+export function Avatar({
+  seed,
+  label,
+  size = 28,
+}: {
+  seed: string;
+  label: string;
+  size?: number;
+}) {
+  const color = avatarColor(seed);
+  return (
+    <span
+      className="avatar"
+      data-color={color}
+      style={{
+        width: size,
+        height: size,
+        borderRadius: "50%",
+        background: color,
+        color: "#fff",
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        fontSize: size * 0.4,
+        fontWeight: 600,
+        flexShrink: 0,
+      }}
+      aria-hidden="true"
+    >
+      {initials(label)}
+    </span>
+  );
+}
