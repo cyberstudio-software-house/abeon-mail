@@ -7,14 +7,37 @@ szablonu `docs/templates/AbeonMail.html`.
 
 ## Cel
 
-Dopasować wygląd działających powierzchni aplikacji (rail, lista wiadomości,
-reader, compose) do języka wizualnego szablonu — kolory, typografia, odstępy,
-promienie, cienie, **ikony wiodące**, **zagnieżdżone drzewo folderów** — oraz
-przenieść inline-style'e `MailboxRail` na CSS. Dodać niefunkcjonalne placeholdery
-(Search / Snoozed / Labels / sort) zgodne z chrome'em szablonu.
+Doprowadzić wygląd działających powierzchni (shell, rail, lista, reader, compose)
+do **wiernej zgodności 1:1 z szablonem** `docs/templates/AbeonMail.html` — nie przez
+inkrementalny restyling obecnych komponentów, lecz przez **odtworzenie struktury i
+stylów szablonu jako komponentów React**, w które wpinamy istniejące funkcje
+(query/mutacje/store/sanitizacja). Cel: layout, proporcje, kompozycja, typografia,
+ikony i drzewo folderów mają odpowiadać szablonowi, a nie go przybliżać.
 
 Pass jest **frontendowy** (brak zmian w Rust/schema). NIE dodaje funkcji domenowych
 przyszłych etapów (Search/Labels/Snoozed pozostają atrapami).
+
+## Podejście: wierny port struktury (nie restyling)
+
+- **Źródłem prawdy dla prezentacji jest szablon.** Dla każdej powierzchni
+  odtwarzamy hierarchię DOM i style szablonu (wartości inline → klasy CSS),
+  zastępując dotychczasowy JSX prezentacyjny. NIE ładujemy pliku HTML w runtime —
+  szablon to statyczny mockup (inline-style, dane na sztywno, placeholdery `{{ }}`,
+  format bundla); przepisujemy go ręcznie na komponenty.
+- **Logika zostaje nasza i jest reużywana.** Wpinamy istniejące: hooki danych
+  (`useAccounts`/`useFolders`/`useThreads`/`useSmartFolder`/`useThreadMessages`/
+  `useMessageBody`), mutacje (`useSetFlag`/`useMarkSeen`/`useStartReply`/
+  `useRemoveAccount`/`useReorderAccounts`/`useBeginReauth`), store (`useUiStore`,
+  `useAppearance`), sanitizację (`MessageBodyView`/`SafeHtmlFrame`). Żadnych zmian
+  w warstwie danych/IPC.
+- **Zachowanie zachowań i a11y.** Wszystkie istniejące zachowania (selekcja konta/
+  folderu/wątku, drag-drop reorder, remove-confirm, reauth, otwieranie composera,
+  reply/forward, mark-seen, settings ⚙, motyw/density z 6a) oraz `aria-label`/role
+  pozostają — przenosimy je do nowej struktury, nie usuwamy.
+- **Kompozycja shellu** odzwierciedla szablon: 3 kolumny (sidebar 264px · lista
+  360px · reader flex), nagłówek listy (Compose + sort), nagłówek readera (toolbar
+  ikon). Atrapa chrome'u macOS (kropki/tytuł okna) — pomijamy (Tauri daje okno).
+- **Weryfikacja** to porównanie 1:1 ze zrzutem szablonu, nie „zbliżone".
 
 ## Źródło wizualne
 
