@@ -161,10 +161,20 @@
   gap: 13px;
 }
 
+.reader__sender-info {
+  flex: 1;
+}
+
 .reader__sender-name {
   font-weight: 700;
   font-size: 15px;
   color: var(--text-primary);
+}
+
+.reader__sender-time {
+  font-size: 13px;
+  color: var(--text-muted);
+  flex-shrink: 0;
 }
 
 .reader__reply {

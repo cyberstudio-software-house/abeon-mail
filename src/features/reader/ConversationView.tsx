@@ -6,6 +6,10 @@ import { Avatar } from "../../shared/appearance/Avatar";
 import { MessageBodyView } from "./MessageBodyView";
 import "./reader.css";
 
+function formatTime(epochSeconds: number): string {
+  return new Date(epochSeconds * 1000).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+}
+
 export function ConversationView({ threadId }: { threadId: number }) {
   const { data: messages, isLoading } = useThreadMessages(threadId);
   const openComposer = useUiStore((s) => s.openComposer);
@@ -79,9 +83,10 @@ export function ConversationView({ threadId }: { threadId: number }) {
             <div key={m.id} className="reader__message">
               <div className="reader__sender">
                 <Avatar seed={m.from_address} label={m.from_name || m.from_address} size={46} />
-                <div>
+                <div className="reader__sender-info">
                   <div className="reader__sender-name">{m.from_name || m.from_address}</div>
                 </div>
+                <span className="reader__sender-time">{formatTime(m.date)}</span>
               </div>
               <MessageBodyView messageId={m.id} />
             </div>

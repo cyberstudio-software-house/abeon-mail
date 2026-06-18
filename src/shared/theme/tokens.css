@@ -63,6 +63,8 @@
   --rail-hover: #2a2a40;
   --rail-search-bg: #1f1f33;
   --rail-search-border: #2a2a40;
+  --text-subject: #d4d4e0;
+  --selection-bg: #2a2a40;
 }
 
 html, body, #root {
