@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, type ReactNode } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { commands } from "../../ipc/bindings";
 import { useStartReply, useSetFlag } from "../../ipc/queries";
 import { useUiStore } from "../../app/store";
@@ -31,6 +32,7 @@ export function ShortcutsProvider({ children }: { children: ReactNode }) {
   const setShortcutOverride = useUiStore((s) => s.setShortcutOverride);
   const resetShortcut = useUiStore((s) => s.resetShortcut);
 
+  const queryClient = useQueryClient();
   const startReply = useStartReply();
   const setFlag = useSetFlag();
 
@@ -92,9 +94,14 @@ export function ShortcutsProvider({ children }: { children: ReactNode }) {
 
   const toggleFlag = useCallback(() => {
     const s = useUiStore.getState();
-    if (s.replyTargetId == null) return;
-    setFlag.mutate({ messageId: s.replyTargetId, flag: "flagged", value: true });
-  }, [setFlag]);
+    if (s.replyTargetId == null || s.selectedThreadId == null) return;
+    const messages = queryClient.getQueryData<{ id: number; flagged: boolean }[]>([
+      "thread-messages",
+      s.selectedThreadId,
+    ]);
+    const current = messages?.find((m) => m.id === s.replyTargetId)?.flagged ?? false;
+    setFlag.mutate({ messageId: s.replyTargetId, flag: "flagged", value: !current });
+  }, [setFlag, queryClient]);
 
   const handlers = useMemo<Partial<Record<ActionId, () => void>>>(() => {
     return {
@@ -131,7 +138,7 @@ export function ShortcutsProvider({ children }: { children: ReactNode }) {
     getContext: useCallback(() => {
       const s = useUiStore.getState();
       if (s.composer.open) return "composer";
-      if (s.replyTargetId != null) return "reader";
+      if (s.selectedThreadId != null) return "reader";
       return "list";
     }, []),
   });

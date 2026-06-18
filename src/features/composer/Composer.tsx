@@ -214,9 +214,11 @@ export function Composer() {
     scheduleAutosave();
   }
 
+  const handleSendRef = useRef(handleSend);
+  handleSendRef.current = handleSend;
   useEffect(() => {
     setComposerSend(() => {
-      void handleSend();
+      void handleSendRef.current();
     });
     return () => setComposerSend(null);
   }, [setComposerSend]);
