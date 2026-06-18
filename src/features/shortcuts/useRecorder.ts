@@ -46,7 +46,10 @@ export function useRecorder(onCommit: (binding: string) => void, timeoutMs = 800
       }, timeoutMs);
     }
     window.addEventListener("keydown", onKey, true);
-    return () => window.removeEventListener("keydown", onKey, true);
+    return () => {
+      window.removeEventListener("keydown", onKey, true);
+      clearTimer();
+    };
   }, [recording, timeoutMs]);
 
   return {
