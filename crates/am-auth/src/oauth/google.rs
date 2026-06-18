@@ -10,6 +10,11 @@ pub fn google_client_id() -> Result<String, OAuthError> {
         .map_err(|_| OAuthError::Config("ABEONMAIL_GOOGLE_CLIENT_ID not set".into()))
 }
 
+pub fn google_client_secret() -> Result<String, OAuthError> {
+    std::env::var("ABEONMAIL_GOOGLE_CLIENT_SECRET")
+        .map_err(|_| OAuthError::Config("ABEONMAIL_GOOGLE_CLIENT_SECRET not set".into()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

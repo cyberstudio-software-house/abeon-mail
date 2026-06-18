@@ -42,6 +42,7 @@ pub trait CredentialSource: Send + Sync {
 pub struct KeychainCredentialSource {
     token_manager: am_auth::oauth::manager::OAuthTokenManager,
     client_id: Option<String>,
+    client_secret: Option<String>,
 }
 
 impl KeychainCredentialSource {
@@ -50,7 +51,8 @@ impl KeychainCredentialSource {
         let token_manager =
             am_auth::oauth::manager::OAuthTokenManager::new(http as Arc<dyn am_auth::oauth::TokenHttp>);
         let client_id = std::env::var("ABEONMAIL_GOOGLE_CLIENT_ID").ok();
-        Arc::new(Self { token_manager, client_id })
+        let client_secret = std::env::var("ABEONMAIL_GOOGLE_CLIENT_SECRET").ok();
+        Arc::new(Self { token_manager, client_id, client_secret })
     }
 
     pub fn token_manager(&self) -> &am_auth::oauth::manager::OAuthTokenManager {
@@ -64,7 +66,8 @@ impl Default for KeychainCredentialSource {
         let token_manager =
             am_auth::oauth::manager::OAuthTokenManager::new(http as Arc<dyn am_auth::oauth::TokenHttp>);
         let client_id = std::env::var("ABEONMAIL_GOOGLE_CLIENT_ID").ok();
-        Self { token_manager, client_id }
+        let client_secret = std::env::var("ABEONMAIL_GOOGLE_CLIENT_SECRET").ok();
+        Self { token_manager, client_id, client_secret }
     }
 }
 
@@ -81,10 +84,14 @@ impl CredentialSource for KeychainCredentialSource {
                     .client_id
                     .as_deref()
                     .ok_or(SyncError::Auth)?;
+                let client_secret = self
+                    .client_secret
+                    .as_deref()
+                    .ok_or(SyncError::Auth)?;
                 let now = crate::service::now_secs();
                 let token = self
                     .token_manager
-                    .valid_access_token(&account.email, client_id, now)
+                    .valid_access_token(&account.email, client_id, client_secret, now)
                     .await
                     .map_err(SyncError::from)?;
                 Ok(AccountAuth::XOauth2 {

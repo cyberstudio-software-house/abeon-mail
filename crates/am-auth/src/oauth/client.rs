@@ -87,6 +87,7 @@ impl TokenHttp for ReqwestHttp {
 pub async fn exchange_code(
     http: &dyn TokenHttp,
     client_id: &str,
+    client_secret: &str,
     code: &str,
     verifier: &str,
     redirect_uri: &str,
@@ -95,12 +96,13 @@ pub async fn exchange_code(
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs() as i64;
-    exchange_code_with_now(http, client_id, code, verifier, redirect_uri, now).await
+    exchange_code_with_now(http, client_id, client_secret, code, verifier, redirect_uri, now).await
 }
 
 pub(crate) async fn exchange_code_with_now(
     http: &dyn TokenHttp,
     client_id: &str,
+    client_secret: &str,
     code: &str,
     verifier: &str,
     redirect_uri: &str,
@@ -110,6 +112,7 @@ pub(crate) async fn exchange_code_with_now(
     let form = [
         ("grant_type", "authorization_code"),
         ("client_id", client_id),
+        ("client_secret", client_secret),
         ("code", code),
         ("code_verifier", verifier),
         ("redirect_uri", redirect_uri),
@@ -121,6 +124,7 @@ pub(crate) async fn exchange_code_with_now(
 pub async fn refresh_tokens(
     http: &dyn TokenHttp,
     client_id: &str,
+    client_secret: &str,
     refresh_token: &str,
 ) -> Result<OAuthTokens, OAuthError> {
     let now = std::time::SystemTime::now()
@@ -131,6 +135,7 @@ pub async fn refresh_tokens(
     let form = [
         ("grant_type", "refresh_token"),
         ("client_id", client_id),
+        ("client_secret", client_secret),
         ("refresh_token", refresh_token),
     ];
     let (status, body) = http.post_form(GOOGLE_TOKEN_URI, &form).await?;
@@ -226,6 +231,7 @@ mod tests {
         let tokens = exchange_code_with_now(
             &http,
             "client_id",
+            "client_secret",
             "code_xyz",
             "verifier_abc",
             "http://127.0.0.1:9999",
@@ -242,7 +248,7 @@ mod tests {
     async fn refresh_invalid_grant_maps_to_error() {
         let body = r#"{"error":"invalid_grant"}"#;
         let http = FakeHttp::new(vec![(400, body.into())]);
-        let result = refresh_tokens(&http, "client_id", "bad_refresh").await;
+        let result = refresh_tokens(&http, "client_id", "client_secret", "bad_refresh").await;
         assert!(matches!(result, Err(OAuthError::InvalidGrant)));
     }
 

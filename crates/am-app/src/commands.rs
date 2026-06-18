@@ -470,6 +470,8 @@ pub(crate) async fn run_google_oauth_flow(
 ) -> Result<(am_auth::oauth::client::OAuthTokens, String), String> {
     let client_id = am_auth::oauth::google::google_client_id()
         .map_err(|_| "Google client ID not configured".to_string())?;
+    let client_secret = am_auth::oauth::google::google_client_secret()
+        .map_err(|_| "Google client secret not configured".to_string())?;
 
     let listener = TcpListener::bind("127.0.0.1:0")
         .await
@@ -494,13 +496,22 @@ pub(crate) async fn run_google_oauth_flow(
     tauri_plugin_opener::open_url(&auth_url, None::<&str>)
         .map_err(|e| format!("Failed to open browser: {e}"))?;
 
-    accept_redirect(listener, &csrf_state, &client_id, &pkce.verifier, &redirect_uri).await
+    accept_redirect(
+        listener,
+        &csrf_state,
+        &client_id,
+        &client_secret,
+        &pkce.verifier,
+        &redirect_uri,
+    )
+    .await
 }
 
 async fn accept_redirect(
     listener: TcpListener,
     expected_state: &str,
     client_id: &str,
+    client_secret: &str,
     verifier: &str,
     redirect_uri: &str,
 ) -> Result<(am_auth::oauth::client::OAuthTokens, String), String> {
@@ -541,10 +552,16 @@ async fn accept_redirect(
     let _ = writer.write_all(close_html).await;
 
     let http = am_auth::oauth::client::ReqwestHttp::new();
-    let tokens =
-        am_auth::oauth::client::exchange_code(&http, client_id, &code, verifier, redirect_uri)
-            .await
-            .map_err(|_| "Token exchange failed".to_string())?;
+    let tokens = am_auth::oauth::client::exchange_code(
+        &http,
+        client_id,
+        client_secret,
+        &code,
+        verifier,
+        redirect_uri,
+    )
+    .await
+    .map_err(|_| "Token exchange failed".to_string())?;
 
     let email = am_auth::oauth::client::fetch_email(&http, &tokens.access_token)
         .await

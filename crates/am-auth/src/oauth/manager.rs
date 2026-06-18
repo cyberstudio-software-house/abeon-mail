@@ -25,6 +25,7 @@ impl OAuthTokenManager {
         &self,
         auth_ref: &str,
         client_id: &str,
+        client_secret: &str,
         now: i64,
     ) -> Result<String, OAuthError> {
         {
@@ -39,9 +40,13 @@ impl OAuthTokenManager {
         let refresh_token = crate::credentials::load_password(auth_ref)
             .map_err(|_| OAuthError::Keychain)?;
 
-        let new_tokens =
-            crate::oauth::client::refresh_tokens(self.http.as_ref(), client_id, &refresh_token)
-                .await?;
+        let new_tokens = crate::oauth::client::refresh_tokens(
+            self.http.as_ref(),
+            client_id,
+            client_secret,
+            &refresh_token,
+        )
+        .await?;
 
         {
             let mut guard = self.cache.lock().unwrap();
@@ -120,7 +125,7 @@ mod tests {
         };
         mgr.seed("ref@manager.test", &tokens);
 
-        let result = mgr.valid_access_token("ref@manager.test", "client", now).await.unwrap();
+        let result = mgr.valid_access_token("ref@manager.test", "client", "secret", now).await.unwrap();
         assert_eq!(result, "CACHED_TOKEN");
         assert_eq!(http.call_count(), 0);
     }
@@ -146,7 +151,7 @@ mod tests {
         };
         mgr.seed(auth_ref, &old);
 
-        let result = mgr.valid_access_token(auth_ref, "client", now).await.unwrap();
+        let result = mgr.valid_access_token(auth_ref, "client", "secret", now).await.unwrap();
         assert_eq!(result, "NEW_TOKEN");
         assert_eq!(http.call_count(), 1);
 
@@ -174,7 +179,7 @@ mod tests {
         };
         mgr.seed(auth_ref, &old);
 
-        let result = mgr.valid_access_token(auth_ref, "client", now).await;
+        let result = mgr.valid_access_token(auth_ref, "client", "secret", now).await;
         assert!(matches!(result, Err(OAuthError::InvalidGrant)));
 
         let _ = delete_password(auth_ref);
