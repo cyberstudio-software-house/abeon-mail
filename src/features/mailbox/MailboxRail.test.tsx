@@ -121,6 +121,9 @@ function setupStore(selectedAccountId: number | null = 1, selectedSmartFolder: s
         setShowPreview: vi.fn(),
         setShowAvatars: vi.fn(),
         hydrateAppearance: vi.fn(),
+        settingsOpen: false,
+        openSettings: vi.fn(),
+        closeSettings: vi.fn(),
         openComposer: vi.fn(),
         closeComposer: vi.fn(),
       };

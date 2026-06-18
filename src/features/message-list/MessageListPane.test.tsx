@@ -110,6 +110,9 @@ function setupStore(
       setShowPreview: vi.fn(),
       setShowAvatars: vi.fn(),
       hydrateAppearance: vi.fn(),
+      settingsOpen: false,
+      openSettings: vi.fn(),
+      closeSettings: vi.fn(),
       openComposer: vi.fn(),
       closeComposer: vi.fn(),
     };

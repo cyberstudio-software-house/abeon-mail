@@ -57,6 +57,7 @@ describe("useAccounts", () => {
           provider_type: "imap_password",
           color: null,
           position: 0,
+          requires_reauth: false,
         },
       ],
     });
