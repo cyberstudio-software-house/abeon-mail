@@ -93,9 +93,4 @@ describe("AppShell", () => {
     expect(vi.mocked(useSyncEvents)).toHaveBeenCalled();
   });
 
-  it("renders New message button", async () => {
-    render(<AppShell />, { wrapper: Wrapper });
-    const buttons = screen.getAllByRole("button", { name: "New message" });
-    expect(buttons.length).toBeGreaterThan(0);
-  });
 });

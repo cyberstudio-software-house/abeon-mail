@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useRef, useMemo } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { PencilLine, ChevronDown } from "lucide-react";
 import { useThreads, useSmartFolder } from "../../ipc/queries";
@@ -205,13 +205,18 @@ export function MessageListPane() {
   const rowHeight = ROW_HEIGHT[density] ?? ROW_HEIGHT.comfortable;
   const showSnippet = showPreview && density !== "dense";
 
-  const nowSeconds = Math.floor(Date.now() / 1000);
+  const nowSecondsRef = useRef(Math.floor(Date.now() / 1000));
+  const nowSeconds = nowSecondsRef.current;
 
-  const entries: ListEntry<ThreadSummary | SmartMessageRow>[] = hasSelection && !isLoading && rawItems.length > 0
-    ? isSmartMode
-      ? groupIntoEntries(rawItems as SmartMessageRow[], (r) => (r as SmartMessageRow).date, nowSeconds)
-      : groupIntoEntries(rawItems as ThreadSummary[], (t) => (t as ThreadSummary).last_date, nowSeconds)
-    : [];
+  const entries = useMemo(
+    (): ListEntry<ThreadSummary | SmartMessageRow>[] =>
+      hasSelection && !isLoading && rawItems.length > 0
+        ? isSmartMode
+          ? groupIntoEntries(rawItems as SmartMessageRow[], (r) => (r as SmartMessageRow).date, nowSeconds)
+          : groupIntoEntries(rawItems as ThreadSummary[], (t) => (t as ThreadSummary).last_date, nowSeconds)
+        : [],
+    [rawItems, isSmartMode, nowSeconds, hasSelection, isLoading]
+  );
 
   const virtualizer = useVirtualizer({
     count: entries.length,

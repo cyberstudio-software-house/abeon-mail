@@ -188,7 +188,7 @@
   border: none;
   border-radius: 9px;
   background: var(--accent);
-  color: #fff;
+  color: var(--color-white);
   font-family: inherit;
   font-weight: 700;
   font-size: 13px;
