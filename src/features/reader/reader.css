@@ -57,3 +57,151 @@
   padding: var(--space-6);
   text-align: center;
 }
+
+.reader {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.reader__toolbar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+}
+
+.reader__icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 9px;
+  border: none;
+  background: transparent;
+  color: var(--icon-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.reader__icon:hover {
+  background: var(--bg-app);
+  color: var(--accent);
+}
+
+.reader__icon[aria-disabled="true"] {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.reader__icon[aria-disabled="true"]:hover {
+  background: transparent;
+  color: var(--icon-muted);
+}
+
+.reader__divider {
+  width: 1px;
+  height: 20px;
+  background: var(--border-subtle);
+  margin: 0 8px;
+}
+
+.reader__spacer {
+  flex: 1;
+}
+
+.reader__body {
+  flex: 1;
+  padding: 30px 44px;
+  overflow-y: auto;
+}
+
+.reader__inner {
+  max-width: 840px;
+  margin: 0 auto;
+}
+
+.reader__subject {
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  line-height: 1.25;
+  margin: 0;
+  color: var(--text-primary);
+}
+
+.reader__subject-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.reader__star {
+  border: none;
+  background: transparent;
+  color: #c4c4d4;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.reader__star--on {
+  color: var(--accent);
+}
+
+.reader__message {
+  margin-top: 22px;
+}
+
+.reader__sender {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+}
+
+.reader__sender-name {
+  font-weight: 700;
+  font-size: 15px;
+  color: var(--text-primary);
+}
+
+.reader__reply {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 24px;
+  border-top: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+}
+
+.reader__reply-trigger {
+  flex: 1;
+  text-align: left;
+  height: 40px;
+  padding: 0 14px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.reader__send {
+  height: 40px;
+  padding: 0 16px;
+  border: none;
+  border-radius: 10px;
+  background: var(--accent);
+  color: #fff;
+  font-family: inherit;
+  font-weight: 700;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  cursor: pointer;
+}
