@@ -14,6 +14,7 @@ const setFlagMutate = vi.fn();
 vi.mock("../../ipc/queries", () => ({
   useStartReply: () => ({ mutateAsync: startReply }),
   useSetFlag: () => ({ mutate: setFlagMutate }),
+  useFolders: () => ({ data: [] }),
 }));
 
 import { ShortcutsProvider } from "./ShortcutsProvider";
