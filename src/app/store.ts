@@ -26,6 +26,7 @@ export type UiState = {
   density: Density;
   showPreview: boolean;
   showAvatars: boolean;
+  settingsOpen: boolean;
   composer: ComposerState;
   setSelectedAccountId: (id: number | null) => void;
   setSelectedFolderId: (id: number | null) => void;
@@ -38,6 +39,8 @@ export type UiState = {
   setShowPreview: (value: boolean) => void;
   setShowAvatars: (value: boolean) => void;
   hydrateAppearance: (partial: Partial<AppearanceFields>) => void;
+  openSettings: () => void;
+  closeSettings: () => void;
   openComposer: (draftId: number | null, prefill?: OutgoingMessage | null) => void;
   closeComposer: () => void;
 };
@@ -53,6 +56,7 @@ export const useUiStore = create<UiState>((set) => ({
   density: DEFAULT_APPEARANCE.density,
   showPreview: DEFAULT_APPEARANCE.showPreview,
   showAvatars: DEFAULT_APPEARANCE.showAvatars,
+  settingsOpen: false,
   composer: { open: false, draftId: null, prefill: null },
   setSelectedAccountId: (id) =>
     set({ selectedAccountId: id, selectedSmartFolder: null }),
@@ -73,6 +77,8 @@ export const useUiStore = create<UiState>((set) => ({
   setShowPreview: (showPreview) => set({ showPreview }),
   setShowAvatars: (showAvatars) => set({ showAvatars }),
   hydrateAppearance: (partial) => set(partial),
+  openSettings: () => set({ settingsOpen: true }),
+  closeSettings: () => set({ settingsOpen: false }),
   openComposer: (draftId, prefill = null) =>
     set({ composer: { open: true, draftId, prefill } }),
   closeComposer: () =>

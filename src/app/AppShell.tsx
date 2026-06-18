@@ -6,6 +6,7 @@ import { MailboxRail } from "../features/mailbox/MailboxRail";
 import { MessageListPane } from "../features/message-list/MessageListPane";
 import { ReaderPane } from "../features/reader/ReaderPane";
 import { Composer } from "../features/composer/Composer";
+import { SettingsOverlay } from "../features/settings/SettingsOverlay";
 import { useUiStore } from "./store";
 
 export function AppShell() {
@@ -14,6 +15,8 @@ export function AppShell() {
   const [status, setStatus] = useState("…");
   const openComposer = useUiStore((s) => s.openComposer);
   const composerOpen = useUiStore((s) => s.composer.open);
+  const settingsOpen = useUiStore((s) => s.settingsOpen);
+  const density = useUiStore((s) => s.density);
 
   useEffect(() => {
     let active = true;
@@ -26,7 +29,7 @@ export function AppShell() {
   }, []);
 
   return (
-    <div className="shell" data-density="comfortable">
+    <div className="shell" data-density={density}>
       <MailboxRail status={status} />
       <MessageListPane />
       <ReaderPane />
@@ -40,6 +43,7 @@ export function AppShell() {
           New
         </button>
       </div>
+      {settingsOpen && <SettingsOverlay />}
       {composerOpen && <Composer />}
     </div>
   );

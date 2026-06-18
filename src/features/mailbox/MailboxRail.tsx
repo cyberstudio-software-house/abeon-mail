@@ -219,6 +219,7 @@ export function MailboxRail({ status }: Props) {
   const setSelectedAccountId = useUiStore((s) => s.setSelectedAccountId);
   const setSelectedFolderId = useUiStore((s) => s.setSelectedFolderId);
   const setSelectedSmartFolder = useUiStore((s) => s.setSelectedSmartFolder);
+  const openSettings = useUiStore((s) => s.openSettings);
 
   const { data: accounts = [], isLoading: accountsLoading } = useAccounts();
   const { data: folders = [] } = useFolders(selectedAccountId);
@@ -400,11 +401,11 @@ export function MailboxRail({ status }: Props) {
         )}
       </nav>
 
-      <div style={{ padding: "var(--space-3)" }}>
+      <div style={{ display: "flex", gap: "var(--space-2)", padding: "var(--space-3)" }}>
         <button
           onClick={() => setWizardOpen(true)}
           style={{
-            width: "100%",
+            flex: 1,
             background: "var(--accent)",
             border: "none",
             borderRadius: "var(--radius-sm)",
@@ -415,6 +416,21 @@ export function MailboxRail({ status }: Props) {
           }}
         >
           Add account
+        </button>
+        <button
+          onClick={openSettings}
+          aria-label="Open settings"
+          style={{
+            background: "transparent",
+            border: "1px solid var(--border-subtle)",
+            borderRadius: "var(--radius-sm)",
+            color: "var(--text-on-rail)",
+            cursor: "pointer",
+            fontSize: "14px",
+            padding: "var(--space-2) var(--space-3)",
+          }}
+        >
+          ⚙
         </button>
       </div>
 
