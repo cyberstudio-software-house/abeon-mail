@@ -228,6 +228,18 @@ Two refinements made during planning (data/architecture-driven):
 8. Fidelity / a11y check; verify cheat sheet is generated end-to-end from the
    registry.
 
+## Implementation notes (as built)
+
+- The `toggle-flag` handler in `ShortcutsProvider` reads the open conversation's
+  latest-message flag straight from the React Query cache under the key
+  `["thread-messages", selectedThreadId]` (the key `useThreadMessages` in
+  `src/ipc/queries.ts` writes) and inverts it. This is an implicit contract: if
+  that query key ever changes, update the handler too, or `s` will stop toggling
+  correctly.
+- `getContext` resolves `composer` (composer open) → `reader` (`selectedThreadId`
+  set) → `list`. Navigation actions belong to both `list` and `reader` so `j`/`k`
+  keep working while a conversation is open.
+
 ## Deferred (out of 6b)
 
 - Real `run` for archive/delete/search/snooze/label — wired in their own etaps
