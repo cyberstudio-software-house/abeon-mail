@@ -20,3 +20,9 @@ pub struct MailboxChanged {
     pub account_id: i64,
     pub folder_id: i64,
 }
+
+#[derive(Serialize, Deserialize, Clone, Debug, specta::Type, tauri_specta::Event)]
+pub struct AccountAuthChanged {
+    pub account_id: i64,
+    pub requires_reauth: bool,
+}

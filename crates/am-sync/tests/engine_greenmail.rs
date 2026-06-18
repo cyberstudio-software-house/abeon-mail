@@ -178,7 +178,12 @@ async fn engine_picks_up_new_message_via_incremental() {
         .expect("add_account failed");
 
     let sink = std::sync::Arc::new(am_sync::events::NoopSink);
-    let engine = am_sync::engine::SyncEngine::start(std::sync::Arc::clone(&db), sink);
+    let creds = am_sync::auth::KeychainCredentialSource::new();
+    let engine = am_sync::engine::SyncEngine::start(
+        std::sync::Arc::clone(&db),
+        sink,
+        creds as std::sync::Arc<dyn am_sync::auth::CredentialSource>,
+    );
     engine.spawn_account(account.id);
 
     seed_one(mapped_port, "Live One", "live marker OMEGA").await;

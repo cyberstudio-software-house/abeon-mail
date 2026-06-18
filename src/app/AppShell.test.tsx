@@ -18,6 +18,7 @@ vi.mock("../ipc/queries", () => ({
   useAccounts: () => ({ data: [], isLoading: false, isError: false, error: null }),
   useFolders: () => ({ data: [], isLoading: false, isError: false, error: null }),
   useThreads: () => ({ data: [], isLoading: false, isError: false, error: null }),
+  useSmartFolder: () => ({ data: undefined, isLoading: false, isError: false, error: null }),
   useThreadMessages: () => ({ data: [], isLoading: false, isError: false, error: null }),
   useMessageBody: () => ({ data: null, isLoading: false, isError: false, error: null }),
   useSetFlag: () => ({ mutate: vi.fn() }),
@@ -25,6 +26,9 @@ vi.mock("../ipc/queries", () => ({
   useStartReply: () => ({ mutateAsync: vi.fn() }),
   useSaveDraft: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useEnqueueSend: () => ({ mutateAsync: vi.fn() }),
+  useRemoveAccount: () => ({ mutate: vi.fn(), isPending: false }),
+  useBeginReauth: () => ({ mutate: vi.fn(), isPending: false }),
+  useReorderAccounts: () => ({ mutate: vi.fn(), isPending: false }),
 }));
 
 vi.mock("../ipc/bindings", () => ({
@@ -44,12 +48,14 @@ vi.mock("../app/store", () => ({
       selectedFolderId: null,
       selectedMessageId: null,
       selectedThreadId: null,
+      selectedSmartFolder: null,
       density: "comfortable",
       composer: { open: false, draftId: null, prefill: null },
       setSelectedAccountId: vi.fn(),
       setSelectedFolderId: vi.fn(),
       setSelectedMessageId: vi.fn(),
       setSelectedThreadId: vi.fn(),
+      setSelectedSmartFolder: vi.fn(),
       setDensity: vi.fn(),
       openComposer: vi.fn(),
       closeComposer: vi.fn(),

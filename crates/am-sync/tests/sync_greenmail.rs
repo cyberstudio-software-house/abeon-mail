@@ -224,7 +224,8 @@ async fn add_account_syncs_inbox_and_fetches_body() {
     assert!(subjects.contains(&SUBJECT_THREE), "missing subject three: {subjects:?}");
 
     let first = &headers[0];
-    let body = service::get_or_fetch_body(&db, first.id)
+    let creds = am_sync::auth::KeychainCredentialSource::new();
+    let body = service::get_or_fetch_body(&db, first.id, creds.as_ref())
         .await
         .expect("get_or_fetch_body failed");
 
@@ -240,7 +241,7 @@ async fn add_account_syncs_inbox_and_fetches_body() {
         "fetched body did not contain any seeded marker: {combined}"
     );
 
-    let cached = service::get_or_fetch_body(&db, first.id)
+    let cached = service::get_or_fetch_body(&db, first.id, creds.as_ref())
         .await
         .expect("cached get_or_fetch_body failed");
     assert_eq!(cached, body);

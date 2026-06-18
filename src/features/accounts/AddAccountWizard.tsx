@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { Endpoints } from "../../ipc/bindings";
-import { useResolveEndpoints, useAddAccount } from "../../ipc/queries";
+import { useResolveEndpoints, useAddAccount, useBeginGoogleOauth } from "../../ipc/queries";
 import { EndpointsForm } from "./EndpointsForm";
 
 interface Props {
@@ -40,6 +40,8 @@ export function AddAccountWizard({ onClose, onAdded }: Props) {
 
   const resolveEndpoints = useResolveEndpoints();
   const addAccount = useAddAccount();
+  const beginGoogleOauth = useBeginGoogleOauth();
+  const [googleError, setGoogleError] = useState<string | null>(null);
 
   async function handleContinue() {
     try {
@@ -61,6 +63,16 @@ export function AddAccountWizard({ onClose, onAdded }: Props) {
       setAddError(err instanceof Error ? err.message : String(err));
     } finally {
       setIsAdding(false);
+    }
+  }
+
+  async function handleGoogleSignIn() {
+    setGoogleError(null);
+    try {
+      const account = await beginGoogleOauth.mutateAsync();
+      onAdded(account.id);
+    } catch (err) {
+      setGoogleError(err instanceof Error ? err.message : String(err));
     }
   }
 
@@ -135,6 +147,32 @@ export function AddAccountWizard({ onClose, onAdded }: Props) {
               autoComplete="current-password"
             />
           </label>
+          <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)", margin: "var(--space-1) 0" }}>
+            <div style={{ flex: 1, height: "1px", background: "var(--border-subtle)" }} />
+            <span style={{ fontSize: "12px", color: "var(--text-muted)" }}>or</span>
+            <div style={{ flex: 1, height: "1px", background: "var(--border-subtle)" }} />
+          </div>
+          <button
+            onClick={handleGoogleSignIn}
+            disabled={beginGoogleOauth.isPending}
+            aria-label="Sign in with Google"
+            style={{
+              background: "var(--bg-app)",
+              border: "1px solid var(--border-subtle)",
+              borderRadius: "var(--radius-sm)",
+              color: "var(--text-primary)",
+              cursor: beginGoogleOauth.isPending ? "not-allowed" : "pointer",
+              fontSize: "14px",
+              padding: "var(--space-2) var(--space-4)",
+              width: "100%",
+              opacity: beginGoogleOauth.isPending ? 0.7 : 1,
+            }}
+          >
+            {beginGoogleOauth.isPending ? "Opening browser…" : "Sign in with Google"}
+          </button>
+          {googleError && (
+            <p style={{ color: "var(--color-error)", fontSize: "13px", margin: 0 }}>{googleError}</p>
+          )}
           <div style={{ display: "flex", gap: "var(--space-2)", justifyContent: "flex-end", marginTop: "var(--space-2)" }}>
             <button
               onClick={onClose}

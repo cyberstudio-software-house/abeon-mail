@@ -15,6 +15,7 @@ pub struct Account {
     pub provider_type: ProviderType,
     pub color: Option<String>,
     pub position: i64,
+    pub requires_reauth: bool,
 }
 
 #[derive(Serialize, Deserialize, specta::Type, Clone, Debug, PartialEq)]
@@ -55,6 +56,7 @@ mod tests {
             provider_type: ProviderType::ImapPassword,
             color: Some("#4f46e5".into()),
             position: 0,
+            requires_reauth: false,
         };
         let json = serde_json::to_string(&account).unwrap();
         let back: Account = serde_json::from_str(&json).unwrap();

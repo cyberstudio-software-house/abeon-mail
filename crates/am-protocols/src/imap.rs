@@ -3,6 +3,7 @@ use std::time::Duration;
 
 use async_imap::types::{Fetch, Flag, Name, NameAttribute};
 use async_imap::{Client, Session};
+use base64::{engine::general_purpose::STANDARD, Engine};
 use futures::TryStreamExt;
 use tokio::net::TcpStream;
 use tokio_rustls::client::TlsStream;
@@ -11,6 +12,23 @@ use tokio_rustls::rustls::{ClientConfig, RootCertStore};
 use tokio_rustls::TlsConnector;
 
 use crate::error::ProtocolError;
+
+#[derive(Clone)]
+pub enum ImapAuth {
+    Password(String),
+    XOauth2 { user: String, access_token: String },
+}
+
+impl std::fmt::Debug for ImapAuth {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ImapAuth::Password(_) => f.write_str("ImapAuth::Password(***)"),
+            ImapAuth::XOauth2 { user, .. } => {
+                write!(f, "ImapAuth::XOauth2 {{ user: {user:?}, access_token: *** }}")
+            }
+        }
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct ImapConfig {
@@ -75,6 +93,24 @@ enum SessionStream {
     Tls(Box<Session<TlsStream<TcpStream>>>),
 }
 
+struct Xoauth2Authenticator {
+    sasl: String,
+}
+
+impl Xoauth2Authenticator {
+    fn new(user: &str, access_token: &str) -> Self {
+        let raw = format!("user={user}\x01auth=Bearer {access_token}\x01\x01");
+        Self { sasl: STANDARD.encode(raw.as_bytes()) }
+    }
+}
+
+impl async_imap::Authenticator for Xoauth2Authenticator {
+    type Response = String;
+    fn process(&mut self, _challenge: &[u8]) -> Self::Response {
+        self.sasl.clone()
+    }
+}
+
 pub struct ImapSession {
     session: SessionStream,
     selected_exists: Option<u32>,
@@ -89,7 +125,7 @@ impl std::fmt::Debug for ImapSession {
 impl ImapSession {
     pub async fn connect(
         config: &ImapConfig,
-        password: &str,
+        auth: &ImapAuth,
     ) -> Result<ImapSession, ProtocolError> {
         let tcp = TcpStream::connect((config.host.as_str(), config.port))
             .await
@@ -104,14 +140,14 @@ impl ImapSession {
                 .await
                 .map_err(|e| ProtocolError::Tls(e.to_string()))?;
             let client = Client::new(tls_stream);
-            let session = login(client, &config.username, password).await?;
+            let session = authenticate(client, &config.username, auth).await?;
             Ok(ImapSession {
                 session: SessionStream::Tls(Box::new(session)),
                 selected_exists: None,
             })
         } else {
             let client = Client::new(tcp);
-            let session = login(client, &config.username, password).await?;
+            let session = authenticate(client, &config.username, auth).await?;
             Ok(ImapSession {
                 session: SessionStream::Plain(Box::new(session)),
                 selected_exists: None,
@@ -357,18 +393,27 @@ fn flag_state(fetch: &Fetch) -> FlagState {
     FlagState { uid: fetch.uid.unwrap_or(0) as i64, seen, flagged }
 }
 
-async fn login<T>(
+async fn authenticate<T>(
     client: Client<T>,
     username: &str,
-    password: &str,
+    auth: &ImapAuth,
 ) -> Result<Session<T>, ProtocolError>
 where
     T: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + std::fmt::Debug + Send,
 {
-    client
-        .login(username, password)
-        .await
-        .map_err(|(_, _)| ProtocolError::Auth)
+    match auth {
+        ImapAuth::Password(pw) => client
+            .login(username, pw)
+            .await
+            .map_err(|(_, _)| ProtocolError::Auth),
+        ImapAuth::XOauth2 { user, access_token } => {
+            let authenticator = Xoauth2Authenticator::new(user, access_token);
+            client
+                .authenticate("XOAUTH2", authenticator)
+                .await
+                .map_err(|(_, _)| ProtocolError::Auth)
+        }
+    }
 }
 
 fn build_tls_connector() -> Result<TlsConnector, ProtocolError> {
@@ -515,6 +560,36 @@ fn parse_envelope_date(value: &str) -> Option<i64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn xoauth2_sasl_base64_matches_expected() {
+        let user = "user@gmail.com";
+        let token = "ya29.some_token";
+        let auth = Xoauth2Authenticator::new(user, token);
+        assert_eq!(
+            auth.sasl,
+            "dXNlcj11c2VyQGdtYWlsLmNvbQFhdXRoPUJlYXJlciB5YTI5LnNvbWVfdG9rZW4BAQ=="
+        );
+    }
+
+    #[test]
+    fn imap_auth_debug_redacts_password() {
+        let auth = ImapAuth::Password("secret123".into());
+        let debug = format!("{auth:?}");
+        assert!(!debug.contains("secret123"));
+        assert!(debug.contains("***"));
+    }
+
+    #[test]
+    fn imap_auth_debug_redacts_token() {
+        let auth = ImapAuth::XOauth2 {
+            user: "u@g.com".into(),
+            access_token: "tok123".into(),
+        };
+        let debug = format!("{auth:?}");
+        assert!(!debug.contains("tok123"));
+        assert!(debug.contains("u@g.com"));
+    }
 
     #[test]
     fn tls_config_builds_without_panic() {

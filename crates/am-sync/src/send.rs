@@ -3,6 +3,7 @@ use am_protocols::imap::ImapSession;
 use am_protocols::smtp::{send_raw, SmtpConfig};
 use am_storage::{accounts_repo, drafts_repo, folders_repo, queue_repo, Database};
 
+use crate::auth::CredentialSource;
 use crate::service::{imap_config_pub, load_endpoints_pub, now_secs, SyncError};
 
 const MAX_SEND_ATTEMPTS: i64 = 6;
@@ -31,7 +32,7 @@ fn smtp_config(endpoints: &am_auth::endpoints::Endpoints, username: &str) -> Smt
     }
 }
 
-pub async fn drain_outbox(db: &Database, account_id: i64, now: i64) -> Result<(), SyncError> {
+pub async fn drain_outbox(db: &Database, account_id: i64, creds: &dyn CredentialSource, now: i64) -> Result<(), SyncError> {
     let due = queue_repo::list_due(db, account_id, now)?;
     let send_ops: Vec<_> = due
         .into_iter()
@@ -43,7 +44,7 @@ pub async fn drain_outbox(db: &Database, account_id: i64, now: i64) -> Result<()
 
     let account = accounts_repo::get_account(db, account_id)?;
     let endpoints = load_endpoints_pub(db, account_id)?;
-    let password = am_auth::credentials::load_password(&account.email)?;
+    let auth = creds.auth_for(&account).await?;
 
     for op in send_ops {
         let parsed: serde_json::Value = match serde_json::from_str(&op.payload) {
@@ -69,14 +70,14 @@ pub async fn drain_outbox(db: &Database, account_id: i64, now: i64) -> Result<()
 
         let smtp = smtp_config(&endpoints, &account.email);
         let send_result =
-            send_raw(&smtp, &password, &msg.from_address, &recipients, &bytes).await;
+            send_raw(&smtp, &auth.to_smtp(), &msg.from_address, &recipients, &bytes).await;
 
         match send_result {
             Ok(()) => {
                 let all_folders = folders_repo::list_folders(db, account_id)?;
                 if let Some(sent) = all_folders.iter().find(|f| f.folder_type == FolderType::Sent) {
                     let config = imap_config_pub(&endpoints, &account.email);
-                    if let Ok(mut session) = ImapSession::connect(&config, &password).await {
+                    if let Ok(mut session) = ImapSession::connect(&config, &auth.to_imap()).await {
                         let _ = session.append(&sent.remote_path, "(\\Seen)", &bytes).await;
                         if let Ok(Some(server_uid)) = drafts_repo::get_server_uid(db, draft_id) {
                             if let Some(drafts_folder) = all_folders.iter().find(|f| {
@@ -109,7 +110,7 @@ pub async fn drain_outbox(db: &Database, account_id: i64, now: i64) -> Result<()
     Ok(())
 }
 
-pub async fn drain_draft_sync(db: &Database, account_id: i64, now: i64) -> Result<(), SyncError> {
+pub async fn drain_draft_sync(db: &Database, account_id: i64, creds: &dyn CredentialSource, now: i64) -> Result<(), SyncError> {
     let due = queue_repo::list_due(db, account_id, now)?;
     let mut draft_ops: Vec<_> = due
         .into_iter()
@@ -140,7 +141,7 @@ pub async fn drain_draft_sync(db: &Database, account_id: i64, now: i64) -> Resul
 
     let account = accounts_repo::get_account(db, account_id)?;
     let endpoints = load_endpoints_pub(db, account_id)?;
-    let password = am_auth::credentials::load_password(&account.email)?;
+    let auth = creds.auth_for(&account).await?;
     let config = imap_config_pub(&endpoints, &account.email);
 
     for op in &draft_ops {
@@ -184,7 +185,7 @@ pub async fn drain_draft_sync(db: &Database, account_id: i64, now: i64) -> Resul
         let bytes = am_mime::compose::build_message(&msg);
 
         let sync_result: Result<(), SyncError> = async {
-            let mut session = ImapSession::connect(&config, &password).await?;
+            let mut session = ImapSession::connect(&config, &auth.to_imap()).await?;
             let state = session.select(&drafts_folder.remote_path).await?;
             let prev_uid = drafts_repo::get_server_uid(db, draft_id).ok().flatten();
             let new_uid = state.uidnext;

@@ -11,6 +11,7 @@ export function useSyncEvents() {
       queryClient.invalidateQueries({ queryKey: ["folders", account_id] });
       queryClient.invalidateQueries({ queryKey: ["messages", folder_id] });
       queryClient.invalidateQueries({ queryKey: ["threads"] });
+      queryClient.invalidateQueries({ queryKey: ["smart"] });
     });
 
     const messagesPromise = events.newMessages.listen((event) => {
@@ -18,6 +19,7 @@ export function useSyncEvents() {
       queryClient.invalidateQueries({ queryKey: ["folders", account_id] });
       queryClient.invalidateQueries({ queryKey: ["messages", folder_id] });
       queryClient.invalidateQueries({ queryKey: ["threads"] });
+      queryClient.invalidateQueries({ queryKey: ["smart"] });
     });
 
     const mailboxPromise = events.mailboxChanged.listen((event) => {
@@ -25,12 +27,18 @@ export function useSyncEvents() {
       queryClient.invalidateQueries({ queryKey: ["folders", account_id] });
       queryClient.invalidateQueries({ queryKey: ["messages", folder_id] });
       queryClient.invalidateQueries({ queryKey: ["threads"] });
+      queryClient.invalidateQueries({ queryKey: ["smart"] });
+    });
+
+    const authChangedPromise = events.accountAuthChanged.listen(() => {
+      queryClient.invalidateQueries({ queryKey: ["accounts"] });
     });
 
     return () => {
       progressPromise.then((unlisten) => unlisten());
       messagesPromise.then((unlisten) => unlisten());
       mailboxPromise.then((unlisten) => unlisten());
+      authChangedPromise.then((unlisten) => unlisten());
     };
   }, [queryClient]);
 }

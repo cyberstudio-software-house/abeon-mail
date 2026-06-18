@@ -12,6 +12,10 @@ pub fn build_specta_builder() -> Builder<tauri::Wry> {
             commands::list_accounts,
             commands::resolve_endpoints,
             commands::add_account,
+            commands::remove_account,
+            commands::reorder_accounts,
+            commands::begin_reauth,
+            commands::begin_google_oauth,
             commands::list_folders,
             commands::list_messages,
             commands::get_message_body,
@@ -28,10 +32,12 @@ pub fn build_specta_builder() -> Builder<tauri::Wry> {
             commands::discard_draft,
             commands::list_signatures,
             commands::pick_attachment,
+            commands::list_smart_folder,
         ])
         .events(collect_events![
             events::SyncProgress,
             events::NewMessages,
             events::MailboxChanged,
+            events::AccountAuthChanged,
         ])
 }

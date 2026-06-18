@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { commands } from "./bindings";
-import type { Account, Endpoints, MessageFlag, OutgoingMessage } from "./bindings";
+import type { Account, Endpoints, MessageFlag, OutgoingMessage, SmartFolderKind, SmartMessageRow } from "./bindings";
+import { useUiStore } from "../app/store";
 
 type ResultOk<T> = { status: "ok"; data: T };
 type ResultErr = { status: "error"; error: string };
@@ -110,6 +111,17 @@ export function useAddAccount() {
   });
 }
 
+export function useBeginGoogleOauth() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => commands.beginGoogleOauth().then(unwrap),
+    onSuccess: (account: Account) => {
+      queryClient.invalidateQueries({ queryKey: ["accounts"] });
+      queryClient.invalidateQueries({ queryKey: ["folders", account.id] });
+    },
+  });
+}
+
 export function useStartReply() {
   return useMutation({
     mutationFn: ({ messageId, mode }: { messageId: number; mode: string }) =>
@@ -138,6 +150,52 @@ export function useEnqueueSend() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["folders"] });
       queryClient.invalidateQueries({ queryKey: ["threads"] });
+    },
+  });
+}
+
+export function useSmartFolder(kind: SmartFolderKind | null) {
+  return useQuery<SmartMessageRow[]>({
+    queryKey: ["smart", kind],
+    queryFn: () => commands.listSmartFolder(kind!, 100, 0).then(unwrap),
+    enabled: kind != null,
+  });
+}
+
+export function useRemoveAccount() {
+  const queryClient = useQueryClient();
+  const store = useUiStore.getState();
+  return useMutation({
+    mutationFn: (accountId: number) =>
+      commands.removeAccount(accountId).then(unwrap),
+    onSuccess: (_data, accountId) => {
+      if (store.selectedAccountId === accountId) {
+        store.setSelectedAccountId(null);
+        store.setSelectedFolderId(null);
+      }
+      queryClient.invalidateQueries({ queryKey: ["accounts"] });
+    },
+  });
+}
+
+export function useReorderAccounts() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (orderedIds: number[]) =>
+      commands.reorderAccounts(orderedIds).then(unwrap),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["accounts"] });
+    },
+  });
+}
+
+export function useBeginReauth() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (accountId: number) =>
+      commands.beginReauth(accountId).then(unwrap),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["accounts"] });
     },
   });
 }

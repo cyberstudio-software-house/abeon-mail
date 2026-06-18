@@ -5,6 +5,7 @@ version.workspace = true
 
 [dependencies]
 am-mime = { path = "../am-mime" }
+base64.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 async-imap.workspace = true

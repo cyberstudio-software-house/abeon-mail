@@ -1,8 +1,8 @@
 import { useRef } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { useThreads } from "../../ipc/queries";
+import { useThreads, useSmartFolder } from "../../ipc/queries";
 import { useUiStore, type Density } from "../../app/store";
-import type { ThreadSummary } from "../../ipc/bindings";
+import type { ThreadSummary, SmartMessageRow } from "../../ipc/bindings";
 import "./MessageListPane.css";
 
 const ROW_HEIGHT: Record<Density, number> = {
@@ -61,18 +61,93 @@ function ThreadRow({
         <div className="message-row__meta">
           <span className="message-row__subject">{thread.subject}</span>
           <div className="message-row__badges">
-            {thread.flagged && <span className="message-row__flag" aria-label="flagged">⚑</span>}
+            {thread.flagged && (
+              <span className="message-row__flag" aria-label="flagged">
+                ⚑
+              </span>
+            )}
             {thread.message_count > 1 && (
-              <span className="message-row__count" aria-label={`${thread.message_count} messages`}>
+              <span
+                className="message-row__count"
+                aria-label={`${thread.message_count} messages`}
+              >
                 {thread.message_count}
               </span>
             )}
             {thread.has_attachments && (
-              <span className="message-row__attachment" aria-label="has attachments">📎</span>
+              <span className="message-row__attachment" aria-label="has attachments">
+                📎
+              </span>
             )}
           </div>
         </div>
         <span className="message-row__snippet">{thread.snippet}</span>
+      </div>
+    </div>
+  );
+}
+
+function SmartRow({
+  row,
+  isSelected,
+  rowHeight,
+  onSelect,
+}: {
+  row: SmartMessageRow;
+  isSelected: boolean;
+  rowHeight: number;
+  onSelect: (id: number) => void;
+}) {
+  const senderLabel = row.from_name ?? row.from_address;
+
+  return (
+    <div
+      className={`message-row${!row.seen ? " message-row--unread" : ""}${isSelected ? " message-row--selected" : ""}`}
+      style={{ height: rowHeight }}
+      data-message-id={row.message_id}
+      onClick={() => onSelect(row.message_id)}
+      role="option"
+      aria-selected={isSelected}
+    >
+      <div className="message-row__indicators">
+        {!row.seen && <span className="message-row__unread-dot" aria-label="unread" />}
+      </div>
+      <div className="message-row__content">
+        <div className="message-row__header">
+          <span
+            style={{ display: "flex", alignItems: "center", gap: "6px" }}
+            className={`message-row__sender${!row.seen ? " message-row__sender--bold" : ""}`}
+          >
+            <span
+              data-account-dot
+              style={{
+                width: "8px",
+                height: "8px",
+                borderRadius: "50%",
+                background: row.account_color ?? "var(--accent)",
+                flexShrink: 0,
+              }}
+            />
+            {senderLabel}
+          </span>
+          <span className="message-row__date">{formatDate(row.date)}</span>
+        </div>
+        <div className="message-row__meta">
+          <span className="message-row__subject">{row.subject}</span>
+          <div className="message-row__badges">
+            {row.flagged && (
+              <span className="message-row__flag" aria-label="flagged">
+                ⚑
+              </span>
+            )}
+            {row.has_attachments && (
+              <span className="message-row__attachment" aria-label="has attachments">
+                📎
+              </span>
+            )}
+          </div>
+        </div>
+        <span className="message-row__snippet">{row.snippet}</span>
       </div>
     </div>
   );
@@ -89,17 +164,26 @@ function SkeletonRow({ height }: { height: number }) {
 
 export function MessageListPane() {
   const selectedFolderId = useUiStore((s) => s.selectedFolderId);
+  const selectedSmartFolder = useUiStore((s) => s.selectedSmartFolder);
   const selectedThreadId = useUiStore((s) => s.selectedThreadId);
+  const selectedMessageId = useUiStore((s) => s.selectedMessageId);
   const density = useUiStore((s) => s.density);
   const setSelectedThreadId = useUiStore((s) => s.setSelectedThreadId);
+  const setSelectedMessageId = useUiStore((s) => s.setSelectedMessageId);
 
-  const { data: threads, isLoading } = useThreads(selectedFolderId);
+  const { data: threads, isLoading: threadsLoading } = useThreads(selectedFolderId);
+  const { data: smartRows, isLoading: smartLoading } = useSmartFolder(selectedSmartFolder);
+
+  const isSmartMode = selectedSmartFolder != null;
+  const isLoading = isSmartMode ? smartLoading : threadsLoading;
+  const items = isSmartMode ? (smartRows ?? []) : (threads ?? []);
+  const hasSelection = isSmartMode ? selectedSmartFolder != null : selectedFolderId != null;
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const rowHeight = ROW_HEIGHT[density] ?? ROW_HEIGHT.comfortable;
 
   const virtualizer = useVirtualizer({
-    count: threads?.length ?? 0,
+    count: items.length,
     getScrollElement: () => scrollContainerRef.current,
     estimateSize: () => rowHeight,
     overscan: 5,
@@ -109,11 +193,11 @@ export function MessageListPane() {
 
   return (
     <section className="pane message-list-pane" aria-label="message-list">
-      {selectedFolderId == null && (
+      {!hasSelection && (
         <div className="message-list__empty">Select a folder</div>
       )}
 
-      {selectedFolderId != null && isLoading && (
+      {hasSelection && isLoading && (
         <div className="message-list__scroll" style={{ height: "100%" }}>
           {Array.from({ length: 8 }, (_, i) => (
             <SkeletonRow key={i} height={rowHeight} />
@@ -121,11 +205,11 @@ export function MessageListPane() {
         </div>
       )}
 
-      {selectedFolderId != null && !isLoading && threads?.length === 0 && (
+      {hasSelection && !isLoading && items.length === 0 && (
         <div className="message-list__empty">No messages</div>
       )}
 
-      {selectedFolderId != null && !isLoading && threads && threads.length > 0 && (
+      {hasSelection && !isLoading && items.length > 0 && (
         <div
           ref={scrollContainerRef}
           className="message-list__scroll"
@@ -135,7 +219,29 @@ export function MessageListPane() {
         >
           <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
             {virtualItems.map((virtualItem) => {
-              const thread = threads[virtualItem.index];
+              if (isSmartMode) {
+                const row = (items as SmartMessageRow[])[virtualItem.index];
+                return (
+                  <div
+                    key={virtualItem.key}
+                    style={{
+                      position: "absolute",
+                      top: virtualItem.start,
+                      left: 0,
+                      right: 0,
+                      height: virtualItem.size,
+                    }}
+                  >
+                    <SmartRow
+                      row={row}
+                      isSelected={selectedMessageId === row.message_id}
+                      rowHeight={rowHeight}
+                      onSelect={setSelectedMessageId}
+                    />
+                  </div>
+                );
+              }
+              const thread = (items as ThreadSummary[])[virtualItem.index];
               return (
                 <div
                   key={virtualItem.key}

@@ -6,6 +6,7 @@ pub mod folders_repo;
 pub mod messages_repo;
 pub mod queue_repo;
 pub mod signatures_repo;
+pub mod smart_repo;
 pub mod threads_repo;
 
 pub use db::{Database, StorageError};

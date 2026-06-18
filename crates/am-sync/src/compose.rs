@@ -1,5 +1,6 @@
 use am_core::outgoing::OutgoingMessage;
 use am_storage::{accounts_repo, messages_repo, Database};
+use crate::auth::CredentialSource;
 use crate::service::{get_or_fetch_body, get_or_fetch_recipients, SyncError};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -92,12 +93,13 @@ pub async fn build_prefill(
     db: &Database,
     message_id: i64,
     mode: ReplyMode,
+    creds: &dyn CredentialSource,
 ) -> Result<(i64, OutgoingMessage), SyncError> {
     let src = messages_repo::get_compose_source(db, message_id)?;
     let account = accounts_repo::get_account(db, src.account_id)?;
-    let body = get_or_fetch_body(db, message_id).await?;
+    let body = get_or_fetch_body(db, message_id, creds).await?;
     let (src_to, src_cc) = if mode != ReplyMode::Forward {
-        get_or_fetch_recipients(db, message_id).await?
+        get_or_fetch_recipients(db, message_id, creds).await?
     } else {
         (Vec::new(), Vec::new())
     };

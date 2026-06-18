@@ -9,6 +9,10 @@ export const commands = {
 	listAccounts: () => typedError<Account[], string>(__TAURI_INVOKE("list_accounts")),
 	resolveEndpoints: (email: string) => __TAURI_INVOKE<Endpoints>("resolve_endpoints", { email }),
 	addAccount: (email: string, displayName: string, password: string, endpoints: Endpoints) => typedError<Account, string>(__TAURI_INVOKE("add_account", { email, displayName, password, endpoints })),
+	removeAccount: (accountId: number) => typedError<null, string>(__TAURI_INVOKE("remove_account", { accountId })),
+	reorderAccounts: (orderedIds: number[]) => typedError<null, string>(__TAURI_INVOKE("reorder_accounts", { orderedIds })),
+	beginReauth: (accountId: number) => typedError<null, string>(__TAURI_INVOKE("begin_reauth", { accountId })),
+	beginGoogleOauth: () => typedError<Account, string>(__TAURI_INVOKE("begin_google_oauth")),
 	listFolders: (accountId: number) => typedError<Folder[], string>(__TAURI_INVOKE("list_folders", { accountId })),
 	listMessages: (folderId: number, limit: number, offset: number) => typedError<MessageHeader[], string>(__TAURI_INVOKE("list_messages", { folderId, limit, offset })),
 	getMessageBody: (messageId: number) => typedError<MessageBody, string>(__TAURI_INVOKE("get_message_body", { messageId })),
@@ -25,10 +29,12 @@ export const commands = {
 	discardDraft: (draftId: number) => typedError<null, string>(__TAURI_INVOKE("discard_draft", { draftId })),
 	listSignatures: (accountId: number) => typedError<Signature[], string>(__TAURI_INVOKE("list_signatures", { accountId })),
 	pickAttachment: () => typedError<OutgoingAttachment[], string>(__TAURI_INVOKE("pick_attachment")),
+	listSmartFolder: (kind: SmartFolderKind, limit: number, offset: number) => typedError<SmartMessageRow[], string>(__TAURI_INVOKE("list_smart_folder", { kind, limit, offset })),
 };
 
 /** Events */
 export const events = {
+	accountAuthChanged: makeEvent<AccountAuthChanged>("account-auth-changed"),
 	mailboxChanged: makeEvent<MailboxChanged>("mailbox-changed"),
 	newMessages: makeEvent<NewMessages>("new-messages"),
 	syncProgress: makeEvent<SyncProgress>("sync-progress"),
@@ -42,6 +48,12 @@ export type Account = {
 	provider_type: ProviderType,
 	color: string | null,
 	position: number,
+	requires_reauth: boolean,
+};
+
+export type AccountAuthChanged = {
+	account_id: number,
+	requires_reauth: boolean,
 };
 
 export type Endpoints = {
@@ -131,6 +143,23 @@ export type Signature = {
 	name: string,
 	html: string,
 	is_default: boolean,
+};
+
+export type SmartFolderKind = "all_inboxes" | "unread" | "flagged";
+
+export type SmartMessageRow = {
+	message_id: number,
+	account_id: number,
+	folder_id: number,
+	account_color: string | null,
+	from_address: string,
+	from_name: string | null,
+	subject: string,
+	date: number,
+	seen: boolean,
+	flagged: boolean,
+	has_attachments: boolean,
+	snippet: string,
 };
 
 export type SyncProgress = {
