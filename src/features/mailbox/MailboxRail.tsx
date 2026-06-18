@@ -303,10 +303,11 @@ export function MailboxRail({ status }: Props) {
 
   const sensors = useSensors(useSensor(PointerSensor));
 
+  const folderIds = folders.map((f) => f.id).join(",");
   useEffect(() => {
     const tree = buildFolderTree(folders);
     setExpanded(new Set(tree.map((n) => n.fullPath)));
-  }, [folders]);
+  }, [folderIds]);
 
   function toggle(path: string) {
     setExpanded((prev) => {
