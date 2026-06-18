@@ -262,12 +262,29 @@ pub async fn initial_sync_inbox(
     sync_folder(db, account_id, folder.id, creds, progress).await
 }
 
+pub async fn discover_folders(
+    db: &Database,
+    account_id: i64,
+    creds: &dyn CredentialSource,
+) -> Result<(), SyncError> {
+    let account = accounts_repo::get_account(db, account_id)?;
+    let endpoints = load_endpoints(db, account_id)?;
+    let auth = creds.auth_for(&account).await?;
+    let config = imap_config(&endpoints, &account.email);
+    let mut session = ImapSession::connect(&config, &auth.to_imap()).await?;
+    let folders = session.list_folders().await?;
+    session.logout().await?;
+    upsert_remote_folders(db, account_id, &folders)?;
+    Ok(())
+}
+
 pub async fn sync_all_folders(
     db: &Database,
     account_id: i64,
     creds: &dyn CredentialSource,
     progress: impl Fn(SyncProgress) + Copy,
 ) -> Result<usize, SyncError> {
+    discover_folders(db, account_id, creds).await?;
     let folders = folders_repo::list_folders(db, account_id)?;
     let mut total = 0usize;
     for folder in folders {
