@@ -71,13 +71,37 @@ Dodać `lucide-react` (`package.json`). Import per-ikona (tree-shake). Używane 
 
 ## Zakres
 
-### 1. Tokeny motywu (`src/shared/theme/tokens.css`)
+### 1. Tokeny: typografia + paleta kolorów 1:1 (`src/shared/theme/tokens.css`)
 
-Rail theme-aware (light: `--bg-rail:#f8f8fc`, `--rail-border:#ececf4`,
-`--rail-item:#55556c`, `--rail-section:#aaaabf`, `--rail-hover:#efeff7`,
-`--rail-count:#a0a0b4`, `--rail-search-bg:#f0f0f6`, `--rail-search-border:#e6e6ee`,
-`--text-on-rail:#1a1a2e`; dark: ciemne odpowiedniki dobrane do tła). Token
-`--shadow-accent:0 6px 14px -6px rgba(79,70,229,.6)`; promienie pozycji 9–10px.
+Wymóg: kolory i typografia mają odpowiadać szablonowi dokładnie, nie w przybliżeniu.
+
+**Font.** Rodzina już się zgadza (`Plus Jakarta Sans Variable`, self-hosted via
+@fontsource, family-name = token `--font-sans`) — renderuje się poprawnie; NIE
+zmieniać rodziny. Różnica percepcyjna „inny font" wynika z wag/rozmiarów/spacingu.
+Dlatego każdy element przejmuje **dokładne** wartości z szablonu:
+- skala rozmiarów: 9 / 10.5 / 11 / 11.5 / 12 / 12.5 / 13 / 13.5 / 14 / 14.5 / 15 / 16 / 24 px;
+- wagi: 600 (większość tekstu UI), 700 (nazwy/akcenty), 800 (nagłówki sekcji, tytuły, logo);
+- letter-spacing: nagłówki/tytuły `-0.01em`; etykiety sekcji `.07–.09em` (uppercase).
+
+**Paleta (dokładne hexy szablonu).** Zdefiniować tokeny i stosować je precyzyjnie:
+- Tekst: primary `#1a1a2e`, secondary `#55556c`, subject/silny `#2a2a40`, muted
+  `#9a9ab0`, preview `#9090a6`, count `#a0a0b4`, icon-muted `#6b6b85`, on-dark `#b4b4c8`.
+- Akcent: `#4f46e5` (+ hover/jasny `#6366f1`); selekcja listy `#eef0fe`; pasek
+  selekcji `#4f46e5`; chip/badge tła `#eef0f4`/`#e9e9fb`.
+- Sekcje/etykiety: `#aaaabf`. Bordery: `#ececf4` (rail), `#e6e6ee`/`#eeeef4` (subtelne).
+- Powierzchnie (light): app `#f3f3f8`, surface `#ffffff`, rail `#f8f8fc`,
+  elevated/hover `#efeff7`/`#f5f5fb`, search `#f0f0f6`.
+- Avatary/pomocnicze: sky `#0ea5e9`, pink `#ec4899`, violet `#8b5cf6`, amber `#f59e0b`,
+  account-avatar `#e0e7ff`/`#4338ca`.
+
+**Rail theme-aware.** Light wg powyższej palety (`--bg-rail:#f8f8fc`,
+`--rail-border:#ececf4`, `--rail-item:#55556c`, `--rail-section:#aaaabf`,
+`--rail-hover:#efeff7`, `--rail-count:#a0a0b4`, `--rail-search-bg:#f0f0f6`,
+`--rail-search-border:#e6e6ee`, `--text-on-rail:#1a1a2e`); dark: ciemne odpowiedniki.
+Token `--shadow-accent:0 6px 14px -6px rgba(79,70,229,.6)`; promienie pozycji 9–10px.
+
+**Dark theme** zachowuje istniejącą paletę ciemną; light dostraja się do szablonu.
+Accent presety z 6a (`#4f46e5,#7c3aed,#0ea5e9,#10b981,#ef5d3a,#ec4899`) bez zmian.
 
 ### 2. Rail (`MailboxRail.tsx` → `MailboxRail.css`, inline-style → klasy)
 
