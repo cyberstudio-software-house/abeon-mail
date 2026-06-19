@@ -1,6 +1,7 @@
 import { useGeneral } from "../../shared/general/GeneralProvider";
 import { TIME_FORMATS } from "../../shared/general/general";
 import { useAccounts } from "../../ipc/queries";
+import { UpdatesPanel } from "../updates/UpdatesPanel";
 
 export function GeneralSection() {
   const g = useGeneral();
@@ -38,6 +39,9 @@ export function GeneralSection() {
           </button>
         ))}
       </div>
+
+      <div className="appearance-field__label">About</div>
+      <UpdatesPanel />
     </div>
   );
 }

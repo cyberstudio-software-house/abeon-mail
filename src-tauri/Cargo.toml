@@ -3,7 +3,10 @@ name = "abeonmail"
 version.workspace = true
 edition.workspace = true
 description = "AbeonMail desktop email client"
-authors = []
+authors = ["Cyberstudio"]
+license = "MIT"
+homepage = "https://cyberstudio.pl"
+repository = "https://github.com/cyberstudio/abeonmail"
 default-run = "abeonmail"
 
 [lib]
@@ -22,6 +25,8 @@ tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-notification = "2"
+tauri-plugin-updater = "2"
+tauri-plugin-process = "2"
 serde = { workspace = true }
 serde_json = { workspace = true }
 specta-typescript = { workspace = true }

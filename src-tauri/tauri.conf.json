@@ -21,15 +21,43 @@
       "csp": "default-src 'self'; img-src 'self' data: asset: http://asset.localhost https://asset.localhost; style-src 'self' 'unsafe-inline'; font-src 'self'; script-src 'self'; connect-src 'self' ipc: http://ipc.localhost https://ipc.localhost; frame-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'"
     }
   },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEJCNzRERDZCODhEODE2NUIKUldSYkZ0aUlhOTEwdTJtazlVWUF3UmdERkZ6YW1jaXdmUHlDOW13ck9JbnNwMit5VWk0b1NielkK",
+      "endpoints": [
+        "https://github.com/cyberstudio/abeonmail/releases/latest/download/latest.json"
+      ]
+    }
+  },
   "bundle": {
     "active": true,
+    "createUpdaterArtifacts": true,
     "targets": "all",
+    "category": "Email",
+    "copyright": "© 2026 Cyberstudio",
+    "publisher": "Cyberstudio",
+    "shortDescription": "Fast, private desktop email client",
+    "longDescription": "AbeonMail is an offline-first desktop email client for Linux, Windows and macOS. It keeps your mail local, syncs in the background, and stays out of your way.",
+    "licenseFile": "../LICENSE",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "linux": {
+      "deb": {
+        "depends": []
+      }
+    },
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser"
+      }
+    },
+    "macOS": {
+      "minimumSystemVersion": "10.15"
+    }
   }
 }

@@ -45,10 +45,11 @@ const mockUseSmartFolder = vi.mocked(useSmartFolder);
 const mockUseSearch = vi.mocked(useSearch);
 const mockUseUiStore = vi.mocked(useUiStore);
 
-const nowSeconds = Math.floor(Date.now() / 1000);
-const todaySeconds = nowSeconds - 3600;
-const yesterdaySeconds = nowSeconds - 86400 - 3600;
-const earlierSeconds = nowSeconds - 86400 * 3;
+const noonToday = new Date();
+noonToday.setHours(12, 0, 0, 0);
+const todaySeconds = Math.floor(noonToday.getTime() / 1000);
+const yesterdaySeconds = todaySeconds - 86400;
+const earlierSeconds = todaySeconds - 86400 * 3;
 
 const sampleThreads: ThreadSummary[] = [
   {
