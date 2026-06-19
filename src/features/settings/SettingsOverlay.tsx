@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useUiStore } from "../../app/store";
 import { AppearanceSection } from "./AppearanceSection";
 import { LabelsSection } from "./LabelsSection";
+import { NotificationsSection } from "./NotificationsSection";
 import { ShortcutsSection } from "./ShortcutsSection";
 import { SignaturesSection } from "./SignaturesSection";
 import "./Settings.css";
@@ -77,6 +78,8 @@ export function SettingsOverlay() {
             <LabelsSection />
           ) : active === "signatures" ? (
             <SignaturesSection />
+          ) : active === "notifications" ? (
+            <NotificationsSection />
           ) : active === "shortcuts" ? (
             <ShortcutsSection />
           ) : (
