@@ -1,6 +1,6 @@
 import React from "react";
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
-import { render, screen, cleanup } from "@testing-library/react";
+import { render, screen, cleanup, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 let capturedOnDragEnd: ((event: { active: { id: unknown }; over: { id: unknown } | null }) => void) | null = null;
@@ -439,7 +439,6 @@ describe("MailboxRail", () => {
   });
 
   it("renders labels and selects one on click", async () => {
-    const { fireEvent: fe } = await import("@testing-library/react");
     setupStore(null);
     setupMutations();
     mockUseAccounts.mockReturnValue({
@@ -451,7 +450,7 @@ describe("MailboxRail", () => {
 
     render(<MailboxRail />);
     const chip = await screen.findByText("Work");
-    fe.click(chip);
+    fireEvent.click(chip);
     expect(useUiStore.getState().selectedLabelId).toBe(1);
   });
 });

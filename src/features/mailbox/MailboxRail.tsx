@@ -30,7 +30,6 @@ import {
   ShieldAlert,
   Trash2,
   Folder,
-  Tag,
   Plus,
 } from "lucide-react";
 import {
