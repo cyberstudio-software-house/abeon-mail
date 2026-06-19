@@ -24,12 +24,31 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "category": "Email",
+    "copyright": "© 2026 Cyberstudio",
+    "publisher": "Cyberstudio",
+    "shortDescription": "Fast, private desktop email client",
+    "longDescription": "AbeonMail is an offline-first desktop email client for Linux, Windows and macOS. It keeps your mail local, syncs in the background, and stays out of your way.",
+    "licenseFile": "../LICENSE",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "linux": {
+      "deb": {
+        "depends": []
+      }
+    },
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser"
+      }
+    },
+    "macOS": {
+      "minimumSystemVersion": "10.15"
+    }
   }
 }

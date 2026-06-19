@@ -3,7 +3,10 @@ name = "abeonmail"
 version.workspace = true
 edition.workspace = true
 description = "AbeonMail desktop email client"
-authors = []
+authors = ["Cyberstudio"]
+license = "MIT"
+homepage = "https://cyberstudio.pl"
+repository = "https://github.com/cyberstudio/abeonmail"
 default-run = "abeonmail"
 
 [lib]

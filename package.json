@@ -2,6 +2,8 @@
   "name": "abeonmail",
   "private": true,
   "version": "0.1.0",
+  "license": "MIT",
+  "author": "Cyberstudio",
   "type": "module",
   "engines": {
     "node": ">=24"
