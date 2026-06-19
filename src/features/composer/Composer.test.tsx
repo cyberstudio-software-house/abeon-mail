@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
-import { render, screen, cleanup, fireEvent, waitFor, act } from "@testing-library/react";
+import { render, screen, cleanup, fireEvent, waitFor, act, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 vi.mock("../../ipc/bindings", () => ({
@@ -19,12 +19,14 @@ vi.mock("../../ipc/bindings", () => ({
 
 let mockHtmlContent = "<p>Hello world</p>";
 
+const { mockSetContent } = vi.hoisted(() => ({ mockSetContent: vi.fn() }));
+
 vi.mock("@tiptap/react", () => {
   const editorInstance = {
     isActive: () => false,
     getText: () => "Hello world",
     getHTML: () => mockHtmlContent,
-    commands: { setContent: vi.fn() },
+    commands: { setContent: mockSetContent, focus: vi.fn() },
     chain: () => ({
       focus: () => ({
         toggleBold: () => ({ run: vi.fn() }),
@@ -215,6 +217,86 @@ describe("Composer", () => {
     vi.useRealTimers();
 
     expect(commands.saveDraft).toHaveBeenCalled();
+  });
+
+  const emptyPrefill = {
+    from_address: "",
+    from_name: null,
+    to: [],
+    cc: [],
+    bcc: [],
+    subject: "",
+    text_body: "",
+    html_body: null,
+    in_reply_to: null,
+    references: [],
+    attachments: [],
+  };
+
+  it("auto-inserts the default signature above the quote on a fresh reply", async () => {
+    const { commands } = await import("../../ipc/bindings");
+    (commands.listSignatures as ReturnType<typeof vi.fn>).mockResolvedValue({
+      status: "ok",
+      data: [{ id: 1, name: "Default", html: "<p>SIG-MARK</p>", is_default: true }],
+    });
+    useUiStore.setState({
+      composer: {
+        open: true,
+        draftId: null,
+        prefill: { ...emptyPrefill, html_body: "<blockquote>QUOTED</blockquote>" },
+      },
+    });
+
+    render(<Composer />, { wrapper: Wrapper });
+    await screen.findByRole("dialog");
+
+    await waitFor(() => {
+      const call = mockSetContent.mock.calls.find((c) => String(c[0]).includes("SIG-MARK"));
+      expect(call).toBeTruthy();
+    });
+    const call = mockSetContent.mock.calls.find((c) => String(c[0]).includes("SIG-MARK"));
+    const content = String(call?.[0]);
+    expect(content).toContain("QUOTED");
+    expect(content.indexOf("SIG-MARK")).toBeLessThan(content.indexOf("QUOTED"));
+  });
+
+  it("does not auto-insert a signature when reopening an existing draft", async () => {
+    const { commands } = await import("../../ipc/bindings");
+    (commands.listSignatures as ReturnType<typeof vi.fn>).mockResolvedValue({
+      status: "ok",
+      data: [{ id: 1, name: "Default", html: "<p>SIG-MARK</p>", is_default: true }],
+    });
+    useUiStore.setState({
+      composer: {
+        open: true,
+        draftId: 42,
+        prefill: { ...emptyPrefill, html_body: "<p>existing draft body</p>" },
+      },
+    });
+
+    render(<Composer />, { wrapper: Wrapper });
+    await screen.findByRole("dialog");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const sigCall = mockSetContent.mock.calls.find((c) => String(c[0]).includes("SIG-MARK"));
+    expect(sigCall).toBeUndefined();
+  });
+
+  it("shows a signature picker when the account has signatures", async () => {
+    const { commands } = await import("../../ipc/bindings");
+    (commands.listSignatures as ReturnType<typeof vi.fn>).mockResolvedValue({
+      status: "ok",
+      data: [
+        { id: 1, name: "Default", html: "<p>BR</p>", is_default: true },
+        { id: 2, name: "Casual", html: "<p>Cheers</p>", is_default: false },
+      ],
+    });
+
+    render(<Composer />, { wrapper: Wrapper });
+    await screen.findByRole("dialog");
+
+    const picker = await screen.findByLabelText("Insert signature");
+    expect(within(picker).getByText("Casual")).toBeTruthy();
   });
 
   it("rewrites inline image src to cid: in html_body and includes inline attachment on Send", async () => {

@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { commands } from "./bindings";
-import type { Account, Endpoints, Label, MessageFlag, OutgoingMessage, SmartFolderKind, SmartMessageRow } from "./bindings";
+import type { Account, Endpoints, Label, MessageFlag, OutgoingMessage, Signature, SmartFolderKind, SmartMessageRow } from "./bindings";
 import { useUiStore } from "../app/store";
 
 type ResultOk<T> = { status: "ok"; data: T };
@@ -317,6 +317,75 @@ export function useUnsnooze() {
       queryClient.invalidateQueries({ queryKey: ["smart"] });
       queryClient.invalidateQueries({ queryKey: ["labels-for-messages"] });
       queryClient.invalidateQueries({ queryKey: ["messages-by-label"] });
+    },
+  });
+}
+
+export function useSignatures(accountId: number | null) {
+  return useQuery<Signature[]>({
+    queryKey: ["signatures", accountId],
+    queryFn: () => commands.listSignatures(accountId!).then(unwrap),
+    enabled: accountId != null,
+  });
+}
+
+export function useCreateSignature() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      accountId,
+      name,
+      html,
+      makeDefault,
+    }: {
+      accountId: number;
+      name: string;
+      html: string;
+      makeDefault: boolean;
+    }) => commands.createSignature(accountId, name, html, makeDefault).then(unwrap),
+    onSuccess: (_data, { accountId }) => {
+      queryClient.invalidateQueries({ queryKey: ["signatures", accountId] });
+    },
+  });
+}
+
+export function useUpdateSignature() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      id,
+      name,
+      html,
+    }: {
+      id: number;
+      name: string;
+      html: string;
+      accountId: number;
+    }) => commands.updateSignature(id, name, html).then(unwrap),
+    onSuccess: (_data, { accountId }) => {
+      queryClient.invalidateQueries({ queryKey: ["signatures", accountId] });
+    },
+  });
+}
+
+export function useSetDefaultSignature() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ accountId, id }: { accountId: number; id: number }) =>
+      commands.setDefaultSignature(accountId, id).then(unwrap),
+    onSuccess: (_data, { accountId }) => {
+      queryClient.invalidateQueries({ queryKey: ["signatures", accountId] });
+    },
+  });
+}
+
+export function useDeleteSignature() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id }: { id: number; accountId: number }) =>
+      commands.deleteSignature(id).then(unwrap),
+    onSuccess: (_data, { accountId }) => {
+      queryClient.invalidateQueries({ queryKey: ["signatures", accountId] });
     },
   });
 }

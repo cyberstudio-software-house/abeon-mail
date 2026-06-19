@@ -351,6 +351,52 @@ pub fn list_signatures(
         .map_err(|_| "Failed to list signatures".to_string())
 }
 
+#[tauri::command]
+#[specta::specta]
+pub fn create_signature(
+    state: tauri::State<'_, AppState>,
+    account_id: i64,
+    name: String,
+    html: String,
+    make_default: bool,
+) -> Result<Signature, String> {
+    signatures_repo::create_signature(&state.db, account_id, &name, &html, make_default)
+        .map_err(|_| "Failed to create signature".to_string())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn update_signature(
+    state: tauri::State<'_, AppState>,
+    id: i64,
+    name: String,
+    html: String,
+) -> Result<(), String> {
+    signatures_repo::update_signature(&state.db, id, &name, &html)
+        .map_err(|_| "Failed to update signature".to_string())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn set_default_signature(
+    state: tauri::State<'_, AppState>,
+    account_id: i64,
+    id: i64,
+) -> Result<(), String> {
+    signatures_repo::set_default_signature(&state.db, account_id, id)
+        .map_err(|_| "Failed to set default signature".to_string())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn delete_signature(
+    state: tauri::State<'_, AppState>,
+    id: i64,
+) -> Result<(), String> {
+    signatures_repo::delete_signature(&state.db, id)
+        .map_err(|_| "Failed to delete signature".to_string())
+}
+
 fn guess_mime_from_extension(ext: &str) -> &'static str {
     match ext.to_ascii_lowercase().as_str() {
         "pdf" => "application/pdf",
