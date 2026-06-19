@@ -3,7 +3,7 @@ import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { Image } from "@tiptap/extension-image";
 import { commands } from "../../ipc/bindings";
-import type { OutgoingAttachment } from "../../ipc/bindings";
+import type { OutgoingAttachment, Signature } from "../../ipc/bindings";
 import { useAccounts, useSaveDraft, useEnqueueSend } from "../../ipc/queries";
 import { useUiStore } from "../../app/store";
 import { RecipientField } from "./RecipientField";
@@ -66,6 +66,42 @@ export function Composer() {
       editor.commands.setContent(prefill.html_body);
     }
   }, [prefill?.html_body, editor]);
+
+  const [signatures, setSignatures] = useState<Signature[]>([]);
+  const signatureInsertedRef = useRef(false);
+
+  useEffect(() => {
+    if (accountId == null) return;
+    let cancelled = false;
+    commands.listSignatures(accountId).then((result) => {
+      if (!cancelled && result.status === "ok") setSignatures(result.data);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [accountId]);
+
+  useEffect(() => {
+    if (signatureInsertedRef.current) return;
+    if (!editor) return;
+    if (composer.draftId != null) {
+      signatureInsertedRef.current = true;
+      return;
+    }
+    if (signatures.length === 0) return;
+    signatureInsertedRef.current = true;
+    const sig = signatures.find((s) => s.is_default);
+    if (!sig) return;
+    const quote = prefill?.html_body ?? "";
+    editor.commands.setContent(`<p></p>${sig.html}${quote}`);
+    editor.commands.focus("start");
+  }, [editor, signatures, composer.draftId, prefill?.html_body]);
+
+  function insertSignature(html: string) {
+    if (!editor) return;
+    editor.chain().focus().insertContent(html).run();
+    scheduleAutosave();
+  }
 
   const buildMessage = useCallback(() => {
     const rawHtml = editor?.getHTML() ?? null;
@@ -175,18 +211,6 @@ export function Composer() {
     editor.chain().focus().setImage({ src: previewSrc }).run();
     setAttachments((prev) => [...prev, ...inlineAttachments]);
     scheduleAutosave();
-  }
-
-  async function handleInsertSignature() {
-    if (accountId == null || !editor) return;
-    const result = await commands.listSignatures(accountId);
-    if (result.status === "ok") {
-      const defaultSig = result.data.find((s) => s.is_default) ?? result.data[0];
-      if (defaultSig) {
-        editor.chain().focus().insertContent(defaultSig.html).run();
-        scheduleAutosave();
-      }
-    }
   }
 
   function removeAttachment(index: number) {
@@ -377,9 +401,25 @@ export function Composer() {
           >
             Save draft
           </button>
-          <button type="button" className="btn-signature" onClick={handleInsertSignature}>
-            Insert signature
-          </button>
+          {signatures.length > 0 && (
+            <select
+              className="btn-signature"
+              aria-label="Insert signature"
+              value=""
+              onChange={(e) => {
+                const sig = signatures.find((s) => String(s.id) === e.target.value);
+                if (sig) insertSignature(sig.html);
+                e.currentTarget.value = "";
+              }}
+            >
+              <option value="">Insert signature…</option>
+              {signatures.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </select>
+          )}
           <button type="button" className="btn-discard" onClick={handleDiscard}>
             Discard
           </button>
