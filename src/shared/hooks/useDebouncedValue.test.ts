@@ -22,4 +22,23 @@ describe("useDebouncedValue", () => {
     });
     expect(result.current).toBe("b");
   });
+
+  it("collapses rapid intermediate values and only emits the last", () => {
+    const { result, rerender } = renderHook(({ v }) => useDebouncedValue(v, 200), {
+      initialProps: { v: "a" },
+    });
+    act(() => {
+      vi.advanceTimersByTime(100);
+    });
+    rerender({ v: "b" });
+    act(() => {
+      vi.advanceTimersByTime(100);
+    });
+    rerender({ v: "c" });
+    expect(result.current).toBe("a");
+    act(() => {
+      vi.advanceTimersByTime(200);
+    });
+    expect(result.current).toBe("c");
+  });
 });

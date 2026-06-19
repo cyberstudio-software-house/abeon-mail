@@ -174,4 +174,18 @@ describe("search store slice", () => {
     expect(useUiStore.getState().searchActive).toBe(false);
     expect(useUiStore.getState().searchQuery).toBe("");
   });
+
+  it("setSelectedAccountId clears active search", () => {
+    useUiStore.getState().setSearchQuery("hello");
+    useUiStore.getState().setSelectedAccountId(3);
+    expect(useUiStore.getState().searchActive).toBe(false);
+    expect(useUiStore.getState().searchQuery).toBe("");
+  });
+
+  it("setSelectedSmartFolder clears active search", () => {
+    useUiStore.getState().setSearchQuery("hello");
+    useUiStore.getState().setSelectedSmartFolder("all_inboxes");
+    expect(useUiStore.getState().searchActive).toBe(false);
+    expect(useUiStore.getState().searchQuery).toBe("");
+  });
 });
