@@ -31,6 +31,7 @@ function setupStore(selectedThreadId: number | null) {
       setSelectedFolderId: vi.fn(),
       setSelectedThreadId: vi.fn(),
       setDensity: vi.fn(),
+      setReplyTargetId: vi.fn(),
     };
     return selector ? selector(state) : state;
   });

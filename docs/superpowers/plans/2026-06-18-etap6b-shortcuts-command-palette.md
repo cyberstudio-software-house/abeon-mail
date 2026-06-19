@@ -687,9 +687,7 @@ describe("useKeyboardEngine", () => {
 
   it("ignores disabled actions (no handler registered)", () => {
     render(<Harness resolved={{ archive: "e" }} handlers={{}} context="reader" />);
-    fireEvent.keyDown(window, { key: "e" });
-    // nothing to assert beyond "does not throw"
-    expect(true).toBe(true);
+    expect(() => fireEvent.keyDown(window, { key: "e" })).not.toThrow();
   });
 });
 ```

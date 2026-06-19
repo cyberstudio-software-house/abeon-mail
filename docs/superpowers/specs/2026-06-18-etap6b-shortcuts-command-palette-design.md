@@ -124,10 +124,10 @@ type Action = {
 | `go-inbox` | `g i` | global | enabled |
 | `go-starred` | `g s` | global | enabled (smart Flagged) |
 | `open-settings` | `g ,` | global | enabled |
-| `next-message` | `j` | list | enabled |
-| `prev-message` | `k` | list | enabled |
-| `first-message` | (none / vim `g g`) | list | enabled |
-| `last-message` | (none / vim `Shift+G`) | list | enabled |
+| `next-message` | `j` | list/reader | enabled |
+| `prev-message` | `k` | list/reader | enabled |
+| `first-message` | (none / vim `g g`) | list/reader | enabled |
+| `last-message` | (none / vim `Shift+G`) | list/reader | enabled |
 | `toggle-flag` | `s` | reader | enabled |
 | `mark-read` | `Shift+I` | reader | enabled |
 | `mark-unread` | `Shift+U` | reader | enabled |
@@ -153,6 +153,12 @@ Two refinements made during planning (data/architecture-driven):
   opens the reader (Gmail-like navigate-and-open). In its place `first-message` /
   `last-message` are added — unbound in the Default profile, bound to `g g` /
   `Shift+G` in the Vim profile so that profile has real distinguishing actions.
+- The four navigation actions (`next`/`prev`/`first`/`last-message`) are active in
+  BOTH `list` and `reader` contexts. Because selecting a thread opens it in the
+  reader (the reader is the active context while browsing), navigation must keep
+  working there; otherwise `j`/`k` would die the moment a conversation opened.
+  `getContext` is `composer` (if composer open) → `reader` (if `selectedThreadId`
+  set) → `list`.
 
 ## Command palette (cmdk)
 
@@ -221,6 +227,18 @@ Two refinements made during planning (data/architecture-driven):
 7. Shortcuts settings section (editor + conflicts + profile + persistence).
 8. Fidelity / a11y check; verify cheat sheet is generated end-to-end from the
    registry.
+
+## Implementation notes (as built)
+
+- The `toggle-flag` handler in `ShortcutsProvider` reads the open conversation's
+  latest-message flag straight from the React Query cache under the key
+  `["thread-messages", selectedThreadId]` (the key `useThreadMessages` in
+  `src/ipc/queries.ts` writes) and inverts it. This is an implicit contract: if
+  that query key ever changes, update the handler too, or `s` will stop toggling
+  correctly.
+- `getContext` resolves `composer` (composer open) → `reader` (`selectedThreadId`
+  set) → `list`. Navigation actions belong to both `list` and `reader` so `j`/`k`
+  keep working while a conversation is open.
 
 ## Deferred (out of 6b)
 

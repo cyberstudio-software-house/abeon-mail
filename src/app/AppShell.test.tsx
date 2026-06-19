@@ -67,6 +67,12 @@ vi.mock("../app/store", () => ({
       closeSettings: vi.fn(),
       openComposer: vi.fn(),
       closeComposer: vi.fn(),
+      visibleMessageIds: [],
+      selectMode: "thread",
+      replyTargetId: null,
+      setListContext: vi.fn(),
+      setReplyTargetId: vi.fn(),
+      setComposerSend: vi.fn(),
     };
     return selector ? selector(state) : state;
   },

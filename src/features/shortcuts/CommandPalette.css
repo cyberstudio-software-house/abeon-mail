@@ -1,0 +1,66 @@
+.palette-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(20, 20, 35, 0.35);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 12vh;
+  z-index: 1000;
+}
+.palette {
+  width: min(560px, 92vw);
+  background: var(--bg-surface, #fff);
+  border: 1px solid var(--rail-border, #e4e4ef);
+  border-radius: 12px;
+  box-shadow: 0 24px 60px rgba(20, 20, 35, 0.28);
+  overflow: hidden;
+}
+.palette [cmdk-input] {
+  width: 100%;
+  border: none;
+  outline: none;
+  padding: 16px 18px;
+  font-size: 15px;
+  background: transparent;
+  color: var(--text-subject, #2a2a40);
+  border-bottom: 1px solid var(--rail-border, #e4e4ef);
+}
+.palette [cmdk-list] {
+  max-height: 360px;
+  overflow: auto;
+  padding: 8px;
+}
+.palette [cmdk-group-heading] {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--section-label, #aaaabf);
+  padding: 8px 10px 4px;
+}
+.palette [cmdk-item] {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 9px 10px;
+  border-radius: 8px;
+  font-size: 14px;
+  color: var(--text-subject, #2a2a40);
+  cursor: pointer;
+}
+.palette [cmdk-item][data-selected="true"] {
+  background: var(--selection-bg, #eef0fe);
+}
+.palette [cmdk-empty] {
+  padding: 16px;
+  text-align: center;
+  color: var(--text-preview, #9090a6);
+  font-size: 13px;
+}
+.palette__kbd {
+  font-size: 11px;
+  color: var(--text-count, #a0a0b4);
+  background: var(--rail-item, #f1f1f8);
+  border-radius: 5px;
+  padding: 2px 6px;
+}

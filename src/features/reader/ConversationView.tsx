@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { Reply, ReplyAll, Forward, Star, Archive, Clock, Trash2, MoreHorizontal, SendHorizontal } from "lucide-react";
 import { useThreadMessages, useStartReply, useSetFlag } from "../../ipc/queries";
 import { useUiStore } from "../../app/store";
@@ -14,6 +15,12 @@ export function ConversationView({ threadId }: { threadId: number }) {
   const openComposer = useUiStore((s) => s.openComposer);
   const startReplyMutation = useStartReply();
   const setFlag = useSetFlag();
+  const setReplyTargetId = useUiStore((s) => s.setReplyTargetId);
+  const lastId = messages && messages.length > 0 ? messages[messages.length - 1].id : null;
+  useEffect(() => {
+    setReplyTargetId(lastId);
+    return () => setReplyTargetId(null);
+  }, [lastId, setReplyTargetId]);
 
   if (isLoading) return <p className="loading-state">Loading…</p>;
   if (!messages || messages.length === 0) return <p className="empty-state">No messages</p>;
