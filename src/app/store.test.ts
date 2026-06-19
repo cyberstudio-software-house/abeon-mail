@@ -248,3 +248,19 @@ describe("labels store slice", () => {
     expect(useUiStore.getState().labelPickerTargetIds).toEqual([]);
   });
 });
+
+describe("snooze picker slice", () => {
+  beforeEach(() => {
+    useUiStore.getState().closeSnoozePicker();
+  });
+
+  it("opens with target ids and closes clearing them", () => {
+    useUiStore.getState().openSnoozePicker([3, 7]);
+    expect(useUiStore.getState().snoozePickerOpen).toBe(true);
+    expect(useUiStore.getState().snoozePickerTargetIds).toEqual([3, 7]);
+
+    useUiStore.getState().closeSnoozePicker();
+    expect(useUiStore.getState().snoozePickerOpen).toBe(false);
+    expect(useUiStore.getState().snoozePickerTargetIds).toEqual([]);
+  });
+});

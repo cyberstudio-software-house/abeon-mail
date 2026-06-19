@@ -45,6 +45,8 @@ export type UiState = {
   selectedMessageIds: number[];
   labelPickerOpen: boolean;
   labelPickerTargetIds: number[];
+  snoozePickerOpen: boolean;
+  snoozePickerTargetIds: number[];
   setSelectedAccountId: (id: number | null) => void;
   setSelectedFolderId: (id: number | null) => void;
   setSelectedMessageId: (id: number | null) => void;
@@ -81,6 +83,8 @@ export type UiState = {
   selectAll: (ids: number[]) => void;
   openLabelPicker: (ids: number[]) => void;
   closeLabelPicker: () => void;
+  openSnoozePicker: (ids: number[]) => void;
+  closeSnoozePicker: () => void;
 };
 
 export const useUiStore = create<UiState>((set) => ({
@@ -112,6 +116,8 @@ export const useUiStore = create<UiState>((set) => ({
   selectedMessageIds: [],
   labelPickerOpen: false,
   labelPickerTargetIds: [],
+  snoozePickerOpen: false,
+  snoozePickerTargetIds: [],
   setSelectedAccountId: (id) =>
     set({ selectedAccountId: id, selectedSmartFolder: null, selectedLabelId: null, searchQuery: "", searchActive: false }),
   setSelectedFolderId: (id) =>
@@ -191,4 +197,6 @@ export const useUiStore = create<UiState>((set) => ({
   selectAll: (ids) => set({ selectionActive: true, selectedMessageIds: ids }),
   openLabelPicker: (ids) => set({ labelPickerOpen: true, labelPickerTargetIds: ids }),
   closeLabelPicker: () => set({ labelPickerOpen: false, labelPickerTargetIds: [] }),
+  openSnoozePicker: (ids) => set({ snoozePickerOpen: true, snoozePickerTargetIds: ids }),
+  closeSnoozePicker: () => set({ snoozePickerOpen: false, snoozePickerTargetIds: [] }),
 }));
