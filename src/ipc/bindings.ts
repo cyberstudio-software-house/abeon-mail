@@ -30,6 +30,7 @@ export const commands = {
 	listSignatures: (accountId: number) => typedError<Signature[], string>(__TAURI_INVOKE("list_signatures", { accountId })),
 	pickAttachment: () => typedError<OutgoingAttachment[], string>(__TAURI_INVOKE("pick_attachment")),
 	listSmartFolder: (kind: SmartFolderKind, limit: number, offset: number) => typedError<SmartMessageRow[], string>(__TAURI_INVOKE("list_smart_folder", { kind, limit, offset })),
+	searchMessages: (query: string, limit: number, offset: number) => typedError<SmartMessageRow[], string>(__TAURI_INVOKE("search_messages", { query, limit, offset })),
 	getSettings: () => typedError<([string, string])[], string>(__TAURI_INVOKE("get_settings")),
 	setSetting: (key: string, value: string) => typedError<null, string>(__TAURI_INVOKE("set_setting", { key, value })),
 };
