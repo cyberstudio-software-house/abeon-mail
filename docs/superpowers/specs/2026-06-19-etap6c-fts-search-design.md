@@ -248,6 +248,11 @@ Bindings regenerated via `npm run gen:bindings`.
 - `/` focuses the search input; palette "Search mail" action focuses it.
 - Empty-query hook is disabled (no IPC); empty result set shows "No matches".
 
+## Implementation notes (as built)
+
+- The FTS row is rebuilt by a single canonical `am-storage::search_repo::reindex_message`, which reconstructs all columns from the `messages` / `message_bodies` / `attachments` tables. It is called inside `insert_headers` (envelope sync, same transaction) and from `am-sync::get_or_fetch_body` after the body is stored. This supersedes the two-hook (`index_message` / `index_body`) sketch above with a DRY-er, always-current realization.
+- `messages.to_addresses` is not populated at envelope-sync time (only `from`/subject are). It is persisted (with `cc_addresses`) in `get_or_fetch_body` when a body is fetched, then reindexed. Consequently the `to:` operator is **best-effort, exactly like body search**: it matches a received message only once that message's body has been opened/fetched. Indexing `to:` at envelope time would require fetching recipients during sync (deferred — see the existing "store To/Cc on the messages row during sync" tech-debt).
+
 ### Infra
 
 - No new dependency. No new lucide icons beyond those already in
