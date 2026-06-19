@@ -147,6 +147,7 @@ pub fn insert_headers(
     let conn = db.conn();
     let tx = conn.unchecked_transaction()?;
     let mut count = 0usize;
+    let mut inserted_ids: Vec<i64> = Vec::new();
     {
         let mut stmt = tx.prepare(
             "INSERT OR IGNORE INTO messages
@@ -171,8 +172,14 @@ pub fn insert_headers(
                 h.size,
                 h.snippet
             ])?;
+            if inserted == 1 {
+                inserted_ids.push(tx.last_insert_rowid());
+            }
             count += inserted;
         }
+    }
+    for id in &inserted_ids {
+        crate::search_repo::reindex_message_conn(&tx, *id)?;
     }
     tx.commit()?;
     Ok(count)
