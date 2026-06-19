@@ -2,7 +2,7 @@ use am_sync::{SyncEvent, SyncEventSink};
 use tauri::AppHandle;
 use tauri_specta::Event;
 
-use crate::events::{AccountAuthChanged, MailboxChanged, NewMessages, SyncProgress};
+use crate::events::{AccountAuthChanged, MailboxChanged, NewMessages, SnoozeWoke, SyncProgress};
 
 pub struct AppEventSink {
     pub app: AppHandle,
@@ -23,6 +23,9 @@ impl SyncEventSink for AppEventSink {
             SyncEvent::AuthChanged { account_id, requires_reauth } => {
                 let _ = AccountAuthChanged { account_id, requires_reauth }.emit(&self.app);
             }
+            SyncEvent::SnoozeWoke { count } => {
+                let _ = SnoozeWoke { count }.emit(&self.app);
+            }
         }
     }
 }
@@ -36,5 +39,11 @@ mod tests {
         let ev = AccountAuthChanged { account_id: 7, requires_reauth: true };
         assert_eq!(ev.account_id, 7);
         assert!(ev.requires_reauth);
+    }
+
+    #[test]
+    fn snooze_woke_event_struct_has_count() {
+        let ev = crate::events::SnoozeWoke { count: 3 };
+        assert_eq!(ev.count, 3);
     }
 }

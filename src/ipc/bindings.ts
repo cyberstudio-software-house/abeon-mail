@@ -48,6 +48,7 @@ export const events = {
 	accountAuthChanged: makeEvent<AccountAuthChanged>("account-auth-changed"),
 	mailboxChanged: makeEvent<MailboxChanged>("mailbox-changed"),
 	newMessages: makeEvent<NewMessages>("new-messages"),
+	snoozeWoke: makeEvent<SnoozeWoke>("snooze-woke"),
 	syncProgress: makeEvent<SyncProgress>("sync-progress"),
 };
 
@@ -178,6 +179,10 @@ export type SmartMessageRow = {
 	has_attachments: boolean,
 	snippet: string,
 	snooze_wake_at: number | null,
+};
+
+export type SnoozeWoke = {
+	count: number,
 };
 
 export type SyncProgress = {

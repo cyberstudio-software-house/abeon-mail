@@ -50,5 +50,6 @@ pub fn build_specta_builder() -> Builder<tauri::Wry> {
             events::NewMessages,
             events::MailboxChanged,
             events::AccountAuthChanged,
+            events::SnoozeWoke,
         ])
 }
