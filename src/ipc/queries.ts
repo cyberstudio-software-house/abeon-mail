@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { commands } from "./bindings";
-import type { Account, Endpoints, MessageFlag, OutgoingMessage, SmartFolderKind, SmartMessageRow } from "./bindings";
+import type { Account, Endpoints, Label, MessageFlag, OutgoingMessage, SmartFolderKind, SmartMessageRow } from "./bindings";
 import { useUiStore } from "../app/store";
 
 type ResultOk<T> = { status: "ok"; data: T };
@@ -205,6 +205,89 @@ export function useBeginReauth() {
       commands.beginReauth(accountId).then(unwrap),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["accounts"] });
+    },
+  });
+}
+
+export function useLabels() {
+  return useQuery<Label[]>({
+    queryKey: ["labels"],
+    queryFn: () => commands.listLabels().then(unwrap),
+  });
+}
+
+export function useMessagesByLabel(labelId: number | null) {
+  return useQuery<SmartMessageRow[]>({
+    queryKey: ["messages-by-label", labelId],
+    queryFn: () => commands.listMessagesByLabel(labelId!, 100, 0).then(unwrap),
+    enabled: labelId != null,
+  });
+}
+
+export function useLabelsForMessages(ids: number[]) {
+  const sorted = [...ids].sort((a, b) => a - b);
+  return useQuery<[number, Label][]>({
+    queryKey: ["labels-for-messages", sorted],
+    queryFn: () => commands.labelsForMessages(sorted).then(unwrap),
+    enabled: sorted.length > 0,
+  });
+}
+
+export function useCreateLabel() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ name, color }: { name: string; color: string }) =>
+      commands.createLabel(name, color).then(unwrap),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["labels"] });
+    },
+  });
+}
+
+export function useRenameLabel() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, name }: { id: number; name: string }) =>
+      commands.renameLabel(id, name).then(unwrap),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["labels"] });
+      queryClient.invalidateQueries({ queryKey: ["labels-for-messages"] });
+    },
+  });
+}
+
+export function useSetLabelColor() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, color }: { id: number; color: string }) =>
+      commands.setLabelColor(id, color).then(unwrap),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["labels"] });
+      queryClient.invalidateQueries({ queryKey: ["labels-for-messages"] });
+    },
+  });
+}
+
+export function useDeleteLabel() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => commands.deleteLabel(id).then(unwrap),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["labels"] });
+      queryClient.invalidateQueries({ queryKey: ["labels-for-messages"] });
+      queryClient.invalidateQueries({ queryKey: ["messages-by-label"] });
+    },
+  });
+}
+
+export function useSetMessageLabels() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ labelId, messageIds, applied }: { labelId: number; messageIds: number[]; applied: boolean }) =>
+      commands.setMessageLabels(labelId, messageIds, applied).then(unwrap),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["labels-for-messages"] });
+      queryClient.invalidateQueries({ queryKey: ["messages-by-label"] });
     },
   });
 }
