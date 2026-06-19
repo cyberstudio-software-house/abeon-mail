@@ -16,6 +16,8 @@ vi.mock("../../shared/general/GeneralProvider", () => ({
   }),
 }));
 
+vi.mock("../updates/UpdatesPanel", () => ({ UpdatesPanel: () => null }));
+
 vi.mock("../../ipc/queries", () => ({
   useAccounts: () => ({
     data: [
