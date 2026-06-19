@@ -40,6 +40,11 @@ export function CommandPalette() {
     "go-starred": () => setSelectedSmartFolder("flagged"),
     "cheat-sheet": () => toggleCheatSheet(),
     search: () => requestAnimationFrame(() => useUiStore.getState().focusSearch?.()),
+    label: () => {
+      const s = useUiStore.getState();
+      if (s.selectionActive && s.selectedMessageIds.length > 0) s.openLabelPicker(s.selectedMessageIds);
+      else if (s.replyTargetId != null) s.openLabelPicker([s.replyTargetId]);
+    },
   };
 
   function run(fn: () => void) {

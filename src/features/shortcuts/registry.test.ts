@@ -12,7 +12,7 @@ describe("ACTIONS registry", () => {
   });
 
   it("placeholder actions are disabled", () => {
-    const disabled: ActionId[] = ["archive", "delete", "snooze", "label"];
+    const disabled: ActionId[] = ["archive", "delete", "snooze"];
     for (const id of disabled) {
       expect(actionById(id)?.enabled).toBe(false);
     }
@@ -37,5 +37,13 @@ describe("search action", () => {
     const search = actionById("search");
     expect(search?.enabled).toBe(true);
     expect(search?.defaultBinding).toBe("/");
+  });
+});
+
+describe("label action", () => {
+  it("label action is enabled and bound to l", () => {
+    const a = actionById("label");
+    expect(a?.enabled).toBe(true);
+    expect(a?.defaultBinding).toBe("l");
   });
 });

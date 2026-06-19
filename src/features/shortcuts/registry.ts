@@ -58,7 +58,7 @@ export const ACTIONS: ActionMeta[] = [
   { id: "archive", label: "Archive", contexts: ["reader"], defaultBinding: "e", enabled: false },
   { id: "delete", label: "Delete", contexts: ["reader"], defaultBinding: "#", enabled: false },
   { id: "snooze", label: "Snooze", contexts: ["reader"], defaultBinding: "b", enabled: false },
-  { id: "label", label: "Label", contexts: ["reader"], defaultBinding: "l", enabled: false },
+  { id: "label", label: "Label", contexts: ["reader", "list"], defaultBinding: "l", enabled: true },
 ];
 
 const BY_ID = new Map<ActionId, ActionMeta>(ACTIONS.map((a) => [a.id, a]));
