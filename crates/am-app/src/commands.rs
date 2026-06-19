@@ -11,6 +11,7 @@ use am_core::{
     message::{MessageBody, MessageFlag, MessageHeader},
     notification::NotificationContent,
     outgoing::{OutgoingAttachment, OutgoingMessage},
+    rule::{Rule, RuleInput},
     signature::Signature,
     smart::{SmartFolderKind, SmartMessageRow},
     thread::ThreadSummary,
@@ -703,6 +704,48 @@ pub fn refresh_unread_badge(
         let _ = window.set_badge_count(badge);
     }
     Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn list_rules(state: tauri::State<'_, AppState>, account_id: i64) -> Result<Vec<Rule>, String> {
+    am_storage::rules_repo::list_rules(&state.db, account_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn create_rule(
+    state: tauri::State<'_, AppState>,
+    account_id: i64,
+    input: RuleInput,
+) -> Result<Rule, String> {
+    am_storage::rules_repo::create_rule(&state.db, account_id, &input).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn update_rule(
+    state: tauri::State<'_, AppState>,
+    rule_id: i64,
+    input: RuleInput,
+) -> Result<(), String> {
+    am_storage::rules_repo::update_rule(&state.db, rule_id, &input).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn set_rule_enabled(
+    state: tauri::State<'_, AppState>,
+    rule_id: i64,
+    enabled: bool,
+) -> Result<(), String> {
+    am_storage::rules_repo::set_rule_enabled(&state.db, rule_id, enabled).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn delete_rule(state: tauri::State<'_, AppState>, rule_id: i64) -> Result<(), String> {
+    am_storage::rules_repo::delete_rule(&state.db, rule_id).map_err(|e| e.to_string())
 }
 
 async fn accept_redirect(
