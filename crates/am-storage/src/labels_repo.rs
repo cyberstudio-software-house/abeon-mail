@@ -121,7 +121,6 @@ pub fn list_messages_by_label(
                 m.seen, m.flagged, m.has_attachments, m.snippet
          FROM message_labels ml
          JOIN messages m ON m.id = ml.message_id
-         JOIN folders f ON f.id = m.folder_id
          JOIN accounts a ON a.id = m.account_id
          WHERE ml.label_id = ?1
            AND m.draft = 0
