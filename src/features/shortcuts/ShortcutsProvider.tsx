@@ -135,6 +135,14 @@ export function ShortcutsProvider({ children }: { children: ReactNode }) {
           s.openLabelPicker([s.replyTargetId]);
         }
       },
+      snooze: () => {
+        const s = useUiStore.getState();
+        if (s.selectionActive && s.selectedMessageIds.length > 0) {
+          s.openSnoozePicker(s.selectedMessageIds);
+        } else if (s.replyTargetId != null) {
+          s.openSnoozePicker([s.replyTargetId]);
+        }
+      },
     };
   }, [move, jumpTo, doReply, toggleFlag, setSeen]);
 

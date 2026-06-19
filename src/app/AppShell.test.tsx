@@ -29,6 +29,8 @@ vi.mock("../ipc/queries", () => ({
   useLabels: () => ({ data: [], isLoading: false, isError: false, error: null }),
   useMessagesByLabel: () => ({ data: undefined, isLoading: false, isError: false, error: null }),
   useLabelsForMessages: () => ({ data: [], isLoading: false, isError: false, error: null }),
+  useSnooze: () => ({ mutate: vi.fn() }),
+  useUnsnooze: () => ({ mutate: vi.fn() }),
 }));
 
 vi.mock("../ipc/bindings", () => ({
@@ -108,6 +110,10 @@ vi.mock("../app/store", () => ({
       selectAll: vi.fn(),
       openLabelPicker: vi.fn(),
       closeLabelPicker: vi.fn(),
+      snoozePickerOpen: false,
+      snoozePickerTargetIds: [],
+      openSnoozePicker: vi.fn(),
+      closeSnoozePicker: vi.fn(),
     };
     return selector ? selector(state) : state;
   },
