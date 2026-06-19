@@ -26,6 +26,7 @@ vi.mock("../../ipc/queries", () => ({
   useRemoveAccount: vi.fn(),
   useBeginReauth: vi.fn(),
   useReorderAccounts: vi.fn(),
+  useLabels: () => ({ data: [{ id: 1, name: "Work", color: "#4f46e5" }] }),
 }));
 
 vi.mock("../../app/store", async (importOriginal) => {
@@ -182,7 +183,7 @@ describe("MailboxRail", () => {
     expect(useUiStore.getState().selectedSmartFolder).toBe("all_inboxes");
   });
 
-  it("Snoozed and LABELS are non-interactive placeholders; search is now a real input", () => {
+  it("Snoozed is non-interactive placeholder; Labels section shows live list; search is a real input", () => {
     setupStore(null);
     setupMutations();
     mockUseAccounts.mockReturnValue({
@@ -199,7 +200,8 @@ describe("MailboxRail", () => {
     const snoozedEl = screen.getByText("Snoozed");
     expect(snoozedEl.closest("[aria-disabled='true']")).toBeTruthy();
 
-    expect(screen.getByText("Coming soon")).toBeTruthy();
+    expect(screen.queryByText("Coming soon")).toBeNull();
+    expect(screen.getByText("Work")).toBeTruthy();
   });
 
   it("Open settings button calls openSettings", async () => {
@@ -434,5 +436,22 @@ describe("MailboxRail", () => {
     capturedOnDragEnd!({ active: { id: 1 }, over: { id: 2 } });
 
     expect(mockReorderAccounts).toHaveBeenCalledWith([2, 1]);
+  });
+
+  it("renders labels and selects one on click", async () => {
+    const { fireEvent: fe } = await import("@testing-library/react");
+    setupStore(null);
+    setupMutations();
+    mockUseAccounts.mockReturnValue({
+      data: [],
+      isLoading: false,
+      isError: false,
+      error: null,
+    } as unknown as ReturnType<typeof useAccounts>);
+
+    render(<MailboxRail />);
+    const chip = await screen.findByText("Work");
+    fe.click(chip);
+    expect(useUiStore.getState().selectedLabelId).toBe(1);
   });
 });
