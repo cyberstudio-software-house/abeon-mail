@@ -19,6 +19,7 @@ vi.mock("../../ipc/queries", () => ({
   useLabelsForMessages: () => ({ data: [] }),
   useCreateLabel: () => ({ mutateAsync: vi.fn() }),
   useSetMessageLabels: () => ({ mutate: vi.fn() }),
+  useSnooze: () => ({ mutate: vi.fn() }),
 }));
 
 import { ShortcutsProvider } from "./ShortcutsProvider";

@@ -26,3 +26,8 @@ pub struct AccountAuthChanged {
     pub account_id: i64,
     pub requires_reauth: bool,
 }
+
+#[derive(Serialize, Deserialize, Clone, Debug, specta::Type, tauri_specta::Event)]
+pub struct SnoozeWoke {
+    pub count: i64,
+}

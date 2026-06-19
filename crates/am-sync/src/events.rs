@@ -4,6 +4,7 @@ pub enum SyncEvent {
     NewMessages { account_id: i64, folder_id: i64, count: i64 },
     MailboxChanged { account_id: i64, folder_id: i64 },
     AuthChanged { account_id: i64, requires_reauth: bool },
+    SnoozeWoke { count: i64 },
 }
 
 pub trait SyncEventSink: Send + Sync {

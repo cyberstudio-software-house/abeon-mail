@@ -202,14 +202,16 @@ pub fn list_by_folder(
     folder_id: i64,
     limit: i64,
     offset: i64,
+    now: i64,
 ) -> Result<Vec<MessageHeader>, StorageError> {
     let conn = db.conn();
     let mut stmt = conn.prepare(
         "SELECT id, account_id, folder_id, subject, from_address, from_name, date, seen, flagged, has_attachments, snippet
          FROM messages WHERE folder_id = ?1 AND draft = 0
+           AND (snooze_wake_at IS NULL OR snooze_wake_at <= ?4)
          ORDER BY date DESC LIMIT ?2 OFFSET ?3",
     )?;
-    let rows = stmt.query_map(params![folder_id, limit, offset], row_to_header)?;
+    let rows = stmt.query_map(params![folder_id, limit, offset, now], row_to_header)?;
     let mut out = Vec::new();
     for r in rows {
         out.push(tuple_to_header(r?));
@@ -454,7 +456,7 @@ mod tests {
         let folder_id = setup(&db);
         let headers = vec![make_header(1, 1000), make_header(2, 3000), make_header(3, 2000)];
         insert_headers(&db, folder_id, &headers).unwrap();
-        let result = list_by_folder(&db, folder_id, 10, 0).unwrap();
+        let result = list_by_folder(&db, folder_id, 10, 0, i64::MAX).unwrap();
         assert_eq!(result.len(), 3);
         assert_eq!(result[0].date, 3000);
         assert_eq!(result[1].date, 2000);
@@ -467,8 +469,8 @@ mod tests {
         let folder_id = setup(&db);
         let headers = vec![make_header(1, 1000), make_header(2, 3000), make_header(3, 2000)];
         insert_headers(&db, folder_id, &headers).unwrap();
-        let page1 = list_by_folder(&db, folder_id, 2, 0).unwrap();
-        let page2 = list_by_folder(&db, folder_id, 2, 2).unwrap();
+        let page1 = list_by_folder(&db, folder_id, 2, 0, i64::MAX).unwrap();
+        let page2 = list_by_folder(&db, folder_id, 2, 2, i64::MAX).unwrap();
         assert_eq!(page1.len(), 2);
         assert_eq!(page2.len(), 1);
         assert_eq!(page1[0].date, 3000);
@@ -487,7 +489,7 @@ mod tests {
         let db = Database::open_in_memory().unwrap();
         let folder_id = setup(&db);
         insert_headers(&db, folder_id, &[make_header(1, 1000)]).unwrap();
-        let msg = list_by_folder(&db, folder_id, 1, 0).unwrap().into_iter().next().unwrap();
+        let msg = list_by_folder(&db, folder_id, 1, 0, i64::MAX).unwrap().into_iter().next().unwrap();
         let body = MessageBody {
             message_id: msg.id,
             text_plain: Some("Hello plain".into()),
@@ -503,7 +505,7 @@ mod tests {
         let db = Database::open_in_memory().unwrap();
         let folder_id = setup(&db);
         insert_headers(&db, folder_id, &[make_header(1, 1000)]).unwrap();
-        let msg = list_by_folder(&db, folder_id, 1, 0).unwrap().into_iter().next().unwrap();
+        let msg = list_by_folder(&db, folder_id, 1, 0, i64::MAX).unwrap().into_iter().next().unwrap();
         let result = get_body(&db, msg.id).unwrap();
         assert!(result.is_none());
     }
@@ -513,7 +515,7 @@ mod tests {
         let db = Database::open_in_memory().unwrap();
         let folder_id = setup(&db);
         insert_headers(&db, folder_id, &[make_header(42, 1000)]).unwrap();
-        let msg = list_by_folder(&db, folder_id, 1, 0).unwrap().into_iter().next().unwrap();
+        let msg = list_by_folder(&db, folder_id, 1, 0, i64::MAX).unwrap().into_iter().next().unwrap();
         let (fid, uid) = message_uid(&db, msg.id).unwrap();
         assert_eq!(fid, folder_id);
         assert_eq!(uid, 42);
@@ -524,7 +526,7 @@ mod tests {
         let db = Database::open_in_memory().unwrap();
         let folder_id = setup(&db);
         insert_headers(&db, folder_id, &[make_header(1, 1000)]).unwrap();
-        let msg = list_by_folder(&db, folder_id, 1, 0).unwrap().into_iter().next().unwrap();
+        let msg = list_by_folder(&db, folder_id, 1, 0, i64::MAX).unwrap().into_iter().next().unwrap();
         backfill_body_meta(&db, msg.id, "new snippet", true).unwrap();
         let updated = get_header(&db, msg.id).unwrap();
         assert_eq!(updated.snippet, "new snippet");
@@ -536,7 +538,7 @@ mod tests {
         let db = Database::open_in_memory().unwrap();
         let folder_id = setup(&db);
         insert_headers(&db, folder_id, &[make_header(1, 1000)]).unwrap();
-        let msg = list_by_folder(&db, folder_id, 1, 0).unwrap().into_iter().next().unwrap();
+        let msg = list_by_folder(&db, folder_id, 1, 0, i64::MAX).unwrap().into_iter().next().unwrap();
         set_flag(&db, msg.id, am_core::message::MessageFlag::Seen, true).unwrap();
         assert!(get_header(&db, msg.id).unwrap().seen);
     }
@@ -558,7 +560,7 @@ mod tests {
         let folder_id = setup(&db);
         insert_headers(&db, folder_id, &[make_header(9, 1)]).unwrap();
         set_flags_by_uid(&db, folder_id, 9, true, true).unwrap();
-        let msg = list_by_folder(&db, folder_id, 1, 0).unwrap().into_iter().next().unwrap();
+        let msg = list_by_folder(&db, folder_id, 1, 0, i64::MAX).unwrap().into_iter().next().unwrap();
         assert!(msg.seen && msg.flagged);
     }
 
@@ -567,7 +569,7 @@ mod tests {
         let db = Database::open_in_memory().unwrap();
         let folder_id = setup(&db);
         insert_headers(&db, folder_id, &[make_header(7, 1)]).unwrap();
-        let msg = list_by_folder(&db, folder_id, 1, 0).unwrap().into_iter().next().unwrap();
+        let msg = list_by_folder(&db, folder_id, 1, 0, i64::MAX).unwrap().into_iter().next().unwrap();
         let loc = locate(&db, msg.id).unwrap();
         assert_eq!(loc.folder_id, folder_id);
         assert_eq!(loc.uid, 7);
@@ -593,7 +595,7 @@ mod tests {
             snippet: "preview".into(),
         };
         insert_headers(&db, folder_id, &[h]).unwrap();
-        let msg = list_by_folder(&db, folder_id, 1, 0).unwrap().into_iter().next().unwrap();
+        let msg = list_by_folder(&db, folder_id, 1, 0, i64::MAX).unwrap().into_iter().next().unwrap();
         let src = get_compose_source(&db, msg.id).unwrap();
         assert_eq!(src.from_address, "sender@example.com");
         assert_eq!(src.from_name.as_deref(), Some("Sender Name"));
@@ -607,7 +609,7 @@ mod tests {
         let db = Database::open_in_memory().unwrap();
         let folder_id = setup(&db);
         insert_headers(&db, folder_id, &[make_header(1, 100)]).unwrap();
-        let account_id = get_header(&db, list_by_folder(&db, folder_id, 1, 0).unwrap()[0].id).unwrap().account_id;
+        let account_id = get_header(&db, list_by_folder(&db, folder_id, 1, 0, i64::MAX).unwrap()[0].id).unwrap().account_id;
         let unthreaded = list_unthreaded(&db, account_id).unwrap();
         assert_eq!(unthreaded.len(), 1);
         let conn_thread_id = {
@@ -649,7 +651,7 @@ mod tests {
             conn.query_row("SELECT folder_id FROM messages WHERE id = ?1", params![draft_id], |r| r.get::<_, i64>(0)).unwrap()
         };
         insert_headers(&db, drafts_folder_id, &[make_header(1, 1000)]).unwrap();
-        let listed = list_by_folder(&db, drafts_folder_id, 100, 0).unwrap();
+        let listed = list_by_folder(&db, drafts_folder_id, 100, 0, i64::MAX).unwrap();
         assert_eq!(listed.len(), 1);
         assert!(listed.iter().all(|m| m.id != draft_id));
         let (_, retrieved) = drafts_repo::get_draft(&db, draft_id).unwrap();
@@ -722,7 +724,7 @@ mod tests {
         let db = Database::open_in_memory().unwrap();
         let folder_id = setup(&db);
         insert_headers(&db, folder_id, &[make_header(1, 1000)]).unwrap();
-        let msg = list_by_folder(&db, folder_id, 1, 0).unwrap().into_iter().next().unwrap();
+        let msg = list_by_folder(&db, folder_id, 1, 0, i64::MAX).unwrap().into_iter().next().unwrap();
         store_recipients(&db, msg.id, &["alice@example.com".to_string()], &[]).unwrap();
         let conn = db.conn();
         let to_json: String = conn.query_row(

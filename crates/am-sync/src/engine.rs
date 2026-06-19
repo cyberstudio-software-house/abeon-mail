@@ -12,7 +12,21 @@ use crate::service::{self, imap_config_pub, load_endpoints_pub};
 
 pub const POLL_INTERVAL: Duration = Duration::from_secs(300);
 pub const IDLE_TIMEOUT: Duration = Duration::from_secs(1500);
+pub const WAKE_SWEEP_INTERVAL: Duration = Duration::from_secs(60);
 const INBOX_PATH: &str = "INBOX";
+
+pub fn run_wake_sweep_at(db: &Database, sink: &dyn SyncEventSink, now: i64) {
+    match am_storage::snooze_repo::wake_due(db, now) {
+        Ok(count) if count > 0 => {
+            sink.emit(crate::events::SyncEvent::SnoozeWoke { count });
+        }
+        _ => {}
+    }
+}
+
+pub fn run_wake_sweep(db: &Database, sink: &dyn SyncEventSink) {
+    run_wake_sweep_at(db, sink, service::now_secs());
+}
 
 pub struct SyncEngine {
     db: Arc<Database>,
@@ -38,6 +52,7 @@ impl SyncEngine {
                 engine.spawn_account(account.id);
             }
         }
+        engine.spawn_wake_sweeper();
         engine
     }
 
@@ -123,6 +138,17 @@ impl SyncEngine {
         });
     }
 
+    pub fn spawn_wake_sweeper(self: &Arc<Self>) {
+        let db = Arc::clone(&self.db);
+        let sink = Arc::clone(&self.sink);
+        tokio::spawn(async move {
+            loop {
+                run_wake_sweep(&db, sink.as_ref());
+                tokio::time::sleep(WAKE_SWEEP_INTERVAL).await;
+            }
+        });
+    }
+
     pub fn stop_account(&self, account_id: i64) {
         let mut guard = self.workers.lock().unwrap();
         if let Some(token) = guard.remove(&account_id) {
@@ -178,6 +204,46 @@ mod tests {
     use super::*;
     use am_storage::Database;
     use crate::events::NoopSink;
+    use am_storage::{accounts_repo, folders_repo, snooze_repo};
+    use am_core::account::{NewAccount, ProviderType};
+    use am_core::folder::FolderType;
+    use am_core::message::NewMessageHeader;
+    use crate::events::RecordingSink;
+
+    fn seed_due_message(db: &Database) {
+        let acc = accounts_repo::insert_account(db, &NewAccount {
+            email: "w@e.com".into(), display_name: "W".into(),
+            provider_type: ProviderType::ImapPassword, color: None,
+        }).unwrap();
+        let folder = folders_repo::upsert_folder(db, acc.id, "INBOX", "Inbox", FolderType::Inbox).unwrap();
+        am_storage::messages_repo::insert_headers(db, folder.id, &[NewMessageHeader {
+            uid: 1, message_id_hdr: Some("<w1@x>".into()), in_reply_to: None, references_hdr: None,
+            from_address: "a@b.c".into(), from_name: None, subject: "S".into(), date: 100,
+            seen: true, flagged: false, has_attachments: false, size: 0, snippet: String::new(),
+        }]).unwrap();
+        let msgs = am_storage::messages_repo::list_by_folder(db, folder.id, 10, 0, 0).unwrap();
+        let id = msgs[0].id;
+        snooze_repo::snooze_messages(db, &[id], 1000).unwrap();
+    }
+
+    #[test]
+    fn run_wake_sweep_emits_when_messages_wake() {
+        let db = Database::open_in_memory().unwrap();
+        seed_due_message(&db);
+        let sink = RecordingSink::new();
+        run_wake_sweep_at(&db, &sink, 5000);
+        let events = sink.events.lock().unwrap();
+        assert_eq!(events.len(), 1);
+        assert!(matches!(events[0], crate::events::SyncEvent::SnoozeWoke { count: 1 }));
+    }
+
+    #[test]
+    fn run_wake_sweep_silent_when_nothing_due() {
+        let db = Database::open_in_memory().unwrap();
+        let sink = RecordingSink::new();
+        run_wake_sweep_at(&db, &sink, 5000);
+        assert_eq!(sink.events.lock().unwrap().len(), 0);
+    }
 
     struct FakeCreds;
 

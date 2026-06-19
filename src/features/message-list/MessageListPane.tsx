@@ -1,7 +1,8 @@
 import { useRef, useMemo, useEffect } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { PencilLine, ChevronDown } from "lucide-react";
-import { useThreads, useSmartFolder, useSearch, useLabelsForMessages, useMessagesByLabel, useLabels } from "../../ipc/queries";
+import { useThreads, useSmartFolder, useSearch, useLabelsForMessages, useMessagesByLabel, useLabels, useUnsnooze } from "../../ipc/queries";
+import { formatWakeTime } from "../../shared/snooze/snooze";
 import { useDebouncedValue } from "../../shared/hooks/useDebouncedValue";
 import { useUiStore, type Density } from "../../app/store";
 import type { ThreadSummary, SmartMessageRow, Label } from "../../ipc/bindings";
@@ -116,6 +117,7 @@ function SmartRow({
   selectable,
   selected,
   onToggleSelect,
+  wakeAt,
 }: {
   row: SmartMessageRow;
   isSelected: boolean;
@@ -128,6 +130,7 @@ function SmartRow({
   selectable: boolean;
   selected: boolean;
   onToggleSelect: (id: number) => void;
+  wakeAt?: number | null;
 }) {
   const senderLabel = row.from_name ?? row.from_address;
 
@@ -189,6 +192,11 @@ function SmartRow({
               </span>
             )}
             {labels && labels.length > 0 && <LabelChips labels={labels} />}
+            {wakeAt != null && (
+              <span className="message-row__snooze" data-testid="snooze-wake">
+                {formatWakeTime(wakeAt)}
+              </span>
+            )}
           </div>
         </div>
         {showSnippet && (
@@ -233,7 +241,10 @@ export function MessageListPane() {
   const toggleMessageSelected = useUiStore((s) => s.toggleMessageSelected);
   const clearSelection = useUiStore((s) => s.clearSelection);
   const openLabelPicker = useUiStore((s) => s.openLabelPicker);
+  const openSnoozePicker = useUiStore((s) => s.openSnoozePicker);
   const debouncedQuery = useDebouncedValue(searchQuery, 200);
+
+  const unsnooze = useUnsnooze();
 
   const { data: threads, isLoading: threadsLoading } = useThreads(selectedFolderId);
   const { data: smartRows, isLoading: smartLoading } = useSmartFolder(selectedSmartFolder);
@@ -244,6 +255,7 @@ export function MessageListPane() {
   const isLabelMode = !searchActive && selectedLabelId != null;
   const isSmartMode = !searchActive && !isLabelMode && selectedSmartFolder != null;
   const isFlatMode = searchActive || isLabelMode || isSmartMode;
+  const isSnoozedView = isSmartMode && selectedSmartFolder === "snoozed";
   const isLoading = searchActive
     ? searchLoading
     : isLabelMode
@@ -351,6 +363,26 @@ export function MessageListPane() {
           >
             Label
           </button>
+          {isSnoozedView ? (
+            <button
+              type="button"
+              disabled={selectedMessageIds.length === 0}
+              onClick={() => {
+                unsnooze.mutate(selectedMessageIds);
+                clearSelection();
+              }}
+            >
+              Unsnooze
+            </button>
+          ) : (
+            <button
+              type="button"
+              disabled={selectedMessageIds.length === 0}
+              onClick={() => openSnoozePicker(selectedMessageIds)}
+            >
+              Snooze
+            </button>
+          )}
           <button type="button" onClick={() => clearSelection()}>
             Cancel
           </button>
@@ -446,6 +478,7 @@ export function MessageListPane() {
                       onSelect={setSelectedMessageId}
                       highlightTerms={searchActive ? highlightTerms : undefined}
                       labels={labelsByMessage.get(row.message_id)}
+                      wakeAt={row.snooze_wake_at}
                       selectable={selectionActive}
                       selected={selectedMessageIds.includes(row.message_id)}
                       onToggleSelect={toggleMessageSelected}

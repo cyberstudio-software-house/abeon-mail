@@ -41,6 +41,8 @@ export const commands = {
 	listMessagesByLabel: (labelId: number, limit: number, offset: number) => typedError<SmartMessageRow[], string>(__TAURI_INVOKE("list_messages_by_label", { labelId, limit, offset })),
 	getSettings: () => typedError<([string, string])[], string>(__TAURI_INVOKE("get_settings")),
 	setSetting: (key: string, value: string) => typedError<null, string>(__TAURI_INVOKE("set_setting", { key, value })),
+	snoozeMessages: (messageIds: number[], wakeAt: number) => typedError<null, string>(__TAURI_INVOKE("snooze_messages", { messageIds, wakeAt })),
+	unsnoozeMessages: (messageIds: number[]) => typedError<null, string>(__TAURI_INVOKE("unsnooze_messages", { messageIds })),
 };
 
 /** Events */
@@ -48,6 +50,7 @@ export const events = {
 	accountAuthChanged: makeEvent<AccountAuthChanged>("account-auth-changed"),
 	mailboxChanged: makeEvent<MailboxChanged>("mailbox-changed"),
 	newMessages: makeEvent<NewMessages>("new-messages"),
+	snoozeWoke: makeEvent<SnoozeWoke>("snooze-woke"),
 	syncProgress: makeEvent<SyncProgress>("sync-progress"),
 };
 
@@ -162,7 +165,7 @@ export type Signature = {
 	is_default: boolean,
 };
 
-export type SmartFolderKind = "all_inboxes" | "unread" | "flagged";
+export type SmartFolderKind = "all_inboxes" | "unread" | "flagged" | "snoozed";
 
 export type SmartMessageRow = {
 	message_id: number,
@@ -177,6 +180,11 @@ export type SmartMessageRow = {
 	flagged: boolean,
 	has_attachments: boolean,
 	snippet: string,
+	snooze_wake_at: number | null,
+};
+
+export type SnoozeWoke = {
+	count: number,
 };
 
 export type SyncProgress = {

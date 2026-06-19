@@ -107,7 +107,7 @@ pub fn list_messages(
     limit: i64,
     offset: i64,
 ) -> Result<Vec<MessageHeader>, String> {
-    messages_repo::list_by_folder(&state.db, folder_id, limit, offset).map_err(|e| e.to_string())
+    messages_repo::list_by_folder(&state.db, folder_id, limit, offset, am_sync::service::now_secs()).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -149,7 +149,7 @@ pub fn list_threads(
     limit: i64,
     offset: i64,
 ) -> Result<Vec<ThreadSummary>, String> {
-    am_storage::threads_repo::list_for_folder(&state.db, folder_id, limit, offset).map_err(|e| e.to_string())
+    am_storage::threads_repo::list_for_folder(&state.db, folder_id, limit, offset, am_sync::service::now_secs()).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -160,7 +160,7 @@ pub fn list_smart_folder(
     limit: i64,
     offset: i64,
 ) -> Result<Vec<SmartMessageRow>, String> {
-    smart_repo::list_smart_folder(&state.db, kind, limit, offset).map_err(|e| e.to_string())
+    smart_repo::list_smart_folder(&state.db, kind, limit, offset, am_sync::service::now_secs()).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -246,7 +246,7 @@ pub fn list_messages_by_label(
     limit: i64,
     offset: i64,
 ) -> Result<Vec<SmartMessageRow>, String> {
-    labels_repo::list_messages_by_label(&state.db, label_id, limit, offset)
+    labels_repo::list_messages_by_label(&state.db, label_id, limit, offset, am_sync::service::now_secs())
         .map_err(|e| e.to_string())
 }
 
@@ -607,6 +607,25 @@ pub fn set_setting(state: tauri::State<'_, AppState>, key: String, value: String
     settings_repo::set_setting(&state.db, &key, &value).map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+#[specta::specta]
+pub fn snooze_messages(
+    state: tauri::State<'_, AppState>,
+    message_ids: Vec<i64>,
+    wake_at: i64,
+) -> Result<(), String> {
+    am_storage::snooze_repo::snooze_messages(&state.db, &message_ids, wake_at).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn unsnooze_messages(
+    state: tauri::State<'_, AppState>,
+    message_ids: Vec<i64>,
+) -> Result<(), String> {
+    am_storage::snooze_repo::unsnooze_messages(&state.db, &message_ids).map_err(|e| e.to_string())
+}
+
 async fn accept_redirect(
     listener: TcpListener,
     expected_state: &str,
@@ -865,7 +884,7 @@ mod tests {
             snippet: "".into(),
         }]).unwrap();
 
-        let msgs = messages_repo::list_by_folder(&db, folder.id, 10, 0).unwrap();
+        let msgs = messages_repo::list_by_folder(&db, folder.id, 10, 0, i64::MAX).unwrap();
         assert_eq!(msgs.len(), 1);
         assert_eq!(msgs[0].subject, "Hello");
     }
@@ -890,7 +909,7 @@ mod tests {
         .unwrap();
         folders_repo::upsert_folder(&db, acc.id, "INBOX", "Inbox", FolderType::Inbox).unwrap();
 
-        let result = am_storage::smart_repo::list_smart_folder(&db, SmartFolderKind::AllInboxes, 100, 0).unwrap();
+        let result = am_storage::smart_repo::list_smart_folder(&db, SmartFolderKind::AllInboxes, 100, 0, i64::MAX).unwrap();
         assert_eq!(result.len(), 0);
     }
 
@@ -951,11 +970,36 @@ mod tests {
             size: 100,
             snippet: "".into(),
         }]).unwrap();
-        let msg = messages_repo::list_by_folder(&db, folder.id, 1, 0).unwrap().into_iter().next().unwrap();
+        let msg = messages_repo::list_by_folder(&db, folder.id, 1, 0, i64::MAX).unwrap().into_iter().next().unwrap();
         let body = MessageBody { message_id: msg.id, text_plain: Some("plain".into()), text_html: None };
         messages_repo::store_body(&db, msg.id, &body).unwrap();
 
         let fetched = messages_repo::get_body(&db, msg.id).unwrap().unwrap();
         assert_eq!(fetched.text_plain, Some("plain".into()));
+    }
+
+    #[test]
+    fn snooze_and_unsnooze_roundtrip_through_repo() {
+        let db = am_storage::Database::open_in_memory().unwrap();
+        let acc = am_storage::accounts_repo::insert_account(&db, &am_core::account::NewAccount {
+            email: "c@e.com".into(), display_name: "C".into(),
+            provider_type: am_core::account::ProviderType::ImapPassword, color: None,
+        }).unwrap();
+        let folder = am_storage::folders_repo::upsert_folder(&db, acc.id, "INBOX", "Inbox", am_core::folder::FolderType::Inbox).unwrap();
+        am_storage::messages_repo::insert_headers(&db, folder.id, &[am_core::message::NewMessageHeader {
+            uid: 1, message_id_hdr: Some("<c1@x>".into()), in_reply_to: None, references_hdr: None,
+            from_address: "a@b.c".into(), from_name: None, subject: "S".into(), date: 100,
+            seen: true, flagged: false, has_attachments: false, size: 0, snippet: String::new(),
+        }]).unwrap();
+        let msgs = messages_repo::list_by_folder(&db, folder.id, 10, 0, i64::MAX).unwrap();
+        let id = msgs[0].id;
+
+        am_storage::snooze_repo::snooze_messages(&db, &[id], 9000).unwrap();
+        let snoozed = am_storage::snooze_repo::list_snoozed(&db, 5000, 10, 0).unwrap();
+        assert_eq!(snoozed.len(), 1);
+
+        am_storage::snooze_repo::unsnooze_messages(&db, &[id]).unwrap();
+        let after = am_storage::snooze_repo::list_snoozed(&db, 5000, 10, 0).unwrap();
+        assert_eq!(after.len(), 0);
     }
 }

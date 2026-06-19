@@ -145,7 +145,7 @@ describe("MailboxRail", () => {
     capturedOnDragEnd = null;
   });
 
-  it("renders 3 enabled smart folders (no Snoozed or Drafts)", () => {
+  it("renders 4 enabled smart folders (no Drafts)", () => {
     setupStore(null);
     setupMutations();
     mockUseAccounts.mockReturnValue({
@@ -183,7 +183,7 @@ describe("MailboxRail", () => {
     expect(useUiStore.getState().selectedSmartFolder).toBe("all_inboxes");
   });
 
-  it("Snoozed is non-interactive placeholder; Labels section shows live list; search is a real input", () => {
+  it("Snoozed is a live smart folder; Labels section shows live list; search is a real input", () => {
     setupStore(null);
     setupMutations();
     mockUseAccounts.mockReturnValue({
@@ -198,7 +198,7 @@ describe("MailboxRail", () => {
     expect(screen.getByLabelText("Search mail")).toBeTruthy();
 
     const snoozedEl = screen.getByText("Snoozed");
-    expect(snoozedEl.closest("[aria-disabled='true']")).toBeTruthy();
+    expect(snoozedEl.closest("[aria-disabled='true']")).toBeNull();
 
     expect(screen.queryByText("Coming soon")).toBeNull();
     expect(screen.getByText("Work")).toBeTruthy();
@@ -436,6 +436,22 @@ describe("MailboxRail", () => {
     capturedOnDragEnd!({ active: { id: 1 }, over: { id: 2 } });
 
     expect(mockReorderAccounts).toHaveBeenCalledWith([2, 1]);
+  });
+
+  it("renders a Snoozed smart folder and selects it on click", () => {
+    setupStore(null);
+    setupMutations();
+    mockUseAccounts.mockReturnValue({
+      data: [],
+      isLoading: false,
+      isError: false,
+      error: null,
+    } as unknown as ReturnType<typeof useAccounts>);
+
+    render(<MailboxRail />);
+    const snoozed = screen.getByText("Snoozed");
+    fireEvent.click(snoozed);
+    expect(useUiStore.getState().selectedSmartFolder).toBe("snoozed");
   });
 
   it("renders labels and selects one on click", async () => {

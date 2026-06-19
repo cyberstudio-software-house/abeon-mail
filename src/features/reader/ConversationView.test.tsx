@@ -193,7 +193,7 @@ describe("ConversationView", () => {
     });
   });
 
-  it("reader toolbar Archive/Snooze/Delete/More are disabled placeholders", async () => {
+  it("reader toolbar Archive/Delete/More are disabled placeholders", async () => {
     render(<ConversationView threadId={1} />, { wrapper: Wrapper });
 
     await screen.findAllByText("B");
@@ -201,14 +201,23 @@ describe("ConversationView", () => {
     const archive = await screen.findByRole("button", { name: "Archive" });
     expect(archive.getAttribute("aria-disabled")).toBe("true");
 
-    const snooze = await screen.findByRole("button", { name: "Snooze" });
-    expect(snooze.getAttribute("aria-disabled")).toBe("true");
-
     const del = await screen.findByRole("button", { name: "Delete" });
     expect(del.getAttribute("aria-disabled")).toBe("true");
 
     const more = await screen.findByRole("button", { name: "More" });
     expect(more.getAttribute("aria-disabled")).toBe("true");
+  });
+
+  it("Snooze button opens the picker for all messages in the conversation", async () => {
+    useUiStore.setState({ snoozePickerOpen: false, snoozePickerTargetIds: [] });
+    render(<ConversationView threadId={1} />, { wrapper: Wrapper });
+
+    await screen.findAllByText("B");
+
+    fireEvent.click(screen.getByRole("button", { name: "Snooze" }));
+
+    expect(useUiStore.getState().snoozePickerOpen).toBe(true);
+    expect(useUiStore.getState().snoozePickerTargetIds).toEqual([1, 2]);
   });
 
   it("bottom reply trigger starts a reply", async () => {

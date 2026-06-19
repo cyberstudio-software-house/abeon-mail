@@ -10,6 +10,7 @@ pub mod search_repo;
 pub mod settings_repo;
 pub mod signatures_repo;
 pub mod smart_repo;
+pub mod snooze_repo;
 pub mod threads_repo;
 
 pub use db::{Database, StorageError};

@@ -196,7 +196,7 @@ async fn engine_picks_up_new_message_via_incremental() {
 
     let mut found = false;
     for _ in 0..40 {
-        let headers = messages_repo::list_by_folder(&db, inbox.id, 50, 0).unwrap();
+        let headers = messages_repo::list_by_folder(&db, inbox.id, 50, 0, i64::MAX).unwrap();
         if headers.iter().any(|h| h.subject == "Live One") {
             found = true;
             break;

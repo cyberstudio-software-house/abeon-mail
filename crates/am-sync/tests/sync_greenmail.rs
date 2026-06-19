@@ -215,7 +215,7 @@ async fn add_account_syncs_inbox_and_fetches_body() {
         .find(|f| f.remote_path.eq_ignore_ascii_case("INBOX"))
         .expect("inbox folder missing");
 
-    let headers = messages_repo::list_by_folder(&db, inbox.id, 50, 0).expect("list_by_folder failed");
+    let headers = messages_repo::list_by_folder(&db, inbox.id, 50, 0, i64::MAX).expect("list_by_folder failed");
     assert_eq!(headers.len(), 3, "expected 3 headers, got {}", headers.len());
 
     let subjects: Vec<&str> = headers.iter().map(|h| h.subject.as_str()).collect();
@@ -250,7 +250,7 @@ async fn add_account_syncs_inbox_and_fetches_body() {
         .iter()
         .find(|f| f.remote_path.eq_ignore_ascii_case("Archive"))
         .expect("archive folder missing");
-    let archive_headers = messages_repo::list_by_folder(&db, archive.id, 50, 0).expect("archive list failed");
+    let archive_headers = messages_repo::list_by_folder(&db, archive.id, 50, 0, i64::MAX).expect("archive list failed");
     assert_eq!(archive_headers.len(), 1, "expected 1 archived header");
     assert_eq!(archive_headers[0].subject, "Archived One");
 }

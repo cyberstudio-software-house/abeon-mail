@@ -12,7 +12,7 @@ describe("ACTIONS registry", () => {
   });
 
   it("placeholder actions are disabled", () => {
-    const disabled: ActionId[] = ["archive", "delete", "snooze"];
+    const disabled: ActionId[] = ["archive", "delete"];
     for (const id of disabled) {
       expect(actionById(id)?.enabled).toBe(false);
     }
@@ -45,5 +45,15 @@ describe("label action", () => {
     const a = actionById("label");
     expect(a?.enabled).toBe(true);
     expect(a?.defaultBinding).toBe("l");
+  });
+});
+
+describe("snooze action", () => {
+  it("snooze action is enabled and available in reader and list", () => {
+    const snooze = ACTIONS.find((a) => a.id === "snooze")!;
+    expect(snooze.enabled).toBe(true);
+    expect(snooze.contexts).toContain("reader");
+    expect(snooze.contexts).toContain("list");
+    expect(snooze.defaultBinding).toBe("b");
   });
 });

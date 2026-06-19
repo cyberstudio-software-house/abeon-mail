@@ -15,6 +15,7 @@ export function ConversationView({ threadId }: { threadId: number }) {
   const { data: messages, isLoading } = useThreadMessages(threadId);
   const openComposer = useUiStore((s) => s.openComposer);
   const openLabelPicker = useUiStore((s) => s.openLabelPicker);
+  const openSnoozePicker = useUiStore((s) => s.openSnoozePicker);
   const startReplyMutation = useStartReply();
   const setFlag = useSetFlag();
   const setReplyTargetId = useUiStore((s) => s.setReplyTargetId);
@@ -43,7 +44,12 @@ export function ConversationView({ threadId }: { threadId: number }) {
         <button type="button" className="reader__icon" aria-label="Archive" aria-disabled="true">
           <Archive size={18} />
         </button>
-        <button type="button" className="reader__icon" aria-label="Snooze" aria-disabled="true">
+        <button
+          type="button"
+          className="reader__icon"
+          aria-label="Snooze"
+          onClick={() => openSnoozePicker(messages.map((m) => m.id))}
+        >
           <Clock size={18} />
         </button>
         <button type="button" className="reader__icon" aria-label="Delete" aria-disabled="true">

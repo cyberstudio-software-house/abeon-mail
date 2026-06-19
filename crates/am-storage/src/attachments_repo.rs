@@ -46,7 +46,7 @@ mod tests {
             from_address: "a@b.com".into(), from_name: None, subject: "s".into(),
             date: 1, seen: false, flagged: false, has_attachments: false, size: 0, snippet: "".into(),
         }]).unwrap();
-        let msg = list_by_folder(&db, folder.id, 1, 0).unwrap().into_iter().next().unwrap();
+        let msg = list_by_folder(&db, folder.id, 1, 0, i64::MAX).unwrap().into_iter().next().unwrap();
         replace_for_message(&db, msg.id, &["a.pdf".into(), "b.png".into()]).unwrap();
         replace_for_message(&db, msg.id, &["c.txt".into()]).unwrap();
         let conn = db.conn();

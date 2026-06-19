@@ -57,7 +57,7 @@ export const ACTIONS: ActionMeta[] = [
   { id: "close-composer", label: "Close composer", contexts: ["composer"], defaultBinding: "Escape", enabled: true },
   { id: "archive", label: "Archive", contexts: ["reader"], defaultBinding: "e", enabled: false },
   { id: "delete", label: "Delete", contexts: ["reader"], defaultBinding: "#", enabled: false },
-  { id: "snooze", label: "Snooze", contexts: ["reader"], defaultBinding: "b", enabled: false },
+  { id: "snooze", label: "Snooze", contexts: ["reader", "list"], defaultBinding: "b", enabled: true },
   { id: "label", label: "Label", contexts: ["reader", "list"], defaultBinding: "l", enabled: true },
 ];
 

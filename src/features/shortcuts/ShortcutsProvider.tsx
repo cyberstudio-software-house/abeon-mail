@@ -9,6 +9,7 @@ import { useKeyboardEngine } from "./useKeyboardEngine";
 import { CommandPalette } from "./CommandPalette";
 import { CheatSheet } from "./CheatSheet";
 import { LabelPicker } from "../labels/LabelPicker";
+import { SnoozePicker } from "../snooze/SnoozePicker";
 
 export type ShortcutsContextValue = {
   profile: Profile;
@@ -134,6 +135,14 @@ export function ShortcutsProvider({ children }: { children: ReactNode }) {
           s.openLabelPicker([s.replyTargetId]);
         }
       },
+      snooze: () => {
+        const s = useUiStore.getState();
+        if (s.selectionActive && s.selectedMessageIds.length > 0) {
+          s.openSnoozePicker(s.selectedMessageIds);
+        } else if (s.replyTargetId != null) {
+          s.openSnoozePicker([s.replyTargetId]);
+        }
+      },
     };
   }, [move, jumpTo, doReply, toggleFlag, setSeen]);
 
@@ -180,6 +189,7 @@ export function ShortcutsProvider({ children }: { children: ReactNode }) {
       <CommandPalette />
       <CheatSheet />
       <LabelPicker />
+      <SnoozePicker />
     </ShortcutsContext.Provider>
   );
 }
