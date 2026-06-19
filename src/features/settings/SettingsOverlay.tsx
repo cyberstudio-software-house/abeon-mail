@@ -5,6 +5,8 @@ import { LabelsSection } from "./LabelsSection";
 import { NotificationsSection } from "./NotificationsSection";
 import { ShortcutsSection } from "./ShortcutsSection";
 import { SignaturesSection } from "./SignaturesSection";
+import { GeneralSection } from "./GeneralSection";
+import { SnoozeSection } from "./SnoozeSection";
 import "./Settings.css";
 
 type SettingsSection =
@@ -72,7 +74,9 @@ export function SettingsOverlay() {
               ✕
             </button>
           </header>
-          {active === "appearance" ? (
+          {active === "general" ? (
+            <GeneralSection />
+          ) : active === "appearance" ? (
             <AppearanceSection />
           ) : active === "labels" ? (
             <LabelsSection />
@@ -80,6 +84,8 @@ export function SettingsOverlay() {
             <SignaturesSection />
           ) : active === "notifications" ? (
             <NotificationsSection />
+          ) : active === "snooze" ? (
+            <SnoozeSection />
           ) : active === "shortcuts" ? (
             <ShortcutsSection />
           ) : (
