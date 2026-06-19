@@ -469,8 +469,16 @@ In the store implementation, after `hydrateGeneral: (...) => set(...),` add:
   setSnoozeLaterTodayHours: (snoozeLaterTodayHours) => set({ snoozeLaterTodayHours }),
   setSnoozeWeekendDay: (snoozeWeekendDay) => set({ snoozeWeekendDay }),
   setSnoozeWeekStartDay: (snoozeWeekStartDay) => set({ snoozeWeekStartDay }),
-  hydrateSnooze: (partial) => set(partial),
+  hydrateSnooze: (partial) =>
+    set((s) => ({
+      snoozeMorningHour: partial.morningHour ?? s.snoozeMorningHour,
+      snoozeLaterTodayHours: partial.laterTodayHours ?? s.snoozeLaterTodayHours,
+      snoozeWeekendDay: partial.weekendDay ?? s.snoozeWeekendDay,
+      snoozeWeekStartDay: partial.weekStartDay ?? s.snoozeWeekStartDay,
+    })),
 ```
+
+> **Note:** `SnoozeConfig` keys (`morningHour`, …) differ from the prefixed store field names (`snoozeMorningHour`, …), so `hydrateSnooze` MUST map each key explicitly — a bare `set(partial)` would write the wrong keys and silently drop persisted snooze settings.
 
 - [ ] **Step 6: Extend the complete UiState literal in MessageListPane.test**
 
