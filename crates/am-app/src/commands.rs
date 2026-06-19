@@ -107,7 +107,7 @@ pub fn list_messages(
     limit: i64,
     offset: i64,
 ) -> Result<Vec<MessageHeader>, String> {
-    messages_repo::list_by_folder(&state.db, folder_id, limit, offset).map_err(|e| e.to_string())
+    messages_repo::list_by_folder(&state.db, folder_id, limit, offset, am_sync::service::now_secs()).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -149,7 +149,7 @@ pub fn list_threads(
     limit: i64,
     offset: i64,
 ) -> Result<Vec<ThreadSummary>, String> {
-    am_storage::threads_repo::list_for_folder(&state.db, folder_id, limit, offset).map_err(|e| e.to_string())
+    am_storage::threads_repo::list_for_folder(&state.db, folder_id, limit, offset, am_sync::service::now_secs()).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -160,7 +160,7 @@ pub fn list_smart_folder(
     limit: i64,
     offset: i64,
 ) -> Result<Vec<SmartMessageRow>, String> {
-    smart_repo::list_smart_folder(&state.db, kind, limit, offset).map_err(|e| e.to_string())
+    smart_repo::list_smart_folder(&state.db, kind, limit, offset, am_sync::service::now_secs()).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -246,7 +246,7 @@ pub fn list_messages_by_label(
     limit: i64,
     offset: i64,
 ) -> Result<Vec<SmartMessageRow>, String> {
-    labels_repo::list_messages_by_label(&state.db, label_id, limit, offset)
+    labels_repo::list_messages_by_label(&state.db, label_id, limit, offset, am_sync::service::now_secs())
         .map_err(|e| e.to_string())
 }
 
@@ -865,7 +865,7 @@ mod tests {
             snippet: "".into(),
         }]).unwrap();
 
-        let msgs = messages_repo::list_by_folder(&db, folder.id, 10, 0).unwrap();
+        let msgs = messages_repo::list_by_folder(&db, folder.id, 10, 0, i64::MAX).unwrap();
         assert_eq!(msgs.len(), 1);
         assert_eq!(msgs[0].subject, "Hello");
     }
@@ -890,7 +890,7 @@ mod tests {
         .unwrap();
         folders_repo::upsert_folder(&db, acc.id, "INBOX", "Inbox", FolderType::Inbox).unwrap();
 
-        let result = am_storage::smart_repo::list_smart_folder(&db, SmartFolderKind::AllInboxes, 100, 0).unwrap();
+        let result = am_storage::smart_repo::list_smart_folder(&db, SmartFolderKind::AllInboxes, 100, 0, i64::MAX).unwrap();
         assert_eq!(result.len(), 0);
     }
 
@@ -951,7 +951,7 @@ mod tests {
             size: 100,
             snippet: "".into(),
         }]).unwrap();
-        let msg = messages_repo::list_by_folder(&db, folder.id, 1, 0).unwrap().into_iter().next().unwrap();
+        let msg = messages_repo::list_by_folder(&db, folder.id, 1, 0, i64::MAX).unwrap().into_iter().next().unwrap();
         let body = MessageBody { message_id: msg.id, text_plain: Some("plain".into()), text_html: None };
         messages_repo::store_body(&db, msg.id, &body).unwrap();
 

@@ -8,12 +8,13 @@ pub fn list_smart_folder(
     kind: SmartFolderKind,
     limit: i64,
     offset: i64,
+    now: i64,
 ) -> Result<Vec<SmartMessageRow>, StorageError> {
     match kind {
-        SmartFolderKind::AllInboxes => list_all_inboxes(db, limit, offset),
-        SmartFolderKind::Unread => list_unread(db, limit, offset),
-        SmartFolderKind::Flagged => list_flagged(db, limit, offset),
-        SmartFolderKind::Snoozed => todo!(),
+        SmartFolderKind::AllInboxes => list_all_inboxes(db, limit, offset, now),
+        SmartFolderKind::Unread => list_unread(db, limit, offset, now),
+        SmartFolderKind::Flagged => list_flagged(db, limit, offset, now),
+        SmartFolderKind::Snoozed => crate::snooze_repo::list_snoozed(db, now, limit, offset),
     }
 }
 
@@ -35,7 +36,7 @@ pub(crate) fn row_to_smart(row: &rusqlite::Row) -> rusqlite::Result<SmartMessage
     })
 }
 
-fn list_all_inboxes(db: &Database, limit: i64, offset: i64) -> Result<Vec<SmartMessageRow>, StorageError> {
+fn list_all_inboxes(db: &Database, limit: i64, offset: i64, now: i64) -> Result<Vec<SmartMessageRow>, StorageError> {
     let conn = db.conn();
     let mut stmt = conn.prepare(
         "SELECT m.id, m.account_id, m.folder_id, a.color,
@@ -47,10 +48,11 @@ fn list_all_inboxes(db: &Database, limit: i64, offset: i64) -> Result<Vec<SmartM
          WHERE f.folder_type = 'inbox'
            AND m.draft = 0
            AND m.deleted = 0
+           AND (m.snooze_wake_at IS NULL OR m.snooze_wake_at <= ?3)
          ORDER BY m.date DESC
          LIMIT ?1 OFFSET ?2",
     )?;
-    let rows = stmt.query_map(params![limit, offset], row_to_smart)?;
+    let rows = stmt.query_map(params![limit, offset, now], row_to_smart)?;
     let mut out = Vec::new();
     for r in rows {
         out.push(r?);
@@ -58,7 +60,7 @@ fn list_all_inboxes(db: &Database, limit: i64, offset: i64) -> Result<Vec<SmartM
     Ok(out)
 }
 
-fn list_unread(db: &Database, limit: i64, offset: i64) -> Result<Vec<SmartMessageRow>, StorageError> {
+fn list_unread(db: &Database, limit: i64, offset: i64, now: i64) -> Result<Vec<SmartMessageRow>, StorageError> {
     let conn = db.conn();
     let mut stmt = conn.prepare(
         "SELECT m.id, m.account_id, m.folder_id, a.color,
@@ -71,10 +73,11 @@ fn list_unread(db: &Database, limit: i64, offset: i64) -> Result<Vec<SmartMessag
            AND f.folder_type NOT IN ('trash', 'spam')
            AND m.draft = 0
            AND m.deleted = 0
+           AND (m.snooze_wake_at IS NULL OR m.snooze_wake_at <= ?3)
          ORDER BY m.date DESC
          LIMIT ?1 OFFSET ?2",
     )?;
-    let rows = stmt.query_map(params![limit, offset], row_to_smart)?;
+    let rows = stmt.query_map(params![limit, offset, now], row_to_smart)?;
     let mut out = Vec::new();
     for r in rows {
         out.push(r?);
@@ -82,7 +85,7 @@ fn list_unread(db: &Database, limit: i64, offset: i64) -> Result<Vec<SmartMessag
     Ok(out)
 }
 
-fn list_flagged(db: &Database, limit: i64, offset: i64) -> Result<Vec<SmartMessageRow>, StorageError> {
+fn list_flagged(db: &Database, limit: i64, offset: i64, now: i64) -> Result<Vec<SmartMessageRow>, StorageError> {
     let conn = db.conn();
     let mut stmt = conn.prepare(
         "SELECT m.id, m.account_id, m.folder_id, a.color,
@@ -95,10 +98,11 @@ fn list_flagged(db: &Database, limit: i64, offset: i64) -> Result<Vec<SmartMessa
            AND f.folder_type NOT IN ('trash', 'spam')
            AND m.draft = 0
            AND m.deleted = 0
+           AND (m.snooze_wake_at IS NULL OR m.snooze_wake_at <= ?3)
          ORDER BY m.date DESC
          LIMIT ?1 OFFSET ?2",
     )?;
-    let rows = stmt.query_map(params![limit, offset], row_to_smart)?;
+    let rows = stmt.query_map(params![limit, offset, now], row_to_smart)?;
     let mut out = Vec::new();
     for r in rows {
         out.push(r?);
@@ -175,7 +179,7 @@ mod tests {
         insert_headers(&db, inbox2, &[make_msg(2, 3000, false, false, false, false)]).unwrap();
         insert_headers(&db, inbox1, &[make_msg(3, 2000, false, false, false, false)]).unwrap();
 
-        let rows = list_smart_folder(&db, SmartFolderKind::AllInboxes, 10, 0).unwrap();
+        let rows = list_smart_folder(&db, SmartFolderKind::AllInboxes, 10, 0, i64::MAX).unwrap();
 
         assert_eq!(rows.len(), 3);
         assert_eq!(rows[0].date, 3000, "first row should be most recent");
@@ -201,7 +205,7 @@ mod tests {
         insert_headers(&db, inbox, &[make_msg(1, 1000, false, false, false, false)]).unwrap();
         insert_headers(&db, sent, &[make_msg(2, 2000, false, false, false, false)]).unwrap();
 
-        let rows = list_smart_folder(&db, SmartFolderKind::AllInboxes, 10, 0).unwrap();
+        let rows = list_smart_folder(&db, SmartFolderKind::AllInboxes, 10, 0, i64::MAX).unwrap();
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].date, 1000);
     }
@@ -223,8 +227,8 @@ mod tests {
         )
         .unwrap();
 
-        let page1 = list_smart_folder(&db, SmartFolderKind::AllInboxes, 2, 0).unwrap();
-        let page2 = list_smart_folder(&db, SmartFolderKind::AllInboxes, 2, 2).unwrap();
+        let page1 = list_smart_folder(&db, SmartFolderKind::AllInboxes, 2, 0, i64::MAX).unwrap();
+        let page2 = list_smart_folder(&db, SmartFolderKind::AllInboxes, 2, 2, i64::MAX).unwrap();
         assert_eq!(page1.len(), 2);
         assert_eq!(page2.len(), 1);
         assert_eq!(page1[0].date, 3000);
@@ -251,7 +255,7 @@ mod tests {
         raw_insert_flags(&db, inbox, 2, true, false);
         raw_insert_flags(&db, inbox, 3, false, true);
 
-        let rows = list_smart_folder(&db, SmartFolderKind::AllInboxes, 10, 0).unwrap();
+        let rows = list_smart_folder(&db, SmartFolderKind::AllInboxes, 10, 0, i64::MAX).unwrap();
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].message_id > 0, true);
         assert_eq!(rows[0].date, 1000);
@@ -269,7 +273,7 @@ mod tests {
         insert_headers(&db, trash, &[make_msg(2, 2000, false, false, false, false)]).unwrap();
         insert_headers(&db, spam, &[make_msg(3, 3000, false, false, false, false)]).unwrap();
 
-        let rows = list_smart_folder(&db, SmartFolderKind::Unread, 10, 0).unwrap();
+        let rows = list_smart_folder(&db, SmartFolderKind::Unread, 10, 0, i64::MAX).unwrap();
         assert_eq!(rows.len(), 1, "only inbox unseen message should appear");
         assert_eq!(rows[0].date, 1000);
     }
@@ -285,7 +289,7 @@ mod tests {
             make_msg(2, 2000, false, false, false, false),
         ]).unwrap();
 
-        let rows = list_smart_folder(&db, SmartFolderKind::Unread, 10, 0).unwrap();
+        let rows = list_smart_folder(&db, SmartFolderKind::Unread, 10, 0, i64::MAX).unwrap();
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].date, 2000);
         assert!(!rows[0].seen);
@@ -305,7 +309,7 @@ mod tests {
         raw_insert_flags(&db, inbox, 2, true, false);
         raw_insert_flags(&db, inbox, 3, false, true);
 
-        let rows = list_smart_folder(&db, SmartFolderKind::Unread, 10, 0).unwrap();
+        let rows = list_smart_folder(&db, SmartFolderKind::Unread, 10, 0, i64::MAX).unwrap();
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].date, 1000);
     }
@@ -322,7 +326,7 @@ mod tests {
         insert_headers(&db, trash, &[make_msg(2, 2000, false, true, false, false)]).unwrap();
         insert_headers(&db, spam, &[make_msg(3, 3000, false, true, false, false)]).unwrap();
 
-        let rows = list_smart_folder(&db, SmartFolderKind::Flagged, 10, 0).unwrap();
+        let rows = list_smart_folder(&db, SmartFolderKind::Flagged, 10, 0, i64::MAX).unwrap();
         assert_eq!(rows.len(), 1, "only inbox flagged message should appear");
         assert_eq!(rows[0].date, 1000);
     }
@@ -338,7 +342,7 @@ mod tests {
             make_msg(2, 2000, false, true, false, false),
         ]).unwrap();
 
-        let rows = list_smart_folder(&db, SmartFolderKind::Flagged, 10, 0).unwrap();
+        let rows = list_smart_folder(&db, SmartFolderKind::Flagged, 10, 0, i64::MAX).unwrap();
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].date, 2000);
         assert!(rows[0].flagged);
@@ -358,7 +362,7 @@ mod tests {
         raw_insert_flags(&db, inbox, 2, true, false);
         raw_insert_flags(&db, inbox, 3, false, true);
 
-        let rows = list_smart_folder(&db, SmartFolderKind::Flagged, 10, 0).unwrap();
+        let rows = list_smart_folder(&db, SmartFolderKind::Flagged, 10, 0, i64::MAX).unwrap();
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].date, 1000);
     }
@@ -376,7 +380,7 @@ mod tests {
         insert_headers(&db, inbox1, &[make_msg(1, 1000, false, false, false, false)]).unwrap();
         insert_headers(&db, inbox2, &[make_msg(2, 5000, false, false, false, false)]).unwrap();
 
-        let rows = list_smart_folder(&db, SmartFolderKind::Unread, 10, 0).unwrap();
+        let rows = list_smart_folder(&db, SmartFolderKind::Unread, 10, 0, i64::MAX).unwrap();
 
         assert_eq!(rows.len(), 2);
         assert_eq!(rows[0].date, 5000);
@@ -400,7 +404,7 @@ mod tests {
         insert_headers(&db, inbox1, &[make_msg(1, 2000, false, true, false, false)]).unwrap();
         insert_headers(&db, inbox2, &[make_msg(2, 8000, false, true, false, false)]).unwrap();
 
-        let rows = list_smart_folder(&db, SmartFolderKind::Flagged, 10, 0).unwrap();
+        let rows = list_smart_folder(&db, SmartFolderKind::Flagged, 10, 0, i64::MAX).unwrap();
 
         assert_eq!(rows.len(), 2);
         assert_eq!(rows[0].date, 8000);
@@ -409,6 +413,48 @@ mod tests {
         assert_eq!(rows[1].account_id, acc1);
         assert!(rows[0].flagged);
         assert!(rows[1].flagged);
+    }
+
+    fn raw_set_snooze(db: &Database, folder_id: i64, uid: i64, wake: i64) {
+        db.conn().execute(
+            "UPDATE messages SET snooze_wake_at = ?3 WHERE folder_id = ?1 AND uid = ?2",
+            params![folder_id, uid, wake],
+        ).unwrap();
+    }
+
+    #[test]
+    fn all_inboxes_hides_future_snoozed_shows_elapsed() {
+        let db = Database::open_in_memory().unwrap();
+        let acc = make_account(&db, "snz@example.com", None);
+        let inbox = make_folder(&db, acc, "INBOX", FolderType::Inbox);
+        insert_headers(&db, inbox, &[
+            make_msg(1, 1000, false, false, false, false),
+            make_msg(2, 2000, false, false, false, false),
+        ]).unwrap();
+        raw_set_snooze(&db, inbox, 1, 9000);
+        raw_set_snooze(&db, inbox, 2, 3000);
+
+        let rows = list_smart_folder(&db, SmartFolderKind::AllInboxes, 10, 0, 5000).unwrap();
+        assert_eq!(rows.len(), 1, "future-snoozed hidden, elapsed shown");
+        assert_eq!(rows[0].date, 2000);
+    }
+
+    #[test]
+    fn snoozed_kind_lists_future_snoozed_ascending() {
+        let db = Database::open_in_memory().unwrap();
+        let acc = make_account(&db, "snz2@example.com", None);
+        let inbox = make_folder(&db, acc, "INBOX", FolderType::Inbox);
+        insert_headers(&db, inbox, &[
+            make_msg(1, 1000, false, false, false, false),
+            make_msg(2, 2000, false, false, false, false),
+        ]).unwrap();
+        raw_set_snooze(&db, inbox, 1, 9000);
+        raw_set_snooze(&db, inbox, 2, 7000);
+
+        let rows = list_smart_folder(&db, SmartFolderKind::Snoozed, 10, 0, 5000).unwrap();
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0].snooze_wake_at, Some(7000));
+        assert_eq!(rows[1].snooze_wake_at, Some(9000));
     }
 
     #[test]
@@ -423,8 +469,8 @@ mod tests {
             make_msg(3, 2000, false, true, false, false),
         ]).unwrap();
 
-        let page1 = list_smart_folder(&db, SmartFolderKind::Flagged, 2, 0).unwrap();
-        let page2 = list_smart_folder(&db, SmartFolderKind::Flagged, 2, 2).unwrap();
+        let page1 = list_smart_folder(&db, SmartFolderKind::Flagged, 2, 0, i64::MAX).unwrap();
+        let page2 = list_smart_folder(&db, SmartFolderKind::Flagged, 2, 2, i64::MAX).unwrap();
         assert_eq!(page1.len(), 2);
         assert_eq!(page1[0].date, 3000);
         assert_eq!(page2.len(), 1);
@@ -434,7 +480,7 @@ mod tests {
             make_msg(4, 5000, false, false, false, false),
             make_msg(5, 4000, false, false, false, false),
         ]).unwrap();
-        let u_page1 = list_smart_folder(&db, SmartFolderKind::Unread, 2, 0).unwrap();
+        let u_page1 = list_smart_folder(&db, SmartFolderKind::Unread, 2, 0, i64::MAX).unwrap();
         assert_eq!(u_page1.len(), 2);
         assert_eq!(u_page1[0].date, 5000);
     }

@@ -113,6 +113,7 @@ pub fn list_messages_by_label(
     label_id: i64,
     limit: i64,
     offset: i64,
+    now: i64,
 ) -> Result<Vec<SmartMessageRow>, StorageError> {
     let conn = db.conn();
     let mut stmt = conn.prepare(
@@ -125,10 +126,11 @@ pub fn list_messages_by_label(
          WHERE ml.label_id = ?1
            AND m.draft = 0
            AND m.deleted = 0
+           AND (m.snooze_wake_at IS NULL OR m.snooze_wake_at <= ?4)
          ORDER BY m.date DESC
          LIMIT ?2 OFFSET ?3",
     )?;
-    let rows = stmt.query_map(params![label_id, limit, offset], row_to_smart)?;
+    let rows = stmt.query_map(params![label_id, limit, offset, now], row_to_smart)?;
     let mut out = Vec::new();
     for r in rows {
         out.push(r?);
@@ -269,7 +271,7 @@ mod tests {
         let label = create_label(&db, "Shared", "#0ea5e9").unwrap();
         set_message_labels(&db, label.id, &[m1, m2], true).unwrap();
 
-        let rows = list_messages_by_label(&db, label.id, 50, 0).unwrap();
+        let rows = list_messages_by_label(&db, label.id, 50, 0, i64::MAX).unwrap();
         assert_eq!(rows.len(), 2);
         assert_eq!(rows[0].date, 3000);
         assert_eq!(rows[0].account_id, acc2);
@@ -293,7 +295,7 @@ mod tests {
             conn.execute("UPDATE messages SET deleted = 1 WHERE id = ?1", params![m3]).unwrap();
         }
 
-        let rows = list_messages_by_label(&db, label.id, 50, 0).unwrap();
+        let rows = list_messages_by_label(&db, label.id, 50, 0, i64::MAX).unwrap();
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].subject, "live");
     }

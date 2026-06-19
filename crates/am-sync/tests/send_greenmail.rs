@@ -231,7 +231,7 @@ async fn enqueue_and_drain_sends_and_appends_to_sent() {
         .await
         .expect("sync Sent folder failed");
 
-    let sent_messages = messages_repo::list_by_folder(&db, sent_folder.id, 50, 0)
+    let sent_messages = messages_repo::list_by_folder(&db, sent_folder.id, 50, 0, i64::MAX)
         .expect("list_by_folder Sent failed");
 
     assert!(

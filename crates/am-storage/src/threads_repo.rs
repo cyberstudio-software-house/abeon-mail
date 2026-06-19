@@ -53,7 +53,7 @@ pub fn create(db: &Database, account_id: i64, subject_root: &str, last_date: i64
     Ok(conn.last_insert_rowid())
 }
 
-pub fn list_for_folder(db: &Database, folder_id: i64, limit: i64, offset: i64) -> Result<Vec<ThreadSummary>, StorageError> {
+pub fn list_for_folder(db: &Database, folder_id: i64, limit: i64, offset: i64, now: i64) -> Result<Vec<ThreadSummary>, StorageError> {
     let conn = db.conn();
     let mut stmt = conn.prepare(
         "SELECT t.id, t.account_id, t.subject_root, t.last_date, t.message_count, t.unread_count,
@@ -63,13 +63,15 @@ pub fn list_for_folder(db: &Database, folder_id: i64, limit: i64, offset: i64) -
                 (SELECT subject FROM messages WHERE thread_id = t.id ORDER BY date DESC LIMIT 1)
          FROM threads t
          JOIN messages m ON m.thread_id = t.id
-         WHERE t.id IN (SELECT DISTINCT thread_id FROM messages WHERE folder_id = ?1 AND thread_id IS NOT NULL AND draft = 0)
+         WHERE t.id IN (SELECT DISTINCT thread_id FROM messages
+                        WHERE folder_id = ?1 AND thread_id IS NOT NULL AND draft = 0
+                          AND (snooze_wake_at IS NULL OR snooze_wake_at <= ?4))
            AND m.draft = 0
          GROUP BY t.id
          ORDER BY t.last_date DESC
          LIMIT ?2 OFFSET ?3",
     )?;
-    let rows = stmt.query_map(params![folder_id, limit, offset], |row| {
+    let rows = stmt.query_map(params![folder_id, limit, offset, now], |row| {
         let participants_csv: Option<String> = row.get(8)?;
         let latest_subject: Option<String> = row.get(10)?;
         let subject_root: String = row.get(2)?;
@@ -230,16 +232,42 @@ mod tests {
                 seen: false, flagged: true, has_attachments: false, size: 0, snippet: "second".into() },
         ]).unwrap();
         let tid = create(&db, account.id, "hi", 100).unwrap();
-        for h in crate::messages_repo::list_by_folder(&db, folder.id, 10, 0).unwrap() {
+        for h in crate::messages_repo::list_by_folder(&db, folder.id, 10, 0, i64::MAX).unwrap() {
             crate::messages_repo::assign_thread(&db, h.id, tid).unwrap();
         }
         recompute(&db, tid).unwrap();
-        let summaries = list_for_folder(&db, folder.id, 10, 0).unwrap();
+        let summaries = list_for_folder(&db, folder.id, 10, 0, i64::MAX).unwrap();
         assert_eq!(summaries.len(), 1);
         assert_eq!(summaries[0].message_count, 2);
         assert_eq!(summaries[0].unread_count, 1);
         assert_eq!(summaries[0].snippet, "second");
         assert!(summaries[0].flagged);
+    }
+
+    #[test]
+    fn list_for_folder_hides_thread_when_all_messages_snoozed() {
+        let db = Database::open_in_memory().unwrap();
+        let account = crate::accounts_repo::insert_account(&db, &am_core::account::NewAccount {
+            email: "th@e.com".into(), display_name: "T".into(),
+            provider_type: am_core::account::ProviderType::ImapPassword, color: None,
+        }).unwrap();
+        let folder = crate::folders_repo::upsert_folder(&db, account.id, "INBOX", "Inbox", am_core::folder::FolderType::Inbox).unwrap();
+        crate::messages_repo::insert_headers(&db, folder.id, &[make_header(1, 100, "<a@x>")]).unwrap();
+        let tid = create(&db, account.id, "hi", 100).unwrap();
+        for h in crate::messages_repo::list_by_folder(&db, folder.id, 10, 0, 5000).unwrap() {
+            crate::messages_repo::assign_thread(&db, h.id, tid).unwrap();
+        }
+        recompute(&db, tid).unwrap();
+
+        let visible = list_for_folder(&db, folder.id, 10, 0, 5000).unwrap();
+        assert_eq!(visible.len(), 1, "thread visible before snooze");
+
+        db.conn().execute("UPDATE messages SET snooze_wake_at = 9000 WHERE folder_id = ?1", params![folder.id]).unwrap();
+        let hidden = list_for_folder(&db, folder.id, 10, 0, 5000).unwrap();
+        assert_eq!(hidden.len(), 0, "thread hidden when all messages future-snoozed");
+
+        let woke = list_for_folder(&db, folder.id, 10, 0, 9001).unwrap();
+        assert_eq!(woke.len(), 1, "thread reappears once wake time elapsed");
     }
 
     #[test]
