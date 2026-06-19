@@ -1,7 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { nextWeekdayAt, tomorrowAt, presetTimestamp, formatWakeTime } from "./snooze";
 
-// Reference instant: Friday 2026-06-19 10:00 local.
 const FRIDAY = new Date(2026, 5, 19, 10, 0, 0);
 
 describe("snooze presets", () => {
@@ -35,10 +34,10 @@ describe("snooze presets", () => {
   });
 
   it("nextWeekdayAt advances a full week when target is today but hour passed", () => {
-    const satMorning = new Date(2026, 5, 20, 9, 0, 0); // Saturday 09:00, after 08:00
+    const satMorning = new Date(2026, 5, 20, 9, 0, 0);
     const ts = nextWeekdayAt(satMorning, 6, 8);
     const d = new Date(ts * 1000);
-    expect(d.getDate()).toBe(27); // next Saturday
+    expect(d.getDate()).toBe(27);
   });
 
   it("formatWakeTime returns a non-empty string", () => {
