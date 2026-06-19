@@ -7,6 +7,7 @@ import { ShortcutsSection } from "./ShortcutsSection";
 import { SignaturesSection } from "./SignaturesSection";
 import { GeneralSection } from "./GeneralSection";
 import { SnoozeSection } from "./SnoozeSection";
+import { RulesSection } from "./RulesSection";
 import "./Settings.css";
 
 type SettingsSection =
@@ -86,6 +87,8 @@ export function SettingsOverlay() {
             <NotificationsSection />
           ) : active === "snooze" ? (
             <SnoozeSection />
+          ) : active === "rules" ? (
+            <RulesSection />
           ) : active === "shortcuts" ? (
             <ShortcutsSection />
           ) : (

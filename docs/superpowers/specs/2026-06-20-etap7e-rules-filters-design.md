@@ -177,8 +177,24 @@ CREATE INDEX idx_rules_account ON rules(account_id, position);
 - Tests używają `.toBeTruthy()`/`.toBeNull()`.
 - Node 24: `export PATH="$HOME/.nvm/versions/node/v24.14.0/bin:$PATH"`.
 
+## Known limitations (as-built)
+
+- **Warunek Recipient (To/Cc) jest bezczynny dla świeżo przychodzącej poczty.**
+  Kolumny `to_addresses`/`cc_addresses` NIE są wypełniane przy `insert_headers`
+  (domyślnie `'[]'`); recipients są zapisywane dopiero leniwie przy pobraniu
+  treści (`store_recipients` w ścieżce body-fetch — ta sama tech-debt co
+  best-effort `to:` w wyszukiwarce 6c). W momencie uruchomienia reguł (zaraz po
+  insert) `rule_message` czyta `recipients = []`, więc warunek Recipient nie
+  pasuje do nowej poczty. Warunki From / Subject / Has-attachment działają
+  (te kolumny są wypełniane przy insert). Naprawa wymaga eager-persist To/Cc w
+  ścieżce nagłówków (am-protocols envelope → am-core NewMessageHeader →
+  am-storage insert_headers), co koliduje z lazy-body design — odłożone do
+  decyzji właściciela (patrz finalny przegląd 7e @ opus).
+
 ## Deferred / tech-debt
 
+- Eager-persist To/Cc przy insert, by warunek Recipient działał na żywo
+  (alternatywnie: hint w UI, że Recipient dopasowuje dopiero po pobraniu treści).
 - Move-to-folder / archive (wymaga IMAP COPY+DELETE — etap 8+).
 - „Stop processing further rules" / priorytety z przerwaniem.
 - Reorder reguł w UI (na razie kolejność = kolejność tworzenia).

@@ -52,6 +52,11 @@ pub fn build_specta_builder() -> Builder<tauri::Wry> {
             commands::unsnooze_messages,
             commands::build_new_mail_notification,
             commands::refresh_unread_badge,
+            commands::list_rules,
+            commands::create_rule,
+            commands::update_rule,
+            commands::set_rule_enabled,
+            commands::delete_rule,
         ])
         .events(collect_events![
             events::SyncProgress,

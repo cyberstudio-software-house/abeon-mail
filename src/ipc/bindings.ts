@@ -52,6 +52,11 @@ export const commands = {
 	body: string,
 } | null, string>(__TAURI_INVOKE("build_new_mail_notification", { folderId, count })),
 	refreshUnreadBadge: (enabled: boolean) => typedError<null, string>(__TAURI_INVOKE("refresh_unread_badge", { enabled })),
+	listRules: (accountId: number) => typedError<Rule[], string>(__TAURI_INVOKE("list_rules", { accountId })),
+	createRule: (accountId: number, input: RuleInput) => typedError<Rule, string>(__TAURI_INVOKE("create_rule", { accountId, input })),
+	updateRule: (ruleId: number, input: RuleInput) => typedError<null, string>(__TAURI_INVOKE("update_rule", { ruleId, input })),
+	setRuleEnabled: (ruleId: number, enabled: boolean) => typedError<null, string>(__TAURI_INVOKE("set_rule_enabled", { ruleId, enabled })),
+	deleteRule: (ruleId: number) => typedError<null, string>(__TAURI_INVOKE("delete_rule", { ruleId })),
 };
 
 /** Events */
@@ -78,6 +83,10 @@ export type AccountAuthChanged = {
 	account_id: number,
 	requires_reauth: boolean,
 };
+
+export type ConditionField = "from" | "subject" | "recipient" | "has_attachment";
+
+export type ConditionOp = "contains" | "is";
 
 export type Endpoints = {
 	imap_host: string,
@@ -110,6 +119,8 @@ export type MailboxChanged = {
 	account_id: number,
 	folder_id: number,
 };
+
+export type MatchType = "all" | "any";
 
 export type MessageBody = {
 	message_id: number,
@@ -166,6 +177,38 @@ export type OutgoingMessage = {
 };
 
 export type ProviderType = "imap_password" | "google_oauth";
+
+export type Rule = {
+	id: number,
+	account_id: number,
+	name: string,
+	enabled: boolean,
+	match_type: MatchType,
+	conditions: RuleCondition[],
+	actions: RuleAction[],
+	position: number,
+};
+
+export type RuleAction = {
+	kind: RuleActionKind,
+	value: string,
+};
+
+export type RuleActionKind = "label" | "mark_read" | "flag" | "snooze";
+
+export type RuleCondition = {
+	field: ConditionField,
+	op: ConditionOp,
+	value: string,
+};
+
+export type RuleInput = {
+	name: string,
+	enabled: boolean,
+	match_type: MatchType,
+	conditions: RuleCondition[],
+	actions: RuleAction[],
+};
 
 export type SanitizedHtml = {
 	html: string,
