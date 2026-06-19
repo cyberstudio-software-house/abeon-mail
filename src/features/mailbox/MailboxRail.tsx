@@ -52,6 +52,7 @@ const SMART_FOLDERS: { label: string; kind: SmartFolderKind; Icon: React.Element
   { label: "All Inboxes", kind: "all_inboxes", Icon: Layers },
   { label: "Unread", kind: "unread", Icon: MailOpen },
   { label: "Flagged", kind: "flagged", Icon: Flag },
+  { label: "Snoozed", kind: "snoozed", Icon: Clock },
 ];
 
 function FolderIcon({ folderType }: { folderType?: string }) {
@@ -436,11 +437,6 @@ export function MailboxRail({ status }: Props) {
             <span className="rail__item-label">{label}</span>
           </div>
         ))}
-        <div className="rail__item" aria-disabled="true">
-          <Clock size={15} className="rail__item-icon" />
-          <span className="rail__item-label">Snoozed</span>
-        </div>
-
         {!accountsLoading && accounts.length > 0 && (
           <>
             <div className="rail__section">Accounts</div>
