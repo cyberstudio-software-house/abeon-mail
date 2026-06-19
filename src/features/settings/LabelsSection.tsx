@@ -41,7 +41,6 @@ export function LabelsSection() {
                 </option>
               ))}
             </select>
-            <span>{label.name}</span>
             <input
               type="text"
               aria-label={`Rename ${label.name}`}
