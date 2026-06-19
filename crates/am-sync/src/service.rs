@@ -4,7 +4,7 @@ use am_core::folder::FolderType;
 use am_core::message::{MessageBody, MessageFlag, NewMessageHeader, SyncProgress};
 use am_protocols::imap::{FetchedHeader, ImapAuth, ImapConfig, ImapSession, RemoteFolder};
 use am_core::threading::{normalize_subject, parse_reference_ids};
-use am_storage::{accounts_repo, folders_repo, messages_repo, queue_repo, threads_repo, Database, StorageError};
+use am_storage::{accounts_repo, folders_repo, labels_repo, messages_repo, queue_repo, rules_repo, snooze_repo, threads_repo, Database, StorageError};
 use crate::auth::CredentialSource;
 use crate::events::{SyncEvent, SyncEventSink};
 
@@ -400,6 +400,10 @@ pub async fn incremental_sync_folder(
         let headers: Vec<NewMessageHeader> = fetched.iter().map(header_from_fetch).collect();
         messages_repo::insert_headers(db, folder_id, &headers)?;
         assign_threads(db, account_id)?;
+        if folder.folder_type == am_core::folder::FolderType::Inbox {
+            let new_ids = messages_repo::ids_by_uids(db, folder_id, &new_uids)?;
+            apply_rules_to_messages(db, account_id, &new_ids, now_secs())?;
+        }
     }
 
     if let Some(modseq) = markers.highestmodseq.filter(|_| caps.condstore) {
@@ -431,6 +435,64 @@ pub async fn incremental_sync_folder(
         sink.emit(SyncEvent::NewMessages { account_id, folder_id, count: new_count });
     }
     sink.emit(SyncEvent::MailboxChanged { account_id, folder_id });
+    Ok(())
+}
+
+pub fn apply_rules_to_messages(
+    db: &Database,
+    account_id: i64,
+    message_ids: &[i64],
+    now: i64,
+) -> Result<(), SyncError> {
+    if message_ids.is_empty() {
+        return Ok(());
+    }
+    let rules: Vec<am_core::rule::Rule> = rules_repo::list_rules(db, account_id)?
+        .into_iter()
+        .filter(|r| r.enabled)
+        .collect();
+    if rules.is_empty() {
+        return Ok(());
+    }
+    for &message_id in message_ids {
+        let view = match messages_repo::rule_message(db, message_id) {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+        for rule in &rules {
+            if am_core::rule::rule_matches(rule, &view) {
+                for action in &rule.actions {
+                    apply_rule_action(db, message_id, action, now)?;
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+fn apply_rule_action(
+    db: &Database,
+    message_id: i64,
+    action: &am_core::rule::RuleAction,
+    now: i64,
+) -> Result<(), SyncError> {
+    match action.kind {
+        am_core::rule::RuleActionKind::Label => {
+            if let Ok(label_id) = action.value.trim().parse::<i64>() {
+                labels_repo::set_message_labels(db, label_id, &[message_id], true)?;
+            }
+        }
+        am_core::rule::RuleActionKind::MarkRead => {
+            enqueue_flag(db, message_id, MessageFlag::Seen, true)?;
+        }
+        am_core::rule::RuleActionKind::Flag => {
+            enqueue_flag(db, message_id, MessageFlag::Flagged, true)?;
+        }
+        am_core::rule::RuleActionKind::Snooze => {
+            let wake = am_core::rule::snooze_wake_at(now, &action.value);
+            snooze_repo::snooze_messages(db, &[message_id], wake)?;
+        }
+    }
     Ok(())
 }
 
@@ -541,6 +603,88 @@ pub async fn drain_queue(db: &Database, account_id: i64, creds: &dyn CredentialS
 
     let _ = session.logout().await;
     Ok(())
+}
+
+#[cfg(test)]
+mod rules_engine_tests {
+    use super::*;
+    use am_core::account::{NewAccount, ProviderType};
+    use am_core::folder::FolderType;
+    use am_core::message::NewMessageHeader;
+    use am_core::rule::{ConditionField, ConditionOp, MatchType, RuleAction, RuleActionKind, RuleCondition, RuleInput};
+    use am_storage::{accounts_repo, folders_repo, messages_repo, rules_repo, snooze_repo};
+
+    fn header(uid: i64, from: &str, subject: &str) -> NewMessageHeader {
+        NewMessageHeader {
+            uid, message_id_hdr: None, in_reply_to: None, references_hdr: None,
+            from_address: from.into(), from_name: None, subject: subject.into(),
+            date: 1000, seen: false, flagged: false, has_attachments: false, size: 0, snippet: String::new(),
+        }
+    }
+
+    fn rule_input(field: ConditionField, value: &str, action: RuleActionKind, action_value: &str, enabled: bool) -> RuleInput {
+        RuleInput {
+            name: "r".into(), enabled, match_type: MatchType::All,
+            conditions: vec![RuleCondition { field, op: ConditionOp::Contains, value: value.into() }],
+            actions: vec![RuleAction { kind: action, value: action_value.into() }],
+        }
+    }
+
+    fn seed(db: &Database) -> (i64, i64) {
+        let acc = accounts_repo::insert_account(db, &NewAccount {
+            email: "s@e.com".into(), display_name: "S".into(),
+            provider_type: ProviderType::ImapPassword, color: None,
+        }).unwrap();
+        let folder = folders_repo::upsert_folder(db, acc.id, "INBOX", "Inbox", FolderType::Inbox).unwrap().id;
+        (acc.id, folder)
+    }
+
+    #[test]
+    fn flag_action_sets_flagged() {
+        let db = Database::open_in_memory().unwrap();
+        let (acc, folder) = seed(&db);
+        messages_repo::insert_headers(&db, folder, &[header(1, "boss@work.com", "hi")]).unwrap();
+        let ids = messages_repo::ids_by_uids(&db, folder, &[1]).unwrap();
+        rules_repo::create_rule(&db, acc, &rule_input(ConditionField::From, "work.com", RuleActionKind::Flag, "", true)).unwrap();
+
+        apply_rules_to_messages(&db, acc, &ids, 10_000).unwrap();
+
+        let msg = messages_repo::get_header(&db, ids[0]).unwrap();
+        assert!(msg.flagged);
+    }
+
+    #[test]
+    fn mark_read_and_snooze_apply() {
+        let db = Database::open_in_memory().unwrap();
+        let (acc, folder) = seed(&db);
+        messages_repo::insert_headers(&db, folder, &[header(1, "n@l.com", "promo")]).unwrap();
+        let ids = messages_repo::ids_by_uids(&db, folder, &[1]).unwrap();
+        rules_repo::create_rule(&db, acc, &rule_input(ConditionField::Subject, "promo", RuleActionKind::MarkRead, "", true)).unwrap();
+        rules_repo::create_rule(&db, acc, &rule_input(ConditionField::Subject, "promo", RuleActionKind::Snooze, "2", true)).unwrap();
+
+        apply_rules_to_messages(&db, acc, &ids, 10_000).unwrap();
+
+        let msg = messages_repo::get_header(&db, ids[0]).unwrap();
+        assert!(msg.seen);
+        let snoozed = snooze_repo::list_snoozed(&db, 0, 10, 0).unwrap();
+        assert_eq!(snoozed.len(), 1);
+        assert_eq!(snoozed[0].snooze_wake_at, Some(10_000 + 2 * 3600));
+    }
+
+    #[test]
+    fn disabled_rule_and_non_match_do_nothing() {
+        let db = Database::open_in_memory().unwrap();
+        let (acc, folder) = seed(&db);
+        messages_repo::insert_headers(&db, folder, &[header(1, "x@y.com", "hello")]).unwrap();
+        let ids = messages_repo::ids_by_uids(&db, folder, &[1]).unwrap();
+        rules_repo::create_rule(&db, acc, &rule_input(ConditionField::From, "y.com", RuleActionKind::Flag, "", false)).unwrap();
+        rules_repo::create_rule(&db, acc, &rule_input(ConditionField::From, "other.com", RuleActionKind::Flag, "", true)).unwrap();
+
+        apply_rules_to_messages(&db, acc, &ids, 10_000).unwrap();
+
+        let msg = messages_repo::get_header(&db, ids[0]).unwrap();
+        assert!(!msg.flagged);
+    }
 }
 
 #[cfg(test)]
