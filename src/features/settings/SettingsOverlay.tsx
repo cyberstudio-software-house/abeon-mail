@@ -3,6 +3,7 @@ import { useUiStore } from "../../app/store";
 import { AppearanceSection } from "./AppearanceSection";
 import { LabelsSection } from "./LabelsSection";
 import { ShortcutsSection } from "./ShortcutsSection";
+import { SignaturesSection } from "./SignaturesSection";
 import "./Settings.css";
 
 type SettingsSection =
@@ -74,6 +75,8 @@ export function SettingsOverlay() {
             <AppearanceSection />
           ) : active === "labels" ? (
             <LabelsSection />
+          ) : active === "signatures" ? (
+            <SignaturesSection />
           ) : active === "shortcuts" ? (
             <ShortcutsSection />
           ) : (
