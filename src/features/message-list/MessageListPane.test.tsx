@@ -9,13 +9,14 @@ const mockSetSelectedMessageId = vi.fn();
 vi.mock("../../ipc/queries", () => ({
   useThreads: vi.fn(),
   useSmartFolder: vi.fn(),
+  useSearch: vi.fn(),
 }));
 
 vi.mock("../../app/store", () => ({
   useUiStore: vi.fn(),
 }));
 
-import { useThreads, useSmartFolder } from "../../ipc/queries";
+import { useThreads, useSmartFolder, useSearch } from "../../ipc/queries";
 import { useUiStore } from "../../app/store";
 import type { UiState, Density } from "../../app/store";
 import { MessageListPane } from "./MessageListPane";
@@ -23,6 +24,7 @@ import type { ThreadSummary, SmartMessageRow } from "../../ipc/bindings";
 
 const mockUseThreads = vi.mocked(useThreads);
 const mockUseSmartFolder = vi.mocked(useSmartFolder);
+const mockUseSearch = vi.mocked(useSearch);
 const mockUseUiStore = vi.mocked(useUiStore);
 
 const nowSeconds = Math.floor(Date.now() / 1000);
@@ -130,7 +132,9 @@ const sampleSmartRows: SmartMessageRow[] = [
 function setupStore(
   selectedFolderId: number | null,
   density: Density = "comfortable",
-  selectedSmartFolder: UiState["selectedSmartFolder"] = null
+  selectedSmartFolder: UiState["selectedSmartFolder"] = null,
+  searchActive = false,
+  searchQuery = ""
 ) {
   mockUseUiStore.mockImplementation((selector: (s: UiState) => unknown) => {
     const state: UiState = {
@@ -169,6 +173,9 @@ function setupStore(
       cheatSheetOpen: false,
       shortcutProfile: "default",
       shortcutOverrides: {},
+      searchQuery,
+      searchActive,
+      focusSearch: null,
       setListContext: vi.fn(),
       setReplyTargetId: vi.fn(),
       setComposerSend: vi.fn(),
@@ -180,9 +187,16 @@ function setupStore(
       setShortcutOverride: vi.fn(),
       resetShortcut: vi.fn(),
       hydrateShortcuts: vi.fn(),
+      setSearchQuery: vi.fn(),
+      clearSearch: vi.fn(),
+      setFocusSearch: vi.fn(),
     };
     return selector ? selector(state) : state;
   });
+}
+
+function renderPane() {
+  return render(<MessageListPane />);
 }
 
 describe("MessageListPane", () => {
@@ -195,6 +209,10 @@ describe("MessageListPane", () => {
       configurable: true,
       get: () => 400,
     });
+    mockUseSearch.mockReturnValue({
+      data: [],
+      isLoading: false,
+    } as unknown as ReturnType<typeof useSearch>);
   });
 
   afterEach(() => {
@@ -403,5 +421,47 @@ describe("MessageListPane", () => {
     const newestEl = screen.getByText("Newest", { exact: false });
     const ariaDisabledEl = newestEl.closest("[aria-disabled='true']");
     expect(ariaDisabledEl).toBeTruthy();
+  });
+
+  it("shows a results banner and highlighted rows in search mode", () => {
+    mockUseSearch.mockReturnValue({
+      data: [
+        {
+          message_id: 1,
+          account_id: 1,
+          folder_id: 1,
+          account_color: "#ff0000",
+          from_address: "alice@example.com",
+          from_name: "Alice",
+          subject: "Quarterly report",
+          date: 1000,
+          seen: true,
+          flagged: false,
+          has_attachments: false,
+          snippet: "the report is ready",
+        },
+      ],
+      isLoading: false,
+    } as unknown as ReturnType<typeof useSearch>);
+
+    setupStore(null, "comfortable", null, true, "report");
+    mockUseThreads.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isError: false,
+      error: null,
+    } as unknown as ReturnType<typeof useThreads>);
+    mockUseSmartFolder.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isError: false,
+      error: null,
+    } as unknown as ReturnType<typeof useSmartFolder>);
+
+    renderPane();
+
+    expect(screen.getByText(/Results for/)).toBeTruthy();
+    const marks = screen.getAllByText("report");
+    expect(marks.some((m) => m.tagName === "MARK")).toBe(true);
   });
 });

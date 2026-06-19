@@ -15,6 +15,7 @@ vi.mock("../ipc/queries", () => ({
   useFolders: () => ({ data: [], isLoading: false, isError: false, error: null }),
   useThreads: () => ({ data: [], isLoading: false, isError: false, error: null }),
   useSmartFolder: () => ({ data: undefined, isLoading: false, isError: false, error: null }),
+  useSearch: () => ({ data: [], isLoading: false }),
   useThreadMessages: () => ({ data: [], isLoading: false, isError: false, error: null }),
   useMessageBody: () => ({ data: null, isLoading: false, isError: false, error: null }),
   useSetFlag: () => ({ mutate: vi.fn() }),

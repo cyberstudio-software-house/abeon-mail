@@ -216,3 +216,32 @@
   text-transform: uppercase;
   color: var(--section-label);
 }
+
+.message-list__search-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 12px;
+  font-size: 13px;
+  color: var(--text-preview);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.message-list__search-clear {
+  border: none;
+  background: transparent;
+  color: var(--icon-muted);
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1;
+  padding: 2px 4px;
+}
+
+.message-row__subject mark,
+.message-row__snippet mark {
+  background: var(--shadow-accent, rgba(99, 102, 241, 0.25));
+  color: inherit;
+  border-radius: 2px;
+  padding: 0 1px;
+}
