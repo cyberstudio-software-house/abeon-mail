@@ -75,6 +75,7 @@ export function useSetFlag() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["messages"] });
       queryClient.invalidateQueries({ queryKey: ["folders"] });
+      void commands.refreshUnreadBadge(useUiStore.getState().badgeEnabled);
     },
   });
 }
@@ -86,6 +87,7 @@ export function useMarkSeen() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["messages"] });
       queryClient.invalidateQueries({ queryKey: ["folders"] });
+      void commands.refreshUnreadBadge(useUiStore.getState().badgeEnabled);
     },
   });
 }
