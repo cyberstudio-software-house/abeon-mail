@@ -33,6 +33,7 @@ pub fn build_specta_builder() -> Builder<tauri::Wry> {
             commands::list_signatures,
             commands::pick_attachment,
             commands::list_smart_folder,
+            commands::search_messages,
             commands::get_settings,
             commands::set_setting,
         ])

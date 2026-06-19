@@ -125,4 +125,29 @@ mod tests {
             .unwrap();
         assert_eq!(count, 1);
     }
+
+    #[test]
+    fn migration_v7_search_fts_is_stored_and_roundtrips() {
+        let db = Database::open_in_memory().unwrap();
+        let conn = db.conn();
+        conn.execute(
+            "INSERT INTO search_fts (rowid, subject, from_address, to_addresses, body_text, attachment_names)
+             VALUES (1, 'Quarterly report', 'alice@example.com', '[]', 'hello world', '')",
+            [],
+        )
+        .unwrap();
+        let subject: String = conn
+            .query_row("SELECT subject FROM search_fts WHERE rowid = 1", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(subject, "Quarterly report");
+
+        let trigger_count: i64 = conn
+            .query_row(
+                "SELECT count(*) FROM sqlite_master WHERE type='trigger' AND name='messages_ad_fts'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(trigger_count, 1);
+    }
 }

@@ -16,7 +16,7 @@ pub fn list_smart_folder(
     }
 }
 
-fn row_to_smart(row: &rusqlite::Row) -> rusqlite::Result<SmartMessageRow> {
+pub(crate) fn row_to_smart(row: &rusqlite::Row) -> rusqlite::Result<SmartMessageRow> {
     Ok(SmartMessageRow {
         message_id: row.get(0)?,
         account_id: row.get(1)?,

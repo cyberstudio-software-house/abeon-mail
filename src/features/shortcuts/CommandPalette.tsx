@@ -39,6 +39,7 @@ export function CommandPalette() {
     "go-inbox": () => setSelectedSmartFolder("all_inboxes"),
     "go-starred": () => setSelectedSmartFolder("flagged"),
     "cheat-sheet": () => toggleCheatSheet(),
+    search: () => requestAnimationFrame(() => useUiStore.getState().focusSearch?.()),
   };
 
   function run(fn: () => void) {

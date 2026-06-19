@@ -41,7 +41,7 @@ export const ACTIONS: ActionMeta[] = [
   { id: "go-inbox", label: "Go to All Inboxes", contexts: ["global"], defaultBinding: "g i", enabled: true },
   { id: "go-starred", label: "Go to Flagged", contexts: ["global"], defaultBinding: "g s", enabled: true },
   { id: "open-settings", label: "Settings", contexts: ["global"], defaultBinding: "g ,", enabled: true },
-  { id: "search", label: "Search", contexts: ["global"], defaultBinding: "/", enabled: false },
+  { id: "search", label: "Search mail", contexts: ["global"], defaultBinding: "/", enabled: true },
   { id: "next-message", label: "Next message", contexts: ["list", "reader"], defaultBinding: "j", enabled: true },
   { id: "prev-message", label: "Previous message", contexts: ["list", "reader"], defaultBinding: "k", enabled: true },
   { id: "first-message", label: "First message", contexts: ["list", "reader"], defaultBinding: "", enabled: true },

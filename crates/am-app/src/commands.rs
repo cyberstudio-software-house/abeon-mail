@@ -164,6 +164,18 @@ pub fn list_smart_folder(
 
 #[tauri::command]
 #[specta::specta]
+pub fn search_messages(
+    state: tauri::State<'_, AppState>,
+    query: String,
+    limit: i64,
+    offset: i64,
+) -> Result<Vec<SmartMessageRow>, String> {
+    let parsed = am_core::search::parse_query(&query);
+    am_storage::search_repo::search(&state.db, &parsed, limit, offset).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+#[specta::specta]
 pub fn list_thread_messages(
     state: tauri::State<'_, AppState>,
     thread_id: i64,

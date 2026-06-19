@@ -1,11 +1,13 @@
 import { useRef, useMemo, useEffect } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { PencilLine, ChevronDown } from "lucide-react";
-import { useThreads, useSmartFolder } from "../../ipc/queries";
+import { useThreads, useSmartFolder, useSearch } from "../../ipc/queries";
+import { useDebouncedValue } from "../../shared/hooks/useDebouncedValue";
 import { useUiStore, type Density } from "../../app/store";
 import type { ThreadSummary, SmartMessageRow } from "../../ipc/bindings";
 import { Avatar } from "../../shared/appearance/Avatar";
 import { groupIntoEntries, type ListEntry } from "./grouping";
+import { extractTerms, Highlight } from "./highlight";
 import "./MessageListPane.css";
 
 const ROW_HEIGHT: Record<Density, number> = {
@@ -108,6 +110,7 @@ function SmartRow({
   showAvatars,
   showSnippet,
   onSelect,
+  highlightTerms,
 }: {
   row: SmartMessageRow;
   isSelected: boolean;
@@ -115,6 +118,7 @@ function SmartRow({
   showAvatars: boolean;
   showSnippet: boolean;
   onSelect: (id: number) => void;
+  highlightTerms?: string[];
 }) {
   const senderLabel = row.from_name ?? row.from_address;
 
@@ -152,7 +156,9 @@ function SmartRow({
           <span className="message-row__date">{formatDate(row.date)}</span>
         </div>
         <div className="message-row__meta">
-          <span className="message-row__subject">{row.subject}</span>
+          <span className="message-row__subject">
+            {highlightTerms ? <Highlight text={row.subject} terms={highlightTerms} /> : row.subject}
+          </span>
           <div className="message-row__badges">
             {row.flagged && (
               <span className="message-row__flag" aria-label="flagged">
@@ -166,7 +172,11 @@ function SmartRow({
             )}
           </div>
         </div>
-        {showSnippet && <span className="message-row__snippet">{row.snippet}</span>}
+        {showSnippet && (
+          <span className="message-row__snippet">
+            {highlightTerms ? <Highlight text={row.snippet} terms={highlightTerms} /> : row.snippet}
+          </span>
+        )}
       </div>
     </div>
   );
@@ -194,13 +204,29 @@ export function MessageListPane() {
   const openComposer = useUiStore((s) => s.openComposer);
   const setListContext = useUiStore((s) => s.setListContext);
 
+  const searchActive = useUiStore((s) => s.searchActive);
+  const searchQuery = useUiStore((s) => s.searchQuery);
+  const clearSearch = useUiStore((s) => s.clearSearch);
+  const debouncedQuery = useDebouncedValue(searchQuery, 200);
+
   const { data: threads, isLoading: threadsLoading } = useThreads(selectedFolderId);
   const { data: smartRows, isLoading: smartLoading } = useSmartFolder(selectedSmartFolder);
+  const { data: searchRows, isLoading: searchLoading } = useSearch(debouncedQuery);
 
-  const isSmartMode = selectedSmartFolder != null;
-  const isLoading = isSmartMode ? smartLoading : threadsLoading;
-  const rawItems = isSmartMode ? (smartRows ?? []) : (threads ?? []);
-  const hasSelection = isSmartMode ? selectedSmartFolder != null : selectedFolderId != null;
+  const isSmartMode = !searchActive && selectedSmartFolder != null;
+  const isFlatMode = searchActive || isSmartMode;
+  const isLoading = searchActive ? searchLoading : isSmartMode ? smartLoading : threadsLoading;
+  const rawItems = searchActive
+    ? (searchRows ?? [])
+    : isSmartMode
+      ? (smartRows ?? [])
+      : (threads ?? []);
+  const hasSelection = searchActive
+    ? true
+    : isSmartMode
+      ? selectedSmartFolder != null
+      : selectedFolderId != null;
+  const highlightTerms = useMemo(() => extractTerms(debouncedQuery), [debouncedQuery]);
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const rowHeight = ROW_HEIGHT[density] ?? ROW_HEIGHT.comfortable;
@@ -212,19 +238,19 @@ export function MessageListPane() {
   const entries = useMemo(
     (): ListEntry<ThreadSummary | SmartMessageRow>[] =>
       hasSelection && !isLoading && rawItems.length > 0
-        ? isSmartMode
+        ? isFlatMode
           ? groupIntoEntries(rawItems as SmartMessageRow[], (r) => (r as SmartMessageRow).date, nowSeconds)
           : groupIntoEntries(rawItems as ThreadSummary[], (t) => (t as ThreadSummary).last_date, nowSeconds)
         : [],
-    [rawItems, isSmartMode, nowSeconds, hasSelection, isLoading]
+    [rawItems, isFlatMode, nowSeconds, hasSelection, isLoading]
   );
 
   useEffect(() => {
-    const ids = isSmartMode
+    const ids = isFlatMode
       ? (rawItems as SmartMessageRow[]).map((r) => r.message_id)
       : (rawItems as ThreadSummary[]).map((t) => t.thread_id);
-    setListContext(ids, isSmartMode ? "message" : "thread");
-  }, [rawItems, isSmartMode, setListContext]);
+    setListContext(ids, isFlatMode ? "message" : "thread");
+  }, [rawItems, isFlatMode, setListContext]);
 
   const virtualizer = useVirtualizer({
     count: entries.length,
@@ -250,6 +276,22 @@ export function MessageListPane() {
           Newest <ChevronDown size={13} />
         </span>
       </div>
+
+      {searchActive && (
+        <div className="message-list__search-banner" role="status">
+          <span>
+            Results for &ldquo;{searchQuery}&rdquo; ({rawItems.length})
+          </span>
+          <button
+            type="button"
+            className="message-list__search-clear"
+            aria-label="Clear search"
+            onClick={() => clearSearch()}
+          >
+            ✕
+          </button>
+        </div>
+      )}
 
       {!hasSelection && (
         <div className="message-list__empty">Select a folder</div>
@@ -294,7 +336,7 @@ export function MessageListPane() {
                   </div>
                 );
               }
-              if (isSmartMode) {
+              if (isFlatMode) {
                 const row = entry.data as SmartMessageRow;
                 return (
                   <div
@@ -314,6 +356,7 @@ export function MessageListPane() {
                       showAvatars={showAvatars}
                       showSnippet={showSnippet}
                       onSelect={setSelectedMessageId}
+                      highlightTerms={searchActive ? highlightTerms : undefined}
                     />
                   </div>
                 );
