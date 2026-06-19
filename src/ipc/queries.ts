@@ -291,3 +291,32 @@ export function useSetMessageLabels() {
     },
   });
 }
+
+export function useSnooze() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ messageIds, wakeAt }: { messageIds: number[]; wakeAt: number }) =>
+      commands.snoozeMessages(messageIds, wakeAt).then(unwrap),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["threads"] });
+      queryClient.invalidateQueries({ queryKey: ["messages"] });
+      queryClient.invalidateQueries({ queryKey: ["smart"] });
+      queryClient.invalidateQueries({ queryKey: ["labels-for-messages"] });
+      queryClient.invalidateQueries({ queryKey: ["messages-by-label"] });
+    },
+  });
+}
+
+export function useUnsnooze() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (messageIds: number[]) => commands.unsnoozeMessages(messageIds).then(unwrap),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["threads"] });
+      queryClient.invalidateQueries({ queryKey: ["messages"] });
+      queryClient.invalidateQueries({ queryKey: ["smart"] });
+      queryClient.invalidateQueries({ queryKey: ["labels-for-messages"] });
+      queryClient.invalidateQueries({ queryKey: ["messages-by-label"] });
+    },
+  });
+}
