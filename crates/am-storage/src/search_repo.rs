@@ -110,7 +110,7 @@ mod tests {
     use super::*;
     use crate::accounts_repo::insert_account;
     use crate::folders_repo::upsert_folder;
-    use crate::messages_repo::{delete_by_uids, insert_headers, store_body};
+    use crate::messages_repo::{delete_by_uids, insert_headers, store_body, store_recipients};
     use am_core::account::{NewAccount, ProviderType};
     use am_core::folder::FolderType;
     use am_core::message::{MessageBody, NewMessageHeader};
@@ -275,6 +275,41 @@ mod tests {
 
         delete_by_uids(&db, inbox, &[1]).unwrap();
         assert_eq!(search(&db, &parse_query("deleteme"), 50, 0).unwrap().len(), 0);
+    }
+
+    #[test]
+    fn to_operator_matches_after_store_recipients() {
+        let db = Database::open_in_memory().unwrap();
+        let acc = make_account(&db, "a@example.com", None);
+        let inbox = make_folder(&db, acc, "INBOX", FolderType::Inbox);
+        insert_headers(&db, inbox, &[header(1, "No keyword in subject", "sender@example.com", false)]).unwrap();
+        let id = message_id_for(&db, inbox, 1);
+
+        assert_eq!(search(&db, &parse_query("to:alice"), 50, 0).unwrap().len(), 0);
+
+        store_recipients(&db, id, &["alice@example.com".into()], &[]).unwrap();
+        reindex_message(&db, id).unwrap();
+
+        assert_eq!(search(&db, &parse_query("to:alice"), 50, 0).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn deleted_message_excluded_from_search() {
+        let db = Database::open_in_memory().unwrap();
+        let acc = make_account(&db, "a@example.com", None);
+        let inbox = make_folder(&db, acc, "INBOX", FolderType::Inbox);
+        insert_headers(&db, inbox, &[
+            header(1, "findme deleted", "a@example.com", false),
+            header(2, "findme alive", "a@example.com", false),
+        ]).unwrap();
+        let deleted_id = message_id_for(&db, inbox, 1);
+        {
+            let conn = db.conn();
+            conn.execute("UPDATE messages SET deleted = 1 WHERE id = ?1", params![deleted_id]).unwrap();
+        }
+        let rows = search(&db, &parse_query("findme"), 50, 0).unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].subject, "findme alive");
     }
 
     #[test]

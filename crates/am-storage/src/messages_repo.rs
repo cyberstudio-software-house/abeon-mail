@@ -276,6 +276,25 @@ pub fn message_uid(db: &Database, message_id: i64) -> Result<(i64, i64), Storage
     })
 }
 
+pub fn store_recipients(
+    db: &Database,
+    message_id: i64,
+    to_addresses: &[String],
+    cc_addresses: &[String],
+) -> Result<(), StorageError> {
+    let to_json = serde_json::to_string(to_addresses).unwrap_or_else(|_| "[]".to_string());
+    let cc_json = serde_json::to_string(cc_addresses).unwrap_or_else(|_| "[]".to_string());
+    let conn = db.conn();
+    let changed = conn.execute(
+        "UPDATE messages SET to_addresses = ?2, cc_addresses = ?3 WHERE id = ?1",
+        params![message_id, to_json, cc_json],
+    )?;
+    if changed == 0 {
+        return Err(StorageError::NotFound);
+    }
+    Ok(())
+}
+
 pub fn backfill_body_meta(
     db: &Database,
     message_id: i64,
@@ -696,6 +715,23 @@ mod tests {
         let deleted = delete_by_uids(&db, drafts_folder_id, &uids_to_delete).unwrap();
         assert_eq!(deleted, 1);
         assert!(drafts_repo::get_draft(&db, draft_id).is_ok());
+    }
+
+    #[test]
+    fn store_recipients_persists_to_and_cc() {
+        let db = Database::open_in_memory().unwrap();
+        let folder_id = setup(&db);
+        insert_headers(&db, folder_id, &[make_header(1, 1000)]).unwrap();
+        let msg = list_by_folder(&db, folder_id, 1, 0).unwrap().into_iter().next().unwrap();
+        store_recipients(&db, msg.id, &["alice@example.com".to_string()], &[]).unwrap();
+        let conn = db.conn();
+        let to_json: String = conn.query_row(
+            "SELECT to_addresses FROM messages WHERE id = ?1",
+            params![msg.id],
+            |r| r.get(0),
+        ).unwrap();
+        let to_vec: Vec<String> = serde_json::from_str(&to_json).unwrap();
+        assert_eq!(to_vec, vec!["alice@example.com"]);
     }
 
     #[test]

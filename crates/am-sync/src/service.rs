@@ -338,6 +338,7 @@ pub async fn get_or_fetch_body(db: &Database, message_id: i64, creds: &dyn Crede
         !parsed.attachment_names.is_empty(),
     )?;
     am_storage::attachments_repo::replace_for_message(db, message_id, &parsed.attachment_names)?;
+    messages_repo::store_recipients(db, message_id, &parsed.to, &parsed.cc)?;
     am_storage::search_repo::reindex_message(db, message_id)?;
     Ok(body)
 }
