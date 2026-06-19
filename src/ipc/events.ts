@@ -1,6 +1,19 @@
 import { useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { events } from "./bindings";
+import { getCurrentWindow } from "@tauri-apps/api/window";
+import { isPermissionGranted, sendNotification } from "@tauri-apps/plugin-notification";
+import { commands, events } from "./bindings";
+import { useUiStore } from "../app/store";
+
+async function maybeNotifyNewMail(payload: { folder_id: number; count: number }) {
+  if (!useUiStore.getState().notificationsEnabled) return;
+  if (await getCurrentWindow().isFocused()) return;
+  if (!(await isPermissionGranted())) return;
+  const res = await commands.buildNewMailNotification(payload.folder_id, payload.count);
+  if (res.status === "ok" && res.data) {
+    sendNotification({ title: res.data.title, body: res.data.body });
+  }
+}
 
 export function useSyncEvents() {
   const queryClient = useQueryClient();
@@ -20,6 +33,8 @@ export function useSyncEvents() {
       queryClient.invalidateQueries({ queryKey: ["messages", folder_id] });
       queryClient.invalidateQueries({ queryKey: ["threads"] });
       queryClient.invalidateQueries({ queryKey: ["smart"] });
+      void maybeNotifyNewMail(event.payload);
+      void commands.refreshUnreadBadge(useUiStore.getState().badgeEnabled);
     });
 
     const mailboxPromise = events.mailboxChanged.listen((event) => {
@@ -28,6 +43,7 @@ export function useSyncEvents() {
       queryClient.invalidateQueries({ queryKey: ["messages", folder_id] });
       queryClient.invalidateQueries({ queryKey: ["threads"] });
       queryClient.invalidateQueries({ queryKey: ["smart"] });
+      void commands.refreshUnreadBadge(useUiStore.getState().badgeEnabled);
     });
 
     const authChangedPromise = events.accountAuthChanged.listen(() => {
@@ -39,6 +55,7 @@ export function useSyncEvents() {
       queryClient.invalidateQueries({ queryKey: ["messages"] });
       queryClient.invalidateQueries({ queryKey: ["threads"] });
       queryClient.invalidateQueries({ queryKey: ["smart"] });
+      void commands.refreshUnreadBadge(useUiStore.getState().badgeEnabled);
     });
 
     return () => {

@@ -9,12 +9,13 @@ use am_core::{
     folder::Folder,
     label::Label,
     message::{MessageBody, MessageFlag, MessageHeader},
+    notification::NotificationContent,
     outgoing::{OutgoingAttachment, OutgoingMessage},
     signature::Signature,
     smart::{SmartFolderKind, SmartMessageRow},
     thread::ThreadSummary,
 };
-use am_storage::{accounts_repo, drafts_repo, folders_repo, labels_repo, messages_repo, settings_repo, signatures_repo, smart_repo};
+use am_storage::{accounts_repo, drafts_repo, folders_repo, labels_repo, messages_repo, notifications_repo, settings_repo, signatures_repo, smart_repo};
 use tauri_plugin_dialog::DialogExt;
 
 use crate::state::AppState;
@@ -670,6 +671,38 @@ pub fn unsnooze_messages(
     message_ids: Vec<i64>,
 ) -> Result<(), String> {
     am_storage::snooze_repo::unsnooze_messages(&state.db, &message_ids).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn build_new_mail_notification(
+    state: tauri::State<'_, AppState>,
+    folder_id: i64,
+    count: i64,
+) -> Result<Option<NotificationContent>, String> {
+    notifications_repo::build_new_mail_notification(&state.db, folder_id, count)
+        .map_err(|_| "Failed to build notification".to_string())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn refresh_unread_badge(
+    state: tauri::State<'_, AppState>,
+    app: tauri::AppHandle,
+    enabled: bool,
+) -> Result<(), String> {
+    use tauri::Manager;
+    let count = if enabled {
+        notifications_repo::count_inbox_unread(&state.db)
+            .map_err(|_| "Failed to count unread".to_string())?
+    } else {
+        0
+    };
+    if let Some(window) = app.get_webview_window("main") {
+        let badge = if count > 0 { Some(count) } else { None };
+        let _ = window.set_badge_count(badge);
+    }
+    Ok(())
 }
 
 async fn accept_redirect(

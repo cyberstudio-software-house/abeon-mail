@@ -3,6 +3,7 @@ pub mod error;
 pub mod folder;
 pub mod label;
 pub mod message;
+pub mod notification;
 pub mod outgoing;
 pub mod search;
 pub mod signature;

@@ -7,6 +7,7 @@ import {
   type AppearanceFields,
   type Density,
 } from "../shared/appearance/appearance";
+import { DEFAULT_NOTIFICATIONS } from "../shared/notifications/notifications";
 
 export type { Density };
 
@@ -28,6 +29,8 @@ export type UiState = {
   density: Density;
   showPreview: boolean;
   showAvatars: boolean;
+  notificationsEnabled: boolean;
+  badgeEnabled: boolean;
   settingsOpen: boolean;
   composer: ComposerState;
   visibleMessageIds: number[];
@@ -58,6 +61,9 @@ export type UiState = {
   setShowPreview: (value: boolean) => void;
   setShowAvatars: (value: boolean) => void;
   hydrateAppearance: (partial: Partial<AppearanceFields>) => void;
+  setNotificationsEnabled: (value: boolean) => void;
+  setBadgeEnabled: (value: boolean) => void;
+  hydrateNotifications: (partial: Partial<{ notificationsEnabled: boolean; badgeEnabled: boolean }>) => void;
   openSettings: () => void;
   closeSettings: () => void;
   openComposer: (draftId: number | null, prefill?: OutgoingMessage | null) => void;
@@ -99,6 +105,8 @@ export const useUiStore = create<UiState>((set) => ({
   density: DEFAULT_APPEARANCE.density,
   showPreview: DEFAULT_APPEARANCE.showPreview,
   showAvatars: DEFAULT_APPEARANCE.showAvatars,
+  notificationsEnabled: DEFAULT_NOTIFICATIONS.notificationsEnabled,
+  badgeEnabled: DEFAULT_NOTIFICATIONS.badgeEnabled,
   settingsOpen: false,
   composer: { open: false, draftId: null, prefill: null },
   visibleMessageIds: [],
@@ -140,6 +148,9 @@ export const useUiStore = create<UiState>((set) => ({
   setShowPreview: (showPreview) => set({ showPreview }),
   setShowAvatars: (showAvatars) => set({ showAvatars }),
   hydrateAppearance: (partial) => set(partial),
+  setNotificationsEnabled: (notificationsEnabled) => set({ notificationsEnabled }),
+  setBadgeEnabled: (badgeEnabled) => set({ badgeEnabled }),
+  hydrateNotifications: (partial) => set(partial),
   openSettings: () => set({ settingsOpen: true }),
   closeSettings: () => set({ settingsOpen: false }),
   openComposer: (draftId, prefill = null) =>
