@@ -5,17 +5,15 @@ import { useUiStore } from "../../app/store";
 import { Avatar } from "../../shared/appearance/Avatar";
 import { MessageBodyView } from "./MessageBodyView";
 import { LabelChips } from "../labels/LabelChips";
+import { formatMessageTime } from "../../shared/datetime/datetime";
 import "./reader.css";
-
-function formatTime(epochSeconds: number): string {
-  return new Date(epochSeconds * 1000).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
-}
 
 export function ConversationView({ threadId }: { threadId: number }) {
   const { data: messages, isLoading } = useThreadMessages(threadId);
   const openComposer = useUiStore((s) => s.openComposer);
   const openLabelPicker = useUiStore((s) => s.openLabelPicker);
   const openSnoozePicker = useUiStore((s) => s.openSnoozePicker);
+  const timeFormat = useUiStore((s) => s.timeFormat);
   const startReplyMutation = useStartReply();
   const setFlag = useSetFlag();
   const setReplyTargetId = useUiStore((s) => s.setReplyTargetId);
@@ -105,7 +103,7 @@ export function ConversationView({ threadId }: { threadId: number }) {
                 <div className="reader__sender-info">
                   <div className="reader__sender-name">{m.from_name || m.from_address}</div>
                 </div>
-                <span className="reader__sender-time">{formatTime(m.date)}</span>
+                <span className="reader__sender-time">{formatMessageTime(m.date, timeFormat)}</span>
               </div>
               <MessageBodyView messageId={m.id} shouldMarkSeen={m.id === last.id} />
             </div>

@@ -8,8 +8,18 @@ import {
   type Density,
 } from "../shared/appearance/appearance";
 import { DEFAULT_NOTIFICATIONS } from "../shared/notifications/notifications";
+import {
+  DEFAULT_GENERAL,
+  type GeneralFields,
+  type TimeFormat,
+} from "../shared/general/general";
+import {
+  DEFAULT_SNOOZE_CONFIG,
+  type SnoozeConfig,
+} from "../shared/snooze/snooze";
 
 export type { Density };
+export type { TimeFormat };
 
 type ComposerState = {
   open: boolean;
@@ -31,6 +41,13 @@ export type UiState = {
   showAvatars: boolean;
   notificationsEnabled: boolean;
   badgeEnabled: boolean;
+  defaultAccountId: string;
+  timeFormat: TimeFormat;
+  generalHydrated: boolean;
+  snoozeMorningHour: number;
+  snoozeLaterTodayHours: number;
+  snoozeWeekendDay: number;
+  snoozeWeekStartDay: number;
   settingsOpen: boolean;
   composer: ComposerState;
   visibleMessageIds: number[];
@@ -64,6 +81,14 @@ export type UiState = {
   setNotificationsEnabled: (value: boolean) => void;
   setBadgeEnabled: (value: boolean) => void;
   hydrateNotifications: (partial: Partial<{ notificationsEnabled: boolean; badgeEnabled: boolean }>) => void;
+  setDefaultAccountId: (value: string) => void;
+  setTimeFormat: (value: TimeFormat) => void;
+  hydrateGeneral: (partial: Partial<GeneralFields>) => void;
+  setSnoozeMorningHour: (value: number) => void;
+  setSnoozeLaterTodayHours: (value: number) => void;
+  setSnoozeWeekendDay: (value: number) => void;
+  setSnoozeWeekStartDay: (value: number) => void;
+  hydrateSnooze: (partial: Partial<SnoozeConfig>) => void;
   openSettings: () => void;
   closeSettings: () => void;
   openComposer: (draftId: number | null, prefill?: OutgoingMessage | null) => void;
@@ -107,6 +132,13 @@ export const useUiStore = create<UiState>((set) => ({
   showAvatars: DEFAULT_APPEARANCE.showAvatars,
   notificationsEnabled: DEFAULT_NOTIFICATIONS.notificationsEnabled,
   badgeEnabled: DEFAULT_NOTIFICATIONS.badgeEnabled,
+  defaultAccountId: DEFAULT_GENERAL.defaultAccountId,
+  timeFormat: DEFAULT_GENERAL.timeFormat,
+  generalHydrated: false,
+  snoozeMorningHour: DEFAULT_SNOOZE_CONFIG.morningHour,
+  snoozeLaterTodayHours: DEFAULT_SNOOZE_CONFIG.laterTodayHours,
+  snoozeWeekendDay: DEFAULT_SNOOZE_CONFIG.weekendDay,
+  snoozeWeekStartDay: DEFAULT_SNOOZE_CONFIG.weekStartDay,
   settingsOpen: false,
   composer: { open: false, draftId: null, prefill: null },
   visibleMessageIds: [],
@@ -151,6 +183,20 @@ export const useUiStore = create<UiState>((set) => ({
   setNotificationsEnabled: (notificationsEnabled) => set({ notificationsEnabled }),
   setBadgeEnabled: (badgeEnabled) => set({ badgeEnabled }),
   hydrateNotifications: (partial) => set(partial),
+  setDefaultAccountId: (defaultAccountId) => set({ defaultAccountId }),
+  setTimeFormat: (timeFormat) => set({ timeFormat }),
+  hydrateGeneral: (partial) => set({ ...partial, generalHydrated: true }),
+  setSnoozeMorningHour: (snoozeMorningHour) => set({ snoozeMorningHour }),
+  setSnoozeLaterTodayHours: (snoozeLaterTodayHours) => set({ snoozeLaterTodayHours }),
+  setSnoozeWeekendDay: (snoozeWeekendDay) => set({ snoozeWeekendDay }),
+  setSnoozeWeekStartDay: (snoozeWeekStartDay) => set({ snoozeWeekStartDay }),
+  hydrateSnooze: (partial) =>
+    set((s) => ({
+      snoozeMorningHour: partial.morningHour ?? s.snoozeMorningHour,
+      snoozeLaterTodayHours: partial.laterTodayHours ?? s.snoozeLaterTodayHours,
+      snoozeWeekendDay: partial.weekendDay ?? s.snoozeWeekendDay,
+      snoozeWeekStartDay: partial.weekStartDay ?? s.snoozeWeekStartDay,
+    })),
   openSettings: () => set({ settingsOpen: true }),
   closeSettings: () => set({ settingsOpen: false }),
   openComposer: (draftId, prefill = null) =>

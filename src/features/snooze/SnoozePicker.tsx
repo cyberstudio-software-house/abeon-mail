@@ -9,6 +9,10 @@ export function SnoozePicker() {
   const open = useUiStore((s) => s.snoozePickerOpen);
   const targetIds = useUiStore((s) => s.snoozePickerTargetIds);
   const closeSnoozePicker = useUiStore((s) => s.closeSnoozePicker);
+  const morningHour = useUiStore((s) => s.snoozeMorningHour);
+  const laterTodayHours = useUiStore((s) => s.snoozeLaterTodayHours);
+  const weekendDay = useUiStore((s) => s.snoozeWeekendDay);
+  const weekStartDay = useUiStore((s) => s.snoozeWeekStartDay);
   const snooze = useSnooze();
   const [custom, setCustom] = useState("");
 
@@ -24,7 +28,7 @@ export function SnoozePicker() {
   }
 
   function applyPreset(kind: SnoozePresetKind) {
-    apply(presetTimestamp(kind, new Date()));
+    apply(presetTimestamp(kind, new Date(), { morningHour, laterTodayHours, weekendDay, weekStartDay }));
   }
 
   function applyCustom() {

@@ -234,6 +234,21 @@ function setupStore(
       closeLabelPicker: mockCloseLabelPicker,
       openSnoozePicker: mockOpenSnoozePicker,
       closeSnoozePicker: mockCloseSnoozePicker,
+      defaultAccountId: "",
+      timeFormat: "system",
+      generalHydrated: true,
+      setDefaultAccountId: vi.fn(),
+      setTimeFormat: vi.fn(),
+      hydrateGeneral: vi.fn(),
+      snoozeMorningHour: 8,
+      snoozeLaterTodayHours: 3,
+      snoozeWeekendDay: 6,
+      snoozeWeekStartDay: 1,
+      setSnoozeMorningHour: vi.fn(),
+      setSnoozeLaterTodayHours: vi.fn(),
+      setSnoozeWeekendDay: vi.fn(),
+      setSnoozeWeekStartDay: vi.fn(),
+      hydrateSnooze: vi.fn(),
     };
     return selector ? selector(state) : state;
   });

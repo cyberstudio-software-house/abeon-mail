@@ -47,7 +47,7 @@ describe("SettingsOverlay", () => {
 
   it("switching to a non-appearance section shows a placeholder", () => {
     renderOverlay();
-    fireEvent.click(screen.getByRole("button", { name: "General" }));
+    fireEvent.click(screen.getByRole("button", { name: "Accounts" }));
     expect(screen.getByText(/coming soon/i)).toBeTruthy();
   });
 
