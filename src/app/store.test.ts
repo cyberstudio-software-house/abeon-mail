@@ -22,6 +22,9 @@ beforeEach(() => {
     cheatSheetOpen: false,
     shortcutProfile: "default",
     shortcutOverrides: {},
+    searchQuery: "",
+    searchActive: false,
+    focusSearch: null,
   });
 });
 
@@ -134,5 +137,41 @@ describe("shortcuts store slice", () => {
     const s = useUiStore.getState();
     expect(s.shortcutProfile).toBe("vim");
     expect(s.shortcutOverrides.reply).toBeNull();
+  });
+});
+
+describe("search store slice", () => {
+  beforeEach(() => {
+    useUiStore.setState({
+      searchQuery: "",
+      searchActive: false,
+      selectedFolderId: null,
+      selectedSmartFolder: null,
+    });
+  });
+
+  it("setSearchQuery activates search for non-empty input", () => {
+    useUiStore.getState().setSearchQuery("hello");
+    expect(useUiStore.getState().searchQuery).toBe("hello");
+    expect(useUiStore.getState().searchActive).toBe(true);
+  });
+
+  it("setSearchQuery with blank input deactivates search", () => {
+    useUiStore.getState().setSearchQuery("   ");
+    expect(useUiStore.getState().searchActive).toBe(false);
+  });
+
+  it("clearSearch resets query and active flag", () => {
+    useUiStore.getState().setSearchQuery("hello");
+    useUiStore.getState().clearSearch();
+    expect(useUiStore.getState().searchQuery).toBe("");
+    expect(useUiStore.getState().searchActive).toBe(false);
+  });
+
+  it("selecting a folder clears active search", () => {
+    useUiStore.getState().setSearchQuery("hello");
+    useUiStore.getState().setSelectedFolderId(5);
+    expect(useUiStore.getState().searchActive).toBe(false);
+    expect(useUiStore.getState().searchQuery).toBe("");
   });
 });

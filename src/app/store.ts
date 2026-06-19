@@ -37,6 +37,9 @@ export type UiState = {
   cheatSheetOpen: boolean;
   shortcutProfile: Profile;
   shortcutOverrides: Record<string, string | null>;
+  searchQuery: string;
+  searchActive: boolean;
+  focusSearch: (() => void) | null;
   setSelectedAccountId: (id: number | null) => void;
   setSelectedFolderId: (id: number | null) => void;
   setSelectedMessageId: (id: number | null) => void;
@@ -63,6 +66,9 @@ export type UiState = {
   setShortcutOverride: (id: string, binding: string | null) => void;
   resetShortcut: (id: string) => void;
   hydrateShortcuts: (partial: { profile?: Profile; overrides?: Record<string, string | null> }) => void;
+  setSearchQuery: (q: string) => void;
+  clearSearch: () => void;
+  setFocusSearch: (fn: (() => void) | null) => void;
 };
 
 export const useUiStore = create<UiState>((set) => ({
@@ -86,10 +92,13 @@ export const useUiStore = create<UiState>((set) => ({
   cheatSheetOpen: false,
   shortcutProfile: "default",
   shortcutOverrides: {},
+  searchQuery: "",
+  searchActive: false,
+  focusSearch: null,
   setSelectedAccountId: (id) =>
-    set({ selectedAccountId: id, selectedSmartFolder: null }),
+    set({ selectedAccountId: id, selectedSmartFolder: null, searchQuery: "", searchActive: false }),
   setSelectedFolderId: (id) =>
-    set({ selectedFolderId: id, selectedSmartFolder: null }),
+    set({ selectedFolderId: id, selectedSmartFolder: null, searchQuery: "", searchActive: false }),
   setSelectedMessageId: (id) => set({ selectedMessageId: id }),
   setSelectedThreadId: (id) => set({ selectedThreadId: id }),
   setSelectedSmartFolder: (kind) =>
@@ -98,6 +107,8 @@ export const useUiStore = create<UiState>((set) => ({
       selectedAccountId: null,
       selectedFolderId: null,
       selectedThreadId: null,
+      searchQuery: "",
+      searchActive: false,
     }),
   setTheme: (theme) => set({ theme }),
   setAccent: (accent) => set({ accent }),
@@ -132,4 +143,7 @@ export const useUiStore = create<UiState>((set) => ({
       shortcutProfile: partial.profile ?? s.shortcutProfile,
       shortcutOverrides: partial.overrides ?? s.shortcutOverrides,
     })),
+  setSearchQuery: (q) => set({ searchQuery: q, searchActive: q.trim().length > 0 }),
+  clearSearch: () => set({ searchQuery: "", searchActive: false }),
+  setFocusSearch: (fn) => set({ focusSearch: fn }),
 }));

@@ -1,4 +1,4 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { commands } from "./bindings";
 import type { Account, Endpoints, MessageFlag, OutgoingMessage, SmartFolderKind, SmartMessageRow } from "./bindings";
 import { useUiStore } from "../app/store";
@@ -159,6 +159,15 @@ export function useSmartFolder(kind: SmartFolderKind | null) {
     queryKey: ["smart", kind],
     queryFn: () => commands.listSmartFolder(kind!, 100, 0).then(unwrap),
     enabled: kind != null,
+  });
+}
+
+export function useSearch(query: string) {
+  return useQuery<SmartMessageRow[]>({
+    queryKey: ["search", query],
+    queryFn: () => commands.searchMessages(query, 100, 0).then(unwrap),
+    enabled: query.trim().length > 0,
+    placeholderData: keepPreviousData,
   });
 }
 
