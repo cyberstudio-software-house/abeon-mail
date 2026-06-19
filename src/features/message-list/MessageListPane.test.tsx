@@ -10,6 +10,8 @@ vi.mock("../../ipc/queries", () => ({
   useThreads: vi.fn(),
   useSmartFolder: vi.fn(),
   useSearch: vi.fn(),
+  useMessagesByLabel: () => ({ data: undefined }),
+  useLabelsForMessages: () => ({ data: undefined }),
 }));
 
 vi.mock("../../app/store", () => ({

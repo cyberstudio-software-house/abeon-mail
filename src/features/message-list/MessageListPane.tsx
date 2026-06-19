@@ -1,10 +1,11 @@
 import { useRef, useMemo, useEffect } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { PencilLine, ChevronDown } from "lucide-react";
-import { useThreads, useSmartFolder, useSearch } from "../../ipc/queries";
+import { useThreads, useSmartFolder, useSearch, useLabelsForMessages } from "../../ipc/queries";
 import { useDebouncedValue } from "../../shared/hooks/useDebouncedValue";
 import { useUiStore, type Density } from "../../app/store";
-import type { ThreadSummary, SmartMessageRow } from "../../ipc/bindings";
+import type { ThreadSummary, SmartMessageRow, Label } from "../../ipc/bindings";
+import { LabelChips } from "../labels/LabelChips";
 import { Avatar } from "../../shared/appearance/Avatar";
 import { groupIntoEntries, type ListEntry } from "./grouping";
 import { extractTerms, Highlight } from "./highlight";
@@ -111,6 +112,7 @@ function SmartRow({
   showSnippet,
   onSelect,
   highlightTerms,
+  labels,
 }: {
   row: SmartMessageRow;
   isSelected: boolean;
@@ -119,6 +121,7 @@ function SmartRow({
   showSnippet: boolean;
   onSelect: (id: number) => void;
   highlightTerms?: string[];
+  labels?: Label[];
 }) {
   const senderLabel = row.from_name ?? row.from_address;
 
@@ -170,6 +173,7 @@ function SmartRow({
                 📎
               </span>
             )}
+            {labels && labels.length > 0 && <LabelChips labels={labels} />}
           </div>
         </div>
         {showSnippet && (
@@ -227,6 +231,21 @@ export function MessageListPane() {
       ? selectedSmartFolder != null
       : selectedFolderId != null;
   const highlightTerms = useMemo(() => extractTerms(debouncedQuery), [debouncedQuery]);
+
+  const flatMessageIds = useMemo(
+    () => (isFlatMode ? (rawItems as SmartMessageRow[]).map((r) => r.message_id) : []),
+    [rawItems, isFlatMode]
+  );
+  const { data: labelPairs } = useLabelsForMessages(flatMessageIds);
+  const labelsByMessage = useMemo(() => {
+    const map = new Map<number, Label[]>();
+    for (const [mid, label] of labelPairs ?? []) {
+      const arr = map.get(mid) ?? [];
+      arr.push(label);
+      map.set(mid, arr);
+    }
+    return map;
+  }, [labelPairs]);
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const rowHeight = ROW_HEIGHT[density] ?? ROW_HEIGHT.comfortable;
@@ -357,6 +376,7 @@ export function MessageListPane() {
                       showSnippet={showSnippet}
                       onSelect={setSelectedMessageId}
                       highlightTerms={searchActive ? highlightTerms : undefined}
+                      labels={labelsByMessage.get(row.message_id)}
                     />
                   </div>
                 );
