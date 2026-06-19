@@ -130,6 +130,7 @@ const sampleSmartRows: SmartMessageRow[] = [
     flagged: false,
     has_attachments: false,
     snippet: "Smart preview",
+    snooze_wake_at: null,
   },
   {
     message_id: 101,
@@ -144,6 +145,7 @@ const sampleSmartRows: SmartMessageRow[] = [
     flagged: false,
     has_attachments: false,
     snippet: "Another preview",
+    snooze_wake_at: null,
   },
 ];
 
