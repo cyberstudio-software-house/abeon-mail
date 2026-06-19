@@ -28,3 +28,4 @@ exports.Paperclip = Icon;
 exports.Tag = Icon;
 exports.Plus = Icon;
 exports.Check = Icon;
+exports.Calendar = Icon;

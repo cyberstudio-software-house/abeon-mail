@@ -9,6 +9,7 @@ import { useKeyboardEngine } from "./useKeyboardEngine";
 import { CommandPalette } from "./CommandPalette";
 import { CheatSheet } from "./CheatSheet";
 import { LabelPicker } from "../labels/LabelPicker";
+import { SnoozePicker } from "../snooze/SnoozePicker";
 
 export type ShortcutsContextValue = {
   profile: Profile;
@@ -180,6 +181,7 @@ export function ShortcutsProvider({ children }: { children: ReactNode }) {
       <CommandPalette />
       <CheatSheet />
       <LabelPicker />
+      <SnoozePicker />
     </ShortcutsContext.Provider>
   );
 }
