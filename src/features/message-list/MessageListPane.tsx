@@ -1,7 +1,7 @@
 import { useRef, useMemo, useEffect } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { PencilLine, ChevronDown } from "lucide-react";
-import { useThreads, useSmartFolder, useSearch, useLabelsForMessages } from "../../ipc/queries";
+import { useThreads, useSmartFolder, useSearch, useLabelsForMessages, useMessagesByLabel, useLabels } from "../../ipc/queries";
 import { useDebouncedValue } from "../../shared/hooks/useDebouncedValue";
 import { useUiStore, type Density } from "../../app/store";
 import type { ThreadSummary, SmartMessageRow, Label } from "../../ipc/bindings";
@@ -211,25 +211,40 @@ export function MessageListPane() {
   const searchActive = useUiStore((s) => s.searchActive);
   const searchQuery = useUiStore((s) => s.searchQuery);
   const clearSearch = useUiStore((s) => s.clearSearch);
+  const selectedLabelId = useUiStore((s) => s.selectedLabelId);
   const debouncedQuery = useDebouncedValue(searchQuery, 200);
 
   const { data: threads, isLoading: threadsLoading } = useThreads(selectedFolderId);
   const { data: smartRows, isLoading: smartLoading } = useSmartFolder(selectedSmartFolder);
   const { data: searchRows, isLoading: searchLoading } = useSearch(debouncedQuery);
+  const { data: labelRows, isLoading: labelLoading } = useMessagesByLabel(selectedLabelId);
+  const { data: allLabels } = useLabels();
 
-  const isSmartMode = !searchActive && selectedSmartFolder != null;
-  const isFlatMode = searchActive || isSmartMode;
-  const isLoading = searchActive ? searchLoading : isSmartMode ? smartLoading : threadsLoading;
+  const isLabelMode = !searchActive && selectedLabelId != null;
+  const isSmartMode = !searchActive && !isLabelMode && selectedSmartFolder != null;
+  const isFlatMode = searchActive || isLabelMode || isSmartMode;
+  const isLoading = searchActive
+    ? searchLoading
+    : isLabelMode
+      ? labelLoading
+      : isSmartMode
+        ? smartLoading
+        : threadsLoading;
   const rawItems = searchActive
     ? (searchRows ?? [])
-    : isSmartMode
-      ? (smartRows ?? [])
-      : (threads ?? []);
+    : isLabelMode
+      ? (labelRows ?? [])
+      : isSmartMode
+        ? (smartRows ?? [])
+        : (threads ?? []);
   const hasSelection = searchActive
     ? true
-    : isSmartMode
-      ? selectedSmartFolder != null
-      : selectedFolderId != null;
+    : isLabelMode
+      ? selectedLabelId != null
+      : isSmartMode
+        ? selectedSmartFolder != null
+        : selectedFolderId != null;
+  const activeLabel = allLabels?.find((l) => l.id === selectedLabelId);
   const highlightTerms = useMemo(() => extractTerms(debouncedQuery), [debouncedQuery]);
 
   const flatMessageIds = useMemo(
@@ -309,6 +324,14 @@ export function MessageListPane() {
           >
             ✕
           </button>
+        </div>
+      )}
+
+      {isLabelMode && activeLabel && (
+        <div className="message-list__search-banner" role="status">
+          <span>
+            Label: {activeLabel.name} ({rawItems.length})
+          </span>
         </div>
       )}
 

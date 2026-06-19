@@ -10,8 +10,12 @@ vi.mock("../../ipc/queries", () => ({
   useThreads: vi.fn(),
   useSmartFolder: vi.fn(),
   useSearch: vi.fn(),
-  useMessagesByLabel: () => ({ data: undefined }),
-  useLabelsForMessages: () => ({ data: undefined }),
+  useMessagesByLabel: (id: number | null) =>
+    id === 1
+      ? { data: [{ message_id: 99, account_id: 1, folder_id: 1, account_color: "#4f46e5", from_address: "a@b.com", from_name: "A", subject: "Tagged", date: 1000, seen: true, flagged: false, has_attachments: false, snippet: "" }], isLoading: false }
+      : { data: undefined, isLoading: false },
+  useLabels: () => ({ data: [{ id: 1, name: "Work", color: "#4f46e5" }] }),
+  useLabelsForMessages: () => ({ data: [] }),
 }));
 
 vi.mock("../../app/store", () => ({
@@ -136,7 +140,8 @@ function setupStore(
   density: Density = "comfortable",
   selectedSmartFolder: UiState["selectedSmartFolder"] = null,
   searchActive = false,
-  searchQuery = ""
+  searchQuery = "",
+  selectedLabelId: number | null = null
 ) {
   mockUseUiStore.mockImplementation((selector: (s: UiState) => unknown) => {
     const state: UiState = {
@@ -145,6 +150,7 @@ function setupStore(
       selectedMessageId: null,
       selectedThreadId: null,
       selectedSmartFolder,
+      selectedLabelId,
       theme: "auto",
       accent: "#4f46e5",
       density,
@@ -423,6 +429,24 @@ describe("MessageListPane", () => {
     const newestEl = screen.getByText("Newest", { exact: false });
     const ariaDisabledEl = newestEl.closest("[aria-disabled='true']");
     expect(ariaDisabledEl).toBeTruthy();
+  });
+
+  it("renders label-view messages when a label is selected", () => {
+    setupStore(null, "comfortable", null, false, "", 1);
+    mockUseThreads.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isError: false,
+      error: null,
+    } as unknown as ReturnType<typeof useThreads>);
+    mockUseSmartFolder.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isError: false,
+      error: null,
+    } as unknown as ReturnType<typeof useSmartFolder>);
+    const { getByText } = renderPane();
+    expect(getByText(/Label: Work/)).toBeTruthy();
   });
 
   it("shows a results banner and highlighted rows in search mode", () => {
