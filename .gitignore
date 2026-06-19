@@ -9,3 +9,4 @@ target/
 !.env.example
 docs/Google.md
 docs/client_secret_*.json
+src-tauri/.tauri/
