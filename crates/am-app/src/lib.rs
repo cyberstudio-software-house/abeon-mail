@@ -44,6 +44,8 @@ pub fn build_specta_builder() -> Builder<tauri::Wry> {
             commands::list_messages_by_label,
             commands::get_settings,
             commands::set_setting,
+            commands::snooze_messages,
+            commands::unsnooze_messages,
         ])
         .events(collect_events![
             events::SyncProgress,

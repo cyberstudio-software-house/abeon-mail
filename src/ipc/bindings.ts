@@ -41,6 +41,8 @@ export const commands = {
 	listMessagesByLabel: (labelId: number, limit: number, offset: number) => typedError<SmartMessageRow[], string>(__TAURI_INVOKE("list_messages_by_label", { labelId, limit, offset })),
 	getSettings: () => typedError<([string, string])[], string>(__TAURI_INVOKE("get_settings")),
 	setSetting: (key: string, value: string) => typedError<null, string>(__TAURI_INVOKE("set_setting", { key, value })),
+	snoozeMessages: (messageIds: number[], wakeAt: number) => typedError<null, string>(__TAURI_INVOKE("snooze_messages", { messageIds, wakeAt })),
+	unsnoozeMessages: (messageIds: number[]) => typedError<null, string>(__TAURI_INVOKE("unsnooze_messages", { messageIds })),
 };
 
 /** Events */
