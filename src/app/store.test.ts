@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { useUiStore } from "./store";
+import { DEFAULT_SNOOZE_CONFIG } from "../shared/snooze/snooze";
 
 beforeEach(() => {
   useUiStore.setState({
@@ -262,5 +263,32 @@ describe("snooze picker slice", () => {
     useUiStore.getState().closeSnoozePicker();
     expect(useUiStore.getState().snoozePickerOpen).toBe(false);
     expect(useUiStore.getState().snoozePickerTargetIds).toEqual([]);
+  });
+});
+
+describe("hydrateSnooze", () => {
+  beforeEach(() => {
+    useUiStore.setState({
+      snoozeMorningHour: DEFAULT_SNOOZE_CONFIG.morningHour,
+      snoozeLaterTodayHours: DEFAULT_SNOOZE_CONFIG.laterTodayHours,
+      snoozeWeekendDay: DEFAULT_SNOOZE_CONFIG.weekendDay,
+      snoozeWeekStartDay: DEFAULT_SNOOZE_CONFIG.weekStartDay,
+    });
+  });
+
+  it("maps SnoozeConfig keys onto the prefixed store fields", () => {
+    useUiStore.getState().hydrateSnooze({ morningHour: 7, weekStartDay: 2 });
+    const s = useUiStore.getState();
+    expect(s.snoozeMorningHour).toBe(7);
+    expect(s.snoozeWeekStartDay).toBe(2);
+    expect(s.snoozeLaterTodayHours).toBe(DEFAULT_SNOOZE_CONFIG.laterTodayHours);
+    expect(s.snoozeWeekendDay).toBe(DEFAULT_SNOOZE_CONFIG.weekendDay);
+  });
+
+  it("leaves all fields unchanged for an empty partial", () => {
+    useUiStore.getState().hydrateSnooze({});
+    const s = useUiStore.getState();
+    expect(s.snoozeMorningHour).toBe(DEFAULT_SNOOZE_CONFIG.morningHour);
+    expect(s.snoozeWeekStartDay).toBe(DEFAULT_SNOOZE_CONFIG.weekStartDay);
   });
 });

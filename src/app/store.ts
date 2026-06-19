@@ -190,7 +190,13 @@ export const useUiStore = create<UiState>((set) => ({
   setSnoozeLaterTodayHours: (snoozeLaterTodayHours) => set({ snoozeLaterTodayHours }),
   setSnoozeWeekendDay: (snoozeWeekendDay) => set({ snoozeWeekendDay }),
   setSnoozeWeekStartDay: (snoozeWeekStartDay) => set({ snoozeWeekStartDay }),
-  hydrateSnooze: (partial) => set(partial as Partial<UiState>),
+  hydrateSnooze: (partial) =>
+    set((s) => ({
+      snoozeMorningHour: partial.morningHour ?? s.snoozeMorningHour,
+      snoozeLaterTodayHours: partial.laterTodayHours ?? s.snoozeLaterTodayHours,
+      snoozeWeekendDay: partial.weekendDay ?? s.snoozeWeekendDay,
+      snoozeWeekStartDay: partial.weekStartDay ?? s.snoozeWeekStartDay,
+    })),
   openSettings: () => set({ settingsOpen: true }),
   closeSettings: () => set({ settingsOpen: false }),
   openComposer: (draftId, prefill = null) =>
