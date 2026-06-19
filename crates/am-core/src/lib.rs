@@ -5,6 +5,7 @@ pub mod label;
 pub mod message;
 pub mod notification;
 pub mod outgoing;
+pub mod rule;
 pub mod search;
 pub mod signature;
 pub mod smart;
