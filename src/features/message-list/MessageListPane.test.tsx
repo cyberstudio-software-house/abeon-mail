@@ -12,6 +12,10 @@ const mockClearSelection = vi.fn();
 const mockSelectAll = vi.fn();
 const mockOpenLabelPicker = vi.fn();
 const mockCloseLabelPicker = vi.fn();
+const mockOpenSnoozePicker = vi.fn();
+const mockCloseSnoozePicker = vi.fn();
+
+const mockUnsnooze = { mutate: vi.fn() };
 
 vi.mock("../../ipc/queries", () => ({
   useThreads: vi.fn(),
@@ -23,6 +27,7 @@ vi.mock("../../ipc/queries", () => ({
       : { data: undefined, isLoading: false },
   useLabels: () => ({ data: [{ id: 1, name: "Work", color: "#4f46e5" }] }),
   useLabelsForMessages: () => ({ data: [] }),
+  useUnsnooze: () => mockUnsnooze,
 }));
 
 vi.mock("../../app/store", () => ({
@@ -197,6 +202,8 @@ function setupStore(
       selectedMessageIds,
       labelPickerOpen: false,
       labelPickerTargetIds: [],
+      snoozePickerOpen: false,
+      snoozePickerTargetIds: [],
       setListContext: vi.fn(),
       setReplyTargetId: vi.fn(),
       setComposerSend: vi.fn(),
@@ -218,6 +225,8 @@ function setupStore(
       selectAll: mockSelectAll,
       openLabelPicker: mockOpenLabelPicker,
       closeLabelPicker: mockCloseLabelPicker,
+      openSnoozePicker: mockOpenSnoozePicker,
+      closeSnoozePicker: mockCloseSnoozePicker,
     };
     return selector ? selector(state) : state;
   });
@@ -542,5 +551,72 @@ describe("MessageListPane", () => {
 
     fireEvent.click(getByText("Cancel"));
     expect(mockClearSelection).toHaveBeenCalled();
+  });
+
+  it("selection toolbar shows Snooze in a flat non-snoozed view and opens the picker", () => {
+    setupStore(null, "comfortable", "unread", false, "", null, true, [100]);
+    mockUseThreads.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isError: false,
+      error: null,
+    } as unknown as ReturnType<typeof useThreads>);
+    mockUseSmartFolder.mockReturnValue({
+      data: sampleSmartRows,
+      isLoading: false,
+      isError: false,
+      error: null,
+    } as unknown as ReturnType<typeof useSmartFolder>);
+
+    renderPane();
+
+    const snoozeBtn = screen.getByRole("button", { name: "Snooze" });
+    fireEvent.click(snoozeBtn);
+    expect(mockOpenSnoozePicker).toHaveBeenCalledWith([100]);
+  });
+
+  it("selection toolbar shows Unsnooze in the Snoozed view", () => {
+    setupStore(null, "comfortable", "snoozed", false, "", null, true, [100]);
+    mockUseThreads.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isError: false,
+      error: null,
+    } as unknown as ReturnType<typeof useThreads>);
+    mockUseSmartFolder.mockReturnValue({
+      data: sampleSmartRows,
+      isLoading: false,
+      isError: false,
+      error: null,
+    } as unknown as ReturnType<typeof useSmartFolder>);
+
+    renderPane();
+
+    expect(screen.getByRole("button", { name: "Unsnooze" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Snooze" })).toBeNull();
+  });
+
+  it("renders a wake-time label for rows with snooze_wake_at", () => {
+    const snoozedRow = {
+      ...sampleSmartRows[0],
+      snooze_wake_at: Math.floor(Date.now() / 1000) + 86400,
+    };
+    setupStore(null, "comfortable", "snoozed");
+    mockUseThreads.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isError: false,
+      error: null,
+    } as unknown as ReturnType<typeof useThreads>);
+    mockUseSmartFolder.mockReturnValue({
+      data: [snoozedRow],
+      isLoading: false,
+      isError: false,
+      error: null,
+    } as unknown as ReturnType<typeof useSmartFolder>);
+
+    renderPane();
+
+    expect(screen.getByTestId("snooze-wake").textContent?.length).toBeGreaterThan(0);
   });
 });
