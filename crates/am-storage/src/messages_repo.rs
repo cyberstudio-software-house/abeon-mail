@@ -388,6 +388,93 @@ pub fn get_compose_source(db: &Database, message_id: i64) -> Result<ComposeSourc
     })
 }
 
+pub fn ids_by_uids(db: &Database, folder_id: i64, uids: &[i64]) -> Result<Vec<i64>, StorageError> {
+    if uids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let conn = db.conn();
+    let placeholders = uids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+    let sql = format!(
+        "SELECT id FROM messages WHERE folder_id = ? AND uid IN ({placeholders}) ORDER BY uid ASC"
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    let mut bind: Vec<&dyn rusqlite::ToSql> = Vec::with_capacity(uids.len() + 1);
+    bind.push(&folder_id);
+    for u in uids {
+        bind.push(u);
+    }
+    let rows = stmt.query_map(bind.as_slice(), |r| r.get::<_, i64>(0))?;
+    let mut out = Vec::new();
+    for r in rows {
+        out.push(r?);
+    }
+    Ok(out)
+}
+
+pub fn rule_message(db: &Database, message_id: i64) -> Result<am_core::rule::RuleMessage, StorageError> {
+    let conn = db.conn();
+    conn.query_row(
+        "SELECT from_address, from_name, subject, has_attachments, to_addresses, cc_addresses
+         FROM messages WHERE id = ?1",
+        params![message_id],
+        |r| {
+            let to_json: String = r.get(4)?;
+            let cc_json: String = r.get(5)?;
+            let mut recipients: Vec<String> = serde_json::from_str(&to_json).unwrap_or_default();
+            let cc: Vec<String> = serde_json::from_str(&cc_json).unwrap_or_default();
+            recipients.extend(cc);
+            Ok(am_core::rule::RuleMessage {
+                from_address: r.get(0)?,
+                from_name: r.get(1)?,
+                subject: r.get(2)?,
+                recipients,
+                has_attachments: r.get::<_, i64>(3)? != 0,
+            })
+        },
+    )
+    .map_err(|e| match e {
+        rusqlite::Error::QueryReturnedNoRows => StorageError::NotFound,
+        other => StorageError::Sqlite(other),
+    })
+}
+
+#[cfg(test)]
+mod rule_helpers_tests {
+    use super::*;
+    use crate::accounts_repo::insert_account;
+    use crate::folders_repo::upsert_folder;
+    use am_core::account::{NewAccount, ProviderType};
+    use am_core::folder::FolderType;
+    use am_core::message::NewMessageHeader;
+
+    fn header(uid: i64) -> NewMessageHeader {
+        NewMessageHeader {
+            uid, message_id_hdr: None, in_reply_to: None, references_hdr: None,
+            from_address: "a@b.c".into(), from_name: Some("AB".into()), subject: format!("S{uid}"),
+            date: 1000, seen: false, flagged: false, has_attachments: true, size: 0, snippet: String::new(),
+        }
+    }
+
+    #[test]
+    fn ids_by_uids_and_rule_message() {
+        let db = Database::open_in_memory().unwrap();
+        let acc = insert_account(&db, &NewAccount {
+            email: "s@e.com".into(), display_name: "S".into(),
+            provider_type: ProviderType::ImapPassword, color: None,
+        }).unwrap();
+        let folder = upsert_folder(&db, acc.id, "INBOX", "Inbox", FolderType::Inbox).unwrap().id;
+        insert_headers(&db, folder, &[header(1), header(2)]).unwrap();
+
+        let ids = ids_by_uids(&db, folder, &[1, 2]).unwrap();
+        assert_eq!(ids.len(), 2);
+
+        let view = rule_message(&db, ids[0]).unwrap();
+        assert_eq!(view.from_address, "a@b.c");
+        assert_eq!(view.from_name.as_deref(), Some("AB"));
+        assert!(view.has_attachments);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
