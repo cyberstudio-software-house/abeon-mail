@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { commands } from "./bindings";
-import type { Account, Endpoints, Label, MessageFlag, OutgoingMessage, Signature, SmartFolderKind, SmartMessageRow } from "./bindings";
+import type { Account, Endpoints, Label, MessageFlag, OutgoingMessage, Rule, RuleInput, Signature, SmartFolderKind, SmartMessageRow } from "./bindings";
 import { useUiStore } from "../app/store";
 
 type ResultOk<T> = { status: "ok"; data: T };
@@ -388,6 +388,58 @@ export function useDeleteSignature() {
       commands.deleteSignature(id).then(unwrap),
     onSuccess: (_data, { accountId }) => {
       queryClient.invalidateQueries({ queryKey: ["signatures", accountId] });
+    },
+  });
+}
+
+export function useRules(accountId: number | null) {
+  return useQuery<Rule[]>({
+    queryKey: ["rules", accountId],
+    queryFn: () => commands.listRules(accountId!).then(unwrap),
+    enabled: accountId != null,
+  });
+}
+
+export function useCreateRule() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { accountId: number; input: RuleInput }) =>
+      commands.createRule(v.accountId, v.input).then(unwrap),
+    onSuccess: (_data, v) => {
+      queryClient.invalidateQueries({ queryKey: ["rules", v.accountId] });
+    },
+  });
+}
+
+export function useUpdateRule() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { ruleId: number; accountId: number; input: RuleInput }) =>
+      commands.updateRule(v.ruleId, v.input).then(unwrap),
+    onSuccess: (_data, v) => {
+      queryClient.invalidateQueries({ queryKey: ["rules", v.accountId] });
+    },
+  });
+}
+
+export function useSetRuleEnabled() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { ruleId: number; accountId: number; enabled: boolean }) =>
+      commands.setRuleEnabled(v.ruleId, v.enabled).then(unwrap),
+    onSuccess: (_data, v) => {
+      queryClient.invalidateQueries({ queryKey: ["rules", v.accountId] });
+    },
+  });
+}
+
+export function useDeleteRule() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { ruleId: number; accountId: number }) =>
+      commands.deleteRule(v.ruleId).then(unwrap),
+    onSuccess: (_data, v) => {
+      queryClient.invalidateQueries({ queryKey: ["rules", v.accountId] });
     },
   });
 }
