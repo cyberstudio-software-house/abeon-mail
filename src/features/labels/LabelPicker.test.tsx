@@ -41,7 +41,10 @@ describe("LabelPicker", () => {
     const input = getByLabelText("Filter or create label");
     fireEvent.change(input, { target: { value: "Urgent" } });
     fireEvent.keyDown(input, { key: "Enter" });
-    await waitFor(() => expect(commands.createLabel).toHaveBeenCalled());
+    await waitFor(() => {
+      expect(commands.createLabel).toHaveBeenCalled();
+      expect(commands.setMessageLabels).toHaveBeenCalledWith(2, [10], true);
+    });
   });
 
   it("returns null when closed", () => {
