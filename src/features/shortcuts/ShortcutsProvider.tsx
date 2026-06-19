@@ -8,6 +8,7 @@ import { type ActionId } from "./registry";
 import { useKeyboardEngine } from "./useKeyboardEngine";
 import { CommandPalette } from "./CommandPalette";
 import { CheatSheet } from "./CheatSheet";
+import { LabelPicker } from "../labels/LabelPicker";
 
 export type ShortcutsContextValue = {
   profile: Profile;
@@ -170,6 +171,7 @@ export function ShortcutsProvider({ children }: { children: ReactNode }) {
       {children}
       <CommandPalette />
       <CheatSheet />
+      <LabelPicker />
     </ShortcutsContext.Provider>
   );
 }

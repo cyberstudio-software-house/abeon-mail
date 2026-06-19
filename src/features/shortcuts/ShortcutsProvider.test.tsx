@@ -15,6 +15,10 @@ vi.mock("../../ipc/queries", () => ({
   useStartReply: () => ({ mutateAsync: startReply }),
   useSetFlag: () => ({ mutate: setFlagMutate }),
   useFolders: () => ({ data: [] }),
+  useLabels: () => ({ data: [] }),
+  useLabelsForMessages: () => ({ data: [] }),
+  useCreateLabel: () => ({ mutateAsync: vi.fn() }),
+  useSetMessageLabels: () => ({ mutate: vi.fn() }),
 }));
 
 import { ShortcutsProvider } from "./ShortcutsProvider";
