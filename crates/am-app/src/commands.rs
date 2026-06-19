@@ -7,13 +7,14 @@ use tokio::net::TcpListener;
 use am_core::{
     account::Account,
     folder::Folder,
+    label::Label,
     message::{MessageBody, MessageFlag, MessageHeader},
     outgoing::{OutgoingAttachment, OutgoingMessage},
     signature::Signature,
     smart::{SmartFolderKind, SmartMessageRow},
     thread::ThreadSummary,
 };
-use am_storage::{accounts_repo, drafts_repo, folders_repo, messages_repo, settings_repo, signatures_repo, smart_repo};
+use am_storage::{accounts_repo, drafts_repo, folders_repo, labels_repo, messages_repo, settings_repo, signatures_repo, smart_repo};
 use tauri_plugin_dialog::DialogExt;
 
 use crate::state::AppState;
@@ -172,6 +173,81 @@ pub fn search_messages(
 ) -> Result<Vec<SmartMessageRow>, String> {
     let parsed = am_core::search::parse_query(&query);
     am_storage::search_repo::search(&state.db, &parsed, limit, offset).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn list_labels(state: tauri::State<'_, AppState>) -> Result<Vec<Label>, String> {
+    labels_repo::list_labels(&state.db).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn create_label(
+    state: tauri::State<'_, AppState>,
+    name: String,
+    color: String,
+) -> Result<Label, String> {
+    labels_repo::create_label(&state.db, &name, &color).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn rename_label(
+    state: tauri::State<'_, AppState>,
+    id: i64,
+    name: String,
+) -> Result<(), String> {
+    labels_repo::rename_label(&state.db, id, &name).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn set_label_color(
+    state: tauri::State<'_, AppState>,
+    id: i64,
+    color: String,
+) -> Result<(), String> {
+    labels_repo::set_label_color(&state.db, id, &color).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn delete_label(state: tauri::State<'_, AppState>, id: i64) -> Result<(), String> {
+    labels_repo::delete_label(&state.db, id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn set_message_labels(
+    state: tauri::State<'_, AppState>,
+    label_id: i64,
+    message_ids: Vec<i64>,
+    applied: bool,
+) -> Result<(), String> {
+    labels_repo::set_message_labels(&state.db, label_id, &message_ids, applied)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn labels_for_messages(
+    state: tauri::State<'_, AppState>,
+    message_ids: Vec<i64>,
+) -> Result<Vec<(i64, Label)>, String> {
+    labels_repo::labels_for_messages(&state.db, &message_ids).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn list_messages_by_label(
+    state: tauri::State<'_, AppState>,
+    label_id: i64,
+    limit: i64,
+    offset: i64,
+) -> Result<Vec<SmartMessageRow>, String> {
+    labels_repo::list_messages_by_label(&state.db, label_id, limit, offset)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -837,6 +913,17 @@ mod tests {
         let list = accounts_repo::list_accounts(&db).unwrap();
         assert_eq!(list[0].id, b.id);
         assert_eq!(list[1].id, a.id);
+    }
+
+    #[test]
+    fn label_repo_roundtrip_via_storage() {
+        use am_storage::labels_repo;
+        let db = Database::open_in_memory().unwrap();
+        let created = labels_repo::create_label(&db, "Work", "#4f46e5").unwrap();
+        let all = labels_repo::list_labels(&db).unwrap();
+        assert_eq!(all.len(), 1);
+        assert_eq!(all[0].id, created.id);
+        assert_eq!(all[0].name, "Work");
     }
 
     #[test]
