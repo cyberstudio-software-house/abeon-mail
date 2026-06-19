@@ -8,9 +8,11 @@ import { ReaderPane } from "../features/reader/ReaderPane";
 import { Composer } from "../features/composer/Composer";
 import { SettingsOverlay } from "../features/settings/SettingsOverlay";
 import { useUiStore } from "./store";
+import { useStartupView } from "../features/startup/useStartupView";
 
 export function AppShell() {
   useSyncEvents();
+  useStartupView();
 
   const [status, setStatus] = useState("…");
   const composerOpen = useUiStore((s) => s.composer.open);

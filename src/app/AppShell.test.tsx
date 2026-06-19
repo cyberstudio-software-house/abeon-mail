@@ -6,6 +6,10 @@ vi.mock("../ipc/events", () => ({
   useSyncEvents: vi.fn(),
 }));
 
+vi.mock("../features/startup/useStartupView", () => ({
+  useStartupView: vi.fn(),
+}));
+
 vi.mock("../ipc/client", () => ({
   health: vi.fn(async () => "ok"),
 }));
