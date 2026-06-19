@@ -47,6 +47,11 @@ export const commands = {
 	setSetting: (key: string, value: string) => typedError<null, string>(__TAURI_INVOKE("set_setting", { key, value })),
 	snoozeMessages: (messageIds: number[], wakeAt: number) => typedError<null, string>(__TAURI_INVOKE("snooze_messages", { messageIds, wakeAt })),
 	unsnoozeMessages: (messageIds: number[]) => typedError<null, string>(__TAURI_INVOKE("unsnooze_messages", { messageIds })),
+	buildNewMailNotification: (folderId: number, count: number) => typedError<{
+	title: string,
+	body: string,
+} | null, string>(__TAURI_INVOKE("build_new_mail_notification", { folderId, count })),
+	refreshUnreadBadge: (enabled: boolean) => typedError<null, string>(__TAURI_INVOKE("refresh_unread_badge", { enabled })),
 };
 
 /** Events */
@@ -132,6 +137,11 @@ export type NewMessages = {
 	account_id: number,
 	folder_id: number,
 	count: number,
+};
+
+export type NotificationContent = {
+	title: string,
+	body: string,
 };
 
 export type OutgoingAttachment = {
