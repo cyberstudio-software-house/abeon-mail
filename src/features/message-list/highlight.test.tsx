@@ -27,4 +27,11 @@ describe("Highlight", () => {
     expect(container.querySelector("mark")).toBeNull();
     expect(container.textContent).toBe("hello world");
   });
+
+  it("marks the exact term even after a combining-diacritic char", () => {
+    render(<Highlight text="Faktura wstępna raport" terms={["raport"]} />);
+    const mark = screen.getByText("raport");
+    expect(mark.tagName).toBe("MARK");
+    expect(mark.textContent).toBe("raport");
+  });
 });

@@ -1,9 +1,5 @@
 import type { ReactNode } from "react";
 
-function fold(s: string): string {
-  return s.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
-}
-
 export function extractTerms(query: string): string[] {
   const terms: string[] = [];
   for (const token of query.split(/\s+/)) {
@@ -20,19 +16,46 @@ export function extractTerms(query: string): string[] {
   return terms;
 }
 
+function buildFoldedIndex(text: string): { foldedText: string; originStart: number[]; originEnd: number[] } {
+  const foldedText: string[] = [];
+  const originStart: number[] = [];
+  const originEnd: number[] = [];
+
+  const codePoints = [...text];
+  let charOffset = 0;
+  for (const ch of codePoints) {
+    const charEnd = charOffset + ch.length;
+    const folded = ch.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
+    for (let i = 0; i < folded.length; i++) {
+      foldedText.push(folded[i]);
+      originStart.push(charOffset);
+      originEnd.push(charEnd);
+    }
+    charOffset = charEnd;
+  }
+
+  return { foldedText: foldedText.join(""), originStart, originEnd };
+}
+
 export function Highlight({ text, terms }: { text: string; terms: string[] }): ReactNode {
-  const cleaned = terms.map(fold).filter((t) => t.length > 0);
+  const cleaned = terms
+    .map((t) => t.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase())
+    .filter((t) => t.length > 0);
   if (cleaned.length === 0) return text;
 
-  const foldedText = fold(text);
+  const { foldedText, originStart, originEnd } = buildFoldedIndex(text);
+
   const ranges: Array<[number, number]> = [];
   for (const term of cleaned) {
     let from = 0;
     while (true) {
       const idx = foldedText.indexOf(term, from);
       if (idx === -1) break;
-      ranges.push([idx, idx + term.length]);
-      from = idx + term.length;
+      const foldedEnd = idx + term.length;
+      const origStart = originStart[idx];
+      const origEnd = foldedEnd < originEnd.length ? originEnd[foldedEnd - 1] : text.length;
+      ranges.push([origStart, origEnd]);
+      from = foldedEnd;
     }
   }
   if (ranges.length === 0) return text;
