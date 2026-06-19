@@ -26,6 +26,9 @@ vi.mock("../ipc/queries", () => ({
   useRemoveAccount: () => ({ mutate: vi.fn(), isPending: false }),
   useBeginReauth: () => ({ mutate: vi.fn(), isPending: false }),
   useReorderAccounts: () => ({ mutate: vi.fn(), isPending: false }),
+  useLabels: () => ({ data: [], isLoading: false, isError: false, error: null }),
+  useMessagesByLabel: () => ({ data: undefined, isLoading: false, isError: false, error: null }),
+  useLabelsForMessages: () => ({ data: [], isLoading: false, isError: false, error: null }),
 }));
 
 vi.mock("../ipc/bindings", () => ({
@@ -93,6 +96,18 @@ vi.mock("../app/store", () => ({
       setSearchQuery: vi.fn(),
       clearSearch: vi.fn(),
       setFocusSearch: vi.fn(),
+      selectedLabelId: null,
+      selectionActive: false,
+      selectedMessageIds: [],
+      labelPickerOpen: false,
+      labelPickerTargetIds: [],
+      setSelectedLabelId: vi.fn(),
+      toggleSelectionMode: vi.fn(),
+      toggleMessageSelected: vi.fn(),
+      clearSelection: vi.fn(),
+      selectAll: vi.fn(),
+      openLabelPicker: vi.fn(),
+      closeLabelPicker: vi.fn(),
     };
     return selector ? selector(state) : state;
   },

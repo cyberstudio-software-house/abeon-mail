@@ -1,0 +1,75 @@
+.label-picker-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 220;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 12vh;
+  background: rgba(0, 0, 0, 0.4);
+}
+
+.label-picker {
+  width: 320px;
+  max-height: 60vh;
+  overflow: auto;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
+}
+
+.label-picker__input {
+  width: 100%;
+  box-sizing: border-box;
+  border: none;
+  border-bottom: 1px solid var(--border-subtle);
+  padding: var(--space-3);
+  font-size: 14px;
+  background: transparent;
+  color: inherit;
+}
+
+.label-picker__input:focus {
+  outline: none;
+}
+
+.label-picker__list {
+  list-style: none;
+  margin: 0;
+  padding: var(--space-1);
+}
+
+.label-picker__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  border: none;
+  background: transparent;
+  padding: var(--space-2) var(--space-3);
+  cursor: pointer;
+  font-size: 13px;
+  color: inherit;
+  border-radius: var(--radius-sm);
+}
+
+.label-picker__item:hover {
+  background: var(--selection-bg);
+}
+
+.label-picker__dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.label-picker__name {
+  flex: 1;
+  text-align: left;
+}
+
+.label-picker__create {
+  color: var(--accent);
+}

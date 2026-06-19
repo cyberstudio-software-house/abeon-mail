@@ -238,6 +238,38 @@
   padding: 2px 4px;
 }
 
+.message-list__selection-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-4);
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: 13px;
+}
+
+.message-list__selection-bar button {
+  border: 1px solid var(--border-subtle);
+  background: transparent;
+  border-radius: var(--radius-sm);
+  padding: 2px 10px;
+  cursor: pointer;
+  font-size: 13px;
+  color: inherit;
+}
+
+.message-list__selection-bar button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.message-list__select-toggle {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--accent);
+}
+
 .message-row__subject mark,
 .message-row__snippet mark {
   background: var(--shadow-accent, rgba(99, 102, 241, 0.25));

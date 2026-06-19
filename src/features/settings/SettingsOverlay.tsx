@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useUiStore } from "../../app/store";
 import { AppearanceSection } from "./AppearanceSection";
+import { LabelsSection } from "./LabelsSection";
 import { ShortcutsSection } from "./ShortcutsSection";
 import "./Settings.css";
 
@@ -8,6 +9,7 @@ type SettingsSection =
   | "general"
   | "accounts"
   | "appearance"
+  | "labels"
   | "signatures"
   | "notifications"
   | "rules"
@@ -18,6 +20,7 @@ const NAV: { id: SettingsSection; label: string }[] = [
   { id: "general", label: "General" },
   { id: "accounts", label: "Accounts" },
   { id: "appearance", label: "Appearance" },
+  { id: "labels", label: "Labels" },
   { id: "signatures", label: "Signatures" },
   { id: "notifications", label: "Notifications" },
   { id: "rules", label: "Rules & Filters" },
@@ -69,6 +72,8 @@ export function SettingsOverlay() {
           </header>
           {active === "appearance" ? (
             <AppearanceSection />
+          ) : active === "labels" ? (
+            <LabelsSection />
           ) : active === "shortcuts" ? (
             <ShortcutsSection />
           ) : (

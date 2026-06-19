@@ -30,6 +30,7 @@ import {
   ShieldAlert,
   Trash2,
   Folder,
+  Plus,
 } from "lucide-react";
 import {
   useAccounts,
@@ -37,6 +38,7 @@ import {
   useRemoveAccount,
   useBeginReauth,
   useReorderAccounts,
+  useLabels,
 } from "../../ipc/queries";
 import { useUiStore } from "../../app/store";
 import { AddAccountWizard } from "../accounts/AddAccountWizard";
@@ -290,15 +292,20 @@ export function MailboxRail({ status }: Props) {
   const selectedAccountId = useUiStore((s) => s.selectedAccountId);
   const selectedFolderId = useUiStore((s) => s.selectedFolderId);
   const selectedSmartFolder = useUiStore((s) => s.selectedSmartFolder);
+  const selectedLabelId = useUiStore((s) => s.selectedLabelId);
   const setSelectedAccountId = useUiStore((s) => s.setSelectedAccountId);
   const setSelectedFolderId = useUiStore((s) => s.setSelectedFolderId);
   const setSelectedSmartFolder = useUiStore((s) => s.setSelectedSmartFolder);
+  const setSelectedLabelId = useUiStore((s) => s.setSelectedLabelId);
+  const openLabelPicker = useUiStore((s) => s.openLabelPicker);
   const openSettings = useUiStore((s) => s.openSettings);
   const searchQuery = useUiStore((s) => s.searchQuery);
   const setSearchQuery = useUiStore((s) => s.setSearchQuery);
   const clearSearch = useUiStore((s) => s.clearSearch);
   const setFocusSearch = useUiStore((s) => s.setFocusSearch);
   const searchInputRef = useRef<HTMLInputElement>(null);
+
+  const { data: labels = [] } = useLabels();
 
   const { data: accounts = [], isLoading: accountsLoading } = useAccounts();
   const { data: folders = [] } = useFolders(selectedAccountId);
@@ -486,7 +493,28 @@ export function MailboxRail({ status }: Props) {
         )}
 
         <div className="rail__section">Labels</div>
-        <div className="rail__placeholder" aria-disabled="true">Coming soon</div>
+        {labels.map((label) => (
+          <div
+            key={label.id}
+            className={`rail__item${selectedLabelId === label.id ? " rail__item--active" : ""}`}
+            onClick={() => setSelectedLabelId(label.id)}
+          >
+            <span
+              className="rail__label-dot"
+              style={{ background: label.color }}
+              aria-hidden="true"
+            />
+            <span className="rail__item-label">{label.name}</span>
+          </div>
+        ))}
+        <div
+          className="rail__item rail__new-label"
+          onClick={() => openLabelPicker([])}
+          role="button"
+        >
+          <Plus size={15} className="rail__item-icon" />
+          <span className="rail__item-label">New label</span>
+        </div>
       </nav>
 
       <footer className="rail__footer">

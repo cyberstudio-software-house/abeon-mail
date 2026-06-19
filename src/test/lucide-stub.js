@@ -25,3 +25,6 @@ exports.Star = Icon;
 exports.MoreHorizontal = Icon;
 exports.SendHorizontal = Icon;
 exports.Paperclip = Icon;
+exports.Tag = Icon;
+exports.Plus = Icon;
+exports.Check = Icon;

@@ -8,6 +8,7 @@ import { type ActionId } from "./registry";
 import { useKeyboardEngine } from "./useKeyboardEngine";
 import { CommandPalette } from "./CommandPalette";
 import { CheatSheet } from "./CheatSheet";
+import { LabelPicker } from "../labels/LabelPicker";
 
 export type ShortcutsContextValue = {
   profile: Profile;
@@ -125,6 +126,14 @@ export function ShortcutsProvider({ children }: { children: ReactNode }) {
       "mark-unread": () => setSeen(false),
       "send-message": () => useUiStore.getState().composerSend?.(),
       "close-composer": () => useUiStore.getState().closeComposer(),
+      label: () => {
+        const s = useUiStore.getState();
+        if (s.selectionActive && s.selectedMessageIds.length > 0) {
+          s.openLabelPicker(s.selectedMessageIds);
+        } else if (s.replyTargetId != null) {
+          s.openLabelPicker([s.replyTargetId]);
+        }
+      },
     };
   }, [move, jumpTo, doReply, toggleFlag, setSeen]);
 
@@ -170,6 +179,7 @@ export function ShortcutsProvider({ children }: { children: ReactNode }) {
       {children}
       <CommandPalette />
       <CheatSheet />
+      <LabelPicker />
     </ShortcutsContext.Provider>
   );
 }

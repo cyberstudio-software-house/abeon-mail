@@ -5,11 +5,24 @@ const mockOpenComposer = vi.fn();
 
 const mockSetSelectedThreadId = vi.fn();
 const mockSetSelectedMessageId = vi.fn();
+const mockSetSelectedLabelId = vi.fn();
+const mockToggleSelectionMode = vi.fn();
+const mockToggleMessageSelected = vi.fn();
+const mockClearSelection = vi.fn();
+const mockSelectAll = vi.fn();
+const mockOpenLabelPicker = vi.fn();
+const mockCloseLabelPicker = vi.fn();
 
 vi.mock("../../ipc/queries", () => ({
   useThreads: vi.fn(),
   useSmartFolder: vi.fn(),
   useSearch: vi.fn(),
+  useMessagesByLabel: (id: number | null) =>
+    id === 1
+      ? { data: [{ message_id: 99, account_id: 1, folder_id: 1, account_color: "#4f46e5", from_address: "a@b.com", from_name: "A", subject: "Tagged", date: 1000, seen: true, flagged: false, has_attachments: false, snippet: "" }], isLoading: false }
+      : { data: undefined, isLoading: false },
+  useLabels: () => ({ data: [{ id: 1, name: "Work", color: "#4f46e5" }] }),
+  useLabelsForMessages: () => ({ data: [] }),
 }));
 
 vi.mock("../../app/store", () => ({
@@ -134,7 +147,10 @@ function setupStore(
   density: Density = "comfortable",
   selectedSmartFolder: UiState["selectedSmartFolder"] = null,
   searchActive = false,
-  searchQuery = ""
+  searchQuery = "",
+  selectedLabelId: number | null = null,
+  selectionActive = false,
+  selectedMessageIds: number[] = []
 ) {
   mockUseUiStore.mockImplementation((selector: (s: UiState) => unknown) => {
     const state: UiState = {
@@ -143,6 +159,7 @@ function setupStore(
       selectedMessageId: null,
       selectedThreadId: null,
       selectedSmartFolder,
+      selectedLabelId,
       theme: "auto",
       accent: "#4f46e5",
       density,
@@ -176,6 +193,10 @@ function setupStore(
       searchQuery,
       searchActive,
       focusSearch: null,
+      selectionActive,
+      selectedMessageIds,
+      labelPickerOpen: false,
+      labelPickerTargetIds: [],
       setListContext: vi.fn(),
       setReplyTargetId: vi.fn(),
       setComposerSend: vi.fn(),
@@ -190,6 +211,13 @@ function setupStore(
       setSearchQuery: vi.fn(),
       clearSearch: vi.fn(),
       setFocusSearch: vi.fn(),
+      setSelectedLabelId: mockSetSelectedLabelId,
+      toggleSelectionMode: mockToggleSelectionMode,
+      toggleMessageSelected: mockToggleMessageSelected,
+      clearSelection: mockClearSelection,
+      selectAll: mockSelectAll,
+      openLabelPicker: mockOpenLabelPicker,
+      closeLabelPicker: mockCloseLabelPicker,
     };
     return selector ? selector(state) : state;
   });
@@ -423,6 +451,24 @@ describe("MessageListPane", () => {
     expect(ariaDisabledEl).toBeTruthy();
   });
 
+  it("renders label-view messages when a label is selected", () => {
+    setupStore(null, "comfortable", null, false, "", 1);
+    mockUseThreads.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isError: false,
+      error: null,
+    } as unknown as ReturnType<typeof useThreads>);
+    mockUseSmartFolder.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isError: false,
+      error: null,
+    } as unknown as ReturnType<typeof useSmartFolder>);
+    const { getByText } = renderPane();
+    expect(getByText(/Label: Work/)).toBeTruthy();
+  });
+
   it("shows a results banner and highlighted rows in search mode", () => {
     mockUseSearch.mockReturnValue({
       data: [
@@ -463,5 +509,38 @@ describe("MessageListPane", () => {
     expect(screen.getByText(/Results for/)).toBeTruthy();
     const marks = screen.getAllByText("report");
     expect(marks.some((m) => m.tagName === "MARK")).toBe(true);
+  });
+
+  it("selects rows and opens the picker with selected ids", () => {
+    setupStore(null, "comfortable", "unread", false, "", null, true, [100]);
+    mockUseThreads.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isError: false,
+      error: null,
+    } as unknown as ReturnType<typeof useThreads>);
+    mockUseSmartFolder.mockReturnValue({
+      data: sampleSmartRows,
+      isLoading: false,
+      isError: false,
+      error: null,
+    } as unknown as ReturnType<typeof useSmartFolder>);
+
+    const { getAllByLabelText, getByText } = renderPane();
+
+    const checkboxes = getAllByLabelText("Select message");
+    expect(checkboxes.length).toBeGreaterThan(0);
+
+    fireEvent.click(getByText("Done"));
+    expect(mockToggleSelectionMode).toHaveBeenCalled();
+
+    fireEvent.click(checkboxes[0]);
+    expect(mockToggleMessageSelected).toHaveBeenCalledWith(100);
+
+    fireEvent.click(getByText("Label"));
+    expect(mockOpenLabelPicker).toHaveBeenCalledWith([100]);
+
+    fireEvent.click(getByText("Cancel"));
+    expect(mockClearSelection).toHaveBeenCalled();
   });
 });

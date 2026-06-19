@@ -1,9 +1,10 @@
 import { useEffect } from "react";
-import { Reply, ReplyAll, Forward, Star, Archive, Clock, Trash2, MoreHorizontal, SendHorizontal } from "lucide-react";
-import { useThreadMessages, useStartReply, useSetFlag } from "../../ipc/queries";
+import { Reply, ReplyAll, Forward, Star, Archive, Clock, Trash2, MoreHorizontal, SendHorizontal, Tag } from "lucide-react";
+import { useThreadMessages, useStartReply, useSetFlag, useLabelsForMessages } from "../../ipc/queries";
 import { useUiStore } from "../../app/store";
 import { Avatar } from "../../shared/appearance/Avatar";
 import { MessageBodyView } from "./MessageBodyView";
+import { LabelChips } from "../labels/LabelChips";
 import "./reader.css";
 
 function formatTime(epochSeconds: number): string {
@@ -13,10 +14,13 @@ function formatTime(epochSeconds: number): string {
 export function ConversationView({ threadId }: { threadId: number }) {
   const { data: messages, isLoading } = useThreadMessages(threadId);
   const openComposer = useUiStore((s) => s.openComposer);
+  const openLabelPicker = useUiStore((s) => s.openLabelPicker);
   const startReplyMutation = useStartReply();
   const setFlag = useSetFlag();
   const setReplyTargetId = useUiStore((s) => s.setReplyTargetId);
   const lastId = messages && messages.length > 0 ? messages[messages.length - 1].id : null;
+  const labelPairs = useLabelsForMessages(lastId ? [lastId] : []);
+  const lastLabels = (labelPairs.data ?? []).map(([, label]) => label);
   useEffect(() => {
     setReplyTargetId(lastId);
     return () => setReplyTargetId(null);
@@ -55,6 +59,14 @@ export function ConversationView({ threadId }: { threadId: number }) {
         <button type="button" className="reader__icon" aria-label="Forward" onClick={() => handleReply("forward")}>
           <Forward size={18} />
         </button>
+        <button
+          type="button"
+          className="reader__icon"
+          aria-label="Label"
+          onClick={() => openLabelPicker([last.id])}
+        >
+          <Tag size={18} />
+        </button>
         <div className="reader__spacer" />
         <button type="button" className="reader__icon" aria-label="More" aria-disabled="true">
           <MoreHorizontal size={18} />
@@ -74,6 +86,11 @@ export function ConversationView({ threadId }: { threadId: number }) {
               <Star size={20} />
             </button>
           </div>
+          {lastLabels.length > 0 && (
+            <div className="reader__labels">
+              <LabelChips labels={lastLabels} />
+            </div>
+          )}
 
           {messages.map((m) => (
             <div key={m.id} className="reader__message">

@@ -31,6 +31,14 @@ export const commands = {
 	pickAttachment: () => typedError<OutgoingAttachment[], string>(__TAURI_INVOKE("pick_attachment")),
 	listSmartFolder: (kind: SmartFolderKind, limit: number, offset: number) => typedError<SmartMessageRow[], string>(__TAURI_INVOKE("list_smart_folder", { kind, limit, offset })),
 	searchMessages: (query: string, limit: number, offset: number) => typedError<SmartMessageRow[], string>(__TAURI_INVOKE("search_messages", { query, limit, offset })),
+	listLabels: () => typedError<Label[], string>(__TAURI_INVOKE("list_labels")),
+	createLabel: (name: string, color: string) => typedError<Label, string>(__TAURI_INVOKE("create_label", { name, color })),
+	renameLabel: (id: number, name: string) => typedError<null, string>(__TAURI_INVOKE("rename_label", { id, name })),
+	setLabelColor: (id: number, color: string) => typedError<null, string>(__TAURI_INVOKE("set_label_color", { id, color })),
+	deleteLabel: (id: number) => typedError<null, string>(__TAURI_INVOKE("delete_label", { id })),
+	setMessageLabels: (labelId: number, messageIds: number[], applied: boolean) => typedError<null, string>(__TAURI_INVOKE("set_message_labels", { labelId, messageIds, applied })),
+	labelsForMessages: (messageIds: number[]) => typedError<([number, Label])[], string>(__TAURI_INVOKE("labels_for_messages", { messageIds })),
+	listMessagesByLabel: (labelId: number, limit: number, offset: number) => typedError<SmartMessageRow[], string>(__TAURI_INVOKE("list_messages_by_label", { labelId, limit, offset })),
 	getSettings: () => typedError<([string, string])[], string>(__TAURI_INVOKE("get_settings")),
 	setSetting: (key: string, value: string) => typedError<null, string>(__TAURI_INVOKE("set_setting", { key, value })),
 };
@@ -79,6 +87,12 @@ export type Folder = {
 };
 
 export type FolderType = "inbox" | "sent" | "drafts" | "trash" | "spam" | "archive" | "custom";
+
+export type Label = {
+	id: number,
+	name: string,
+	color: string,
+};
 
 export type MailboxChanged = {
 	account_id: number,

@@ -189,3 +189,62 @@ describe("search store slice", () => {
     expect(useUiStore.getState().searchQuery).toBe("");
   });
 });
+
+describe("labels store slice", () => {
+  beforeEach(() => {
+    useUiStore.setState({
+      selectedAccountId: null,
+      selectedFolderId: null,
+      selectedSmartFolder: null,
+      selectedThreadId: null,
+      selectedLabelId: null,
+      searchQuery: "",
+      searchActive: false,
+      selectionActive: false,
+      selectedMessageIds: [],
+      labelPickerOpen: false,
+      labelPickerTargetIds: [],
+    });
+  });
+
+  it("setSelectedLabelId clears other views and selection", () => {
+    useUiStore.setState({ selectedSmartFolder: "unread", selectionActive: true, selectedMessageIds: [1, 2] });
+    useUiStore.getState().setSelectedLabelId(7);
+    const s = useUiStore.getState();
+    expect(s.selectedLabelId).toBe(7);
+    expect(s.selectedSmartFolder).toBeNull();
+    expect(s.selectionActive).toBe(false);
+    expect(s.selectedMessageIds.length).toBe(0);
+  });
+
+  it("selecting another view clears selectedLabelId", () => {
+    useUiStore.getState().setSelectedLabelId(7);
+    useUiStore.getState().setSelectedSmartFolder("flagged");
+    expect(useUiStore.getState().selectedLabelId).toBeNull();
+  });
+
+  it("toggleMessageSelected adds and removes ids", () => {
+    useUiStore.getState().toggleMessageSelected(5);
+    expect(useUiStore.getState().selectedMessageIds).toEqual([5]);
+    useUiStore.getState().toggleMessageSelected(5);
+    expect(useUiStore.getState().selectedMessageIds).toEqual([]);
+  });
+
+  it("toggleSelectionMode off clears selection", () => {
+    useUiStore.getState().toggleSelectionMode();
+    useUiStore.getState().toggleMessageSelected(1);
+    expect(useUiStore.getState().selectionActive).toBe(true);
+    useUiStore.getState().toggleSelectionMode();
+    expect(useUiStore.getState().selectionActive).toBe(false);
+    expect(useUiStore.getState().selectedMessageIds).toEqual([]);
+  });
+
+  it("openLabelPicker stores target ids", () => {
+    useUiStore.getState().openLabelPicker([3, 4]);
+    expect(useUiStore.getState().labelPickerOpen).toBe(true);
+    expect(useUiStore.getState().labelPickerTargetIds).toEqual([3, 4]);
+    useUiStore.getState().closeLabelPicker();
+    expect(useUiStore.getState().labelPickerOpen).toBe(false);
+    expect(useUiStore.getState().labelPickerTargetIds).toEqual([]);
+  });
+});

@@ -22,6 +22,7 @@ export type UiState = {
   selectedMessageId: number | null;
   selectedThreadId: number | null;
   selectedSmartFolder: SmartFolderKind | null;
+  selectedLabelId: number | null;
   theme: ThemeMode;
   accent: string;
   density: Density;
@@ -40,6 +41,10 @@ export type UiState = {
   searchQuery: string;
   searchActive: boolean;
   focusSearch: (() => void) | null;
+  selectionActive: boolean;
+  selectedMessageIds: number[];
+  labelPickerOpen: boolean;
+  labelPickerTargetIds: number[];
   setSelectedAccountId: (id: number | null) => void;
   setSelectedFolderId: (id: number | null) => void;
   setSelectedMessageId: (id: number | null) => void;
@@ -69,6 +74,13 @@ export type UiState = {
   setSearchQuery: (q: string) => void;
   clearSearch: () => void;
   setFocusSearch: (fn: (() => void) | null) => void;
+  setSelectedLabelId: (id: number | null) => void;
+  toggleSelectionMode: () => void;
+  toggleMessageSelected: (id: number) => void;
+  clearSelection: () => void;
+  selectAll: (ids: number[]) => void;
+  openLabelPicker: (ids: number[]) => void;
+  closeLabelPicker: () => void;
 };
 
 export const useUiStore = create<UiState>((set) => ({
@@ -77,6 +89,7 @@ export const useUiStore = create<UiState>((set) => ({
   selectedMessageId: null,
   selectedThreadId: null,
   selectedSmartFolder: null,
+  selectedLabelId: null,
   theme: DEFAULT_APPEARANCE.theme,
   accent: DEFAULT_APPEARANCE.accent,
   density: DEFAULT_APPEARANCE.density,
@@ -95,15 +108,20 @@ export const useUiStore = create<UiState>((set) => ({
   searchQuery: "",
   searchActive: false,
   focusSearch: null,
+  selectionActive: false,
+  selectedMessageIds: [],
+  labelPickerOpen: false,
+  labelPickerTargetIds: [],
   setSelectedAccountId: (id) =>
-    set({ selectedAccountId: id, selectedSmartFolder: null, searchQuery: "", searchActive: false }),
+    set({ selectedAccountId: id, selectedSmartFolder: null, selectedLabelId: null, searchQuery: "", searchActive: false }),
   setSelectedFolderId: (id) =>
-    set({ selectedFolderId: id, selectedSmartFolder: null, searchQuery: "", searchActive: false }),
+    set({ selectedFolderId: id, selectedSmartFolder: null, selectedLabelId: null, searchQuery: "", searchActive: false }),
   setSelectedMessageId: (id) => set({ selectedMessageId: id }),
   setSelectedThreadId: (id) => set({ selectedThreadId: id }),
   setSelectedSmartFolder: (kind) =>
     set({
       selectedSmartFolder: kind,
+      selectedLabelId: null,
       selectedAccountId: null,
       selectedFolderId: null,
       selectedThreadId: null,
@@ -143,7 +161,34 @@ export const useUiStore = create<UiState>((set) => ({
       shortcutProfile: partial.profile ?? s.shortcutProfile,
       shortcutOverrides: partial.overrides ?? s.shortcutOverrides,
     })),
-  setSearchQuery: (q) => set({ searchQuery: q, searchActive: q.trim().length > 0 }),
+  setSearchQuery: (q) => set({ searchQuery: q, searchActive: q.trim().length > 0, selectedLabelId: null }),
   clearSearch: () => set({ searchQuery: "", searchActive: false }),
   setFocusSearch: (fn) => set({ focusSearch: fn }),
+  setSelectedLabelId: (id) =>
+    set({
+      selectedLabelId: id,
+      selectedSmartFolder: null,
+      selectedAccountId: null,
+      selectedFolderId: null,
+      selectedThreadId: null,
+      searchQuery: "",
+      searchActive: false,
+      selectionActive: false,
+      selectedMessageIds: [],
+    }),
+  toggleSelectionMode: () =>
+    set((s) => ({
+      selectionActive: !s.selectionActive,
+      selectedMessageIds: s.selectionActive ? [] : s.selectedMessageIds,
+    })),
+  toggleMessageSelected: (id) =>
+    set((s) => ({
+      selectedMessageIds: s.selectedMessageIds.includes(id)
+        ? s.selectedMessageIds.filter((x) => x !== id)
+        : [...s.selectedMessageIds, id],
+    })),
+  clearSelection: () => set({ selectionActive: false, selectedMessageIds: [] }),
+  selectAll: (ids) => set({ selectionActive: true, selectedMessageIds: ids }),
+  openLabelPicker: (ids) => set({ labelPickerOpen: true, labelPickerTargetIds: ids }),
+  closeLabelPicker: () => set({ labelPickerOpen: false, labelPickerTargetIds: [] }),
 }));

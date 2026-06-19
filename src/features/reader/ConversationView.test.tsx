@@ -57,6 +57,10 @@ vi.mock("../../ipc/bindings", () => ({
       },
     }),
     setMessageFlags: vi.fn().mockResolvedValue({ status: "ok", data: null }),
+    labelsForMessages: vi.fn().mockResolvedValue({
+      status: "ok",
+      data: [[2, { id: 1, name: "Work", color: "#4f46e5" }]],
+    }),
   },
   events: {},
 }));
@@ -219,5 +223,21 @@ describe("ConversationView", () => {
     await waitFor(() => {
       expect(commands.startReply).toHaveBeenCalledWith(2, "reply");
     });
+  });
+
+  it("shows label chips and opens picker when Label button is clicked", async () => {
+    useUiStore.setState({ labelPickerOpen: false, labelPickerTargetIds: [] });
+    render(<ConversationView threadId={1} />, { wrapper: Wrapper });
+
+    await screen.findAllByText("B");
+
+    await waitFor(() => {
+      expect(screen.getByText("Work")).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Label" }));
+
+    expect(useUiStore.getState().labelPickerOpen).toBe(true);
+    expect(useUiStore.getState().labelPickerTargetIds).toEqual([2]);
   });
 });
