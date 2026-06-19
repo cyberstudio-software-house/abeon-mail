@@ -140,6 +140,30 @@
   align-items: center;
   justify-content: center;
 }
+.rail__search-input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  outline: none;
+  min-width: 0;
+}
+
+.rail__search-input::placeholder {
+  color: var(--text-preview);
+}
+
+.rail__search-clear {
+  border: none;
+  background: transparent;
+  color: var(--icon-muted);
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1;
+  padding: 2px 4px;
+}
+
 .rail__account-row {
   display: flex;
   align-items: center;

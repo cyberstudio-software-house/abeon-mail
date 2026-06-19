@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   DndContext,
   closestCenter,
@@ -294,6 +294,11 @@ export function MailboxRail({ status }: Props) {
   const setSelectedFolderId = useUiStore((s) => s.setSelectedFolderId);
   const setSelectedSmartFolder = useUiStore((s) => s.setSelectedSmartFolder);
   const openSettings = useUiStore((s) => s.openSettings);
+  const searchQuery = useUiStore((s) => s.searchQuery);
+  const setSearchQuery = useUiStore((s) => s.setSearchQuery);
+  const clearSearch = useUiStore((s) => s.clearSearch);
+  const setFocusSearch = useUiStore((s) => s.setFocusSearch);
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   const { data: accounts = [], isLoading: accountsLoading } = useAccounts();
   const { data: folders = [] } = useFolders(selectedAccountId);
@@ -308,6 +313,11 @@ export function MailboxRail({ status }: Props) {
     const tree = buildFolderTree(folders);
     setExpanded(new Set(tree.map((n) => n.fullPath)));
   }, [folderIds]);
+
+  useEffect(() => {
+    setFocusSearch(() => searchInputRef.current?.focus());
+    return () => setFocusSearch(null);
+  }, [setFocusSearch]);
 
   function toggle(path: string) {
     setExpanded((prev) => {
@@ -378,9 +388,33 @@ export function MailboxRail({ status }: Props) {
         )}
       </header>
 
-      <div className="rail__search" aria-disabled="true">
+      <div className="rail__search">
         <Search size={15} />
-        <span>Search</span>
+        <input
+          ref={searchInputRef}
+          className="rail__search-input"
+          type="text"
+          value={searchQuery}
+          placeholder="Search all mail"
+          aria-label="Search mail"
+          onChange={(e) => setSearchQuery(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") {
+              clearSearch();
+              searchInputRef.current?.blur();
+            }
+          }}
+        />
+        {searchQuery.length > 0 && (
+          <button
+            type="button"
+            className="rail__search-clear"
+            aria-label="Clear search"
+            onClick={() => clearSearch()}
+          >
+            ✕
+          </button>
+        )}
       </div>
 
       <nav className="rail__scroll">

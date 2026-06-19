@@ -1,5 +1,5 @@
 import React from "react";
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import { render, screen, cleanup } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
@@ -16,9 +16,6 @@ vi.mock("@dnd-kit/core", async (importOriginal) => {
   };
 });
 
-const mockSetSelectedAccountId = vi.fn();
-const mockSetSelectedFolderId = vi.fn();
-const mockSetSelectedSmartFolder = vi.fn();
 const mockRemoveAccount = vi.fn();
 const mockBeginReauth = vi.fn();
 const mockReorderAccounts = vi.fn();
@@ -31,9 +28,10 @@ vi.mock("../../ipc/queries", () => ({
   useReorderAccounts: vi.fn(),
 }));
 
-vi.mock("../../app/store", () => ({
-  useUiStore: vi.fn(),
-}));
+vi.mock("../../app/store", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../app/store")>();
+  return actual;
+});
 
 vi.mock("../accounts/AddAccountWizard", () => ({
   AddAccountWizard: ({ onClose }: { onClose: () => void; onAdded: (id: number) => void }) => (
@@ -45,7 +43,6 @@ vi.mock("../accounts/AddAccountWizard", () => ({
 
 import { useAccounts, useFolders, useRemoveAccount, useBeginReauth, useReorderAccounts } from "../../ipc/queries";
 import { useUiStore } from "../../app/store";
-import type { UiState } from "../../app/store";
 import { MailboxRail } from "./MailboxRail";
 
 const mockUseAccounts = vi.mocked(useAccounts);
@@ -53,7 +50,6 @@ const mockUseFolders = vi.mocked(useFolders);
 const mockUseRemoveAccount = vi.mocked(useRemoveAccount);
 const mockUseBeginReauth = vi.mocked(useBeginReauth);
 const mockUseReorderAccounts = vi.mocked(useReorderAccounts);
-const mockUseUiStore = vi.mocked(useUiStore);
 
 const accountWithReauth = {
   id: 1,
@@ -96,59 +92,14 @@ const singleFolder = {
 };
 
 function setupStore(selectedAccountId: number | null = 1, selectedSmartFolder: string | null = null) {
-  mockUseUiStore.mockImplementation(
-    (selector: (s: UiState) => unknown) => {
-      const state: UiState = {
-        selectedAccountId,
-        selectedFolderId: null,
-        selectedMessageId: null,
-        selectedThreadId: null,
-        selectedSmartFolder: selectedSmartFolder as UiState["selectedSmartFolder"],
-        theme: "auto",
-        accent: "#4f46e5",
-        density: "comfortable",
-        showPreview: true,
-        showAvatars: true,
-        composer: { open: false, draftId: null, prefill: null },
-        setSelectedAccountId: mockSetSelectedAccountId,
-        setSelectedFolderId: mockSetSelectedFolderId,
-        setSelectedMessageId: vi.fn(),
-        setSelectedThreadId: vi.fn(),
-        setSelectedSmartFolder: mockSetSelectedSmartFolder,
-        setTheme: vi.fn(),
-        setAccent: vi.fn(),
-        setDensity: vi.fn(),
-        setShowPreview: vi.fn(),
-        setShowAvatars: vi.fn(),
-        hydrateAppearance: vi.fn(),
-        settingsOpen: false,
-        openSettings: vi.fn(),
-        closeSettings: vi.fn(),
-        openComposer: vi.fn(),
-        closeComposer: vi.fn(),
-        visibleMessageIds: [],
-        selectMode: "thread",
-        replyTargetId: null,
-        composerSend: null,
-        paletteOpen: false,
-        cheatSheetOpen: false,
-        shortcutProfile: "default",
-        shortcutOverrides: {},
-        setListContext: vi.fn(),
-        setReplyTargetId: vi.fn(),
-        setComposerSend: vi.fn(),
-        togglePalette: vi.fn(),
-        closePalette: vi.fn(),
-        toggleCheatSheet: vi.fn(),
-        closeCheatSheet: vi.fn(),
-        setShortcutProfile: vi.fn(),
-        setShortcutOverride: vi.fn(),
-        resetShortcut: vi.fn(),
-        hydrateShortcuts: vi.fn(),
-      };
-      return selector ? selector(state) : state;
-    }
-  );
+  useUiStore.setState({
+    selectedAccountId,
+    selectedFolderId: null,
+    selectedSmartFolder: selectedSmartFolder as ReturnType<typeof useUiStore.getState>["selectedSmartFolder"],
+    searchQuery: "",
+    searchActive: false,
+    focusSearch: null,
+  });
 }
 
 function setupMutations() {
@@ -176,6 +127,17 @@ function setupMutations() {
 }
 
 describe("MailboxRail", () => {
+  beforeEach(() => {
+    useUiStore.setState({
+      selectedAccountId: null,
+      selectedFolderId: null,
+      selectedSmartFolder: null,
+      searchQuery: "",
+      searchActive: false,
+      focusSearch: null,
+    });
+  });
+
   afterEach(() => {
     cleanup();
     vi.clearAllMocks();
@@ -217,10 +179,10 @@ describe("MailboxRail", () => {
     render(<MailboxRail />);
 
     await user.click(screen.getByText("All Inboxes"));
-    expect(mockSetSelectedSmartFolder).toHaveBeenCalledWith("all_inboxes");
+    expect(useUiStore.getState().selectedSmartFolder).toBe("all_inboxes");
   });
 
-  it("Search and Snoozed and LABELS are non-interactive placeholders", () => {
+  it("Snoozed and LABELS are non-interactive placeholders; search is now a real input", () => {
     setupStore(null);
     setupMutations();
     mockUseAccounts.mockReturnValue({
@@ -232,8 +194,7 @@ describe("MailboxRail", () => {
 
     render(<MailboxRail />);
 
-    const searchEl = screen.getByText("Search");
-    expect(searchEl.closest("[aria-disabled='true']")).toBeTruthy();
+    expect(screen.getByLabelText("Search mail")).toBeTruthy();
 
     const snoozedEl = screen.getByText("Snoozed");
     expect(snoozedEl.closest("[aria-disabled='true']")).toBeTruthy();
@@ -243,59 +204,9 @@ describe("MailboxRail", () => {
 
   it("Open settings button calls openSettings", async () => {
     const user = userEvent.setup();
-    const mockOpenSettings = vi.fn();
-    mockUseUiStore.mockImplementation((selector: (s: UiState) => unknown) => {
-      const state: UiState = {
-        selectedAccountId: null,
-        selectedFolderId: null,
-        selectedMessageId: null,
-        selectedThreadId: null,
-        selectedSmartFolder: null,
-        theme: "auto",
-        accent: "#4f46e5",
-        density: "comfortable",
-        showPreview: true,
-        showAvatars: true,
-        composer: { open: false, draftId: null, prefill: null },
-        setSelectedAccountId: vi.fn(),
-        setSelectedFolderId: vi.fn(),
-        setSelectedMessageId: vi.fn(),
-        setSelectedThreadId: vi.fn(),
-        setSelectedSmartFolder: vi.fn(),
-        setTheme: vi.fn(),
-        setAccent: vi.fn(),
-        setDensity: vi.fn(),
-        setShowPreview: vi.fn(),
-        setShowAvatars: vi.fn(),
-        hydrateAppearance: vi.fn(),
-        settingsOpen: false,
-        openSettings: mockOpenSettings,
-        closeSettings: vi.fn(),
-        openComposer: vi.fn(),
-        closeComposer: vi.fn(),
-        visibleMessageIds: [],
-        selectMode: "thread",
-        replyTargetId: null,
-        composerSend: null,
-        paletteOpen: false,
-        cheatSheetOpen: false,
-        shortcutProfile: "default",
-        shortcutOverrides: {},
-        setListContext: vi.fn(),
-        setReplyTargetId: vi.fn(),
-        setComposerSend: vi.fn(),
-        togglePalette: vi.fn(),
-        closePalette: vi.fn(),
-        toggleCheatSheet: vi.fn(),
-        closeCheatSheet: vi.fn(),
-        setShortcutProfile: vi.fn(),
-        setShortcutOverride: vi.fn(),
-        resetShortcut: vi.fn(),
-        hydrateShortcuts: vi.fn(),
-      };
-      return selector ? selector(state) : state;
-    });
+    setupStore(null);
     setupMutations();
+    const openSettingsSpy = vi.spyOn(useUiStore.getState(), "openSettings");
     mockUseAccounts.mockReturnValue({
       data: [],
       isLoading: false,
@@ -306,7 +217,8 @@ describe("MailboxRail", () => {
     render(<MailboxRail />);
 
     await user.click(screen.getByRole("button", { name: /open settings/i }));
-    expect(mockOpenSettings).toHaveBeenCalled();
+    expect(openSettingsSpy).toHaveBeenCalled();
+    openSettingsSpy.mockRestore();
   });
 
   it("clicking All Inboxes calls setSelectedSmartFolder('all_inboxes')", async () => {
@@ -322,7 +234,7 @@ describe("MailboxRail", () => {
 
     render(<MailboxRail />);
     await user.click(screen.getByText("All Inboxes"));
-    expect(mockSetSelectedSmartFolder).toHaveBeenCalledWith("all_inboxes");
+    expect(useUiStore.getState().selectedSmartFolder).toBe("all_inboxes");
   });
 
   it("clicking Unread calls setSelectedSmartFolder('unread')", async () => {
@@ -338,7 +250,7 @@ describe("MailboxRail", () => {
 
     render(<MailboxRail />);
     await user.click(screen.getByText("Unread"));
-    expect(mockSetSelectedSmartFolder).toHaveBeenCalledWith("unread");
+    expect(useUiStore.getState().selectedSmartFolder).toBe("unread");
   });
 
   it("clicking Flagged calls setSelectedSmartFolder('flagged')", async () => {
@@ -354,7 +266,7 @@ describe("MailboxRail", () => {
 
     render(<MailboxRail />);
     await user.click(screen.getByText("Flagged"));
-    expect(mockSetSelectedSmartFolder).toHaveBeenCalledWith("flagged");
+    expect(useUiStore.getState().selectedSmartFolder).toBe("flagged");
   });
 
   it("renders account and folder, clicking folder calls setSelectedFolderId", async () => {
@@ -378,7 +290,7 @@ describe("MailboxRail", () => {
     expect(screen.getAllByText("A").length).toBeGreaterThan(0);
     expect(screen.getByText("Inbox")).toBeTruthy();
     await user.click(screen.getByText("Inbox"));
-    expect(mockSetSelectedFolderId).toHaveBeenCalledWith(10);
+    expect(useUiStore.getState().selectedFolderId).toBe(10);
   });
 
   it("renders empty state when no accounts", () => {
@@ -482,6 +394,28 @@ describe("MailboxRail", () => {
     await user.click(screen.getByRole("button", { name: /cancel/i }));
 
     expect(mockRemoveAccount).not.toHaveBeenCalled();
+  });
+
+  it("typing in the search input updates the store and clears via the clear button", async () => {
+    const user = userEvent.setup();
+    setupStore(null);
+    setupMutations();
+    mockUseAccounts.mockReturnValue({
+      data: [],
+      isLoading: false,
+      isError: false,
+      error: null,
+    } as unknown as ReturnType<typeof useAccounts>);
+
+    render(<MailboxRail />);
+    const input = screen.getByLabelText("Search mail");
+    await user.type(input, "report");
+    expect(useUiStore.getState().searchQuery).toBe("report");
+    expect(useUiStore.getState().searchActive).toBe(true);
+
+    await user.click(screen.getByLabelText("Clear search"));
+    expect(useUiStore.getState().searchQuery).toBe("");
+    expect(useUiStore.getState().searchActive).toBe(false);
   });
 
   it("drag-and-drop reorder calls reorderAccounts with swapped id order", () => {
