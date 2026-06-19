@@ -113,6 +113,9 @@ function SmartRow({
   onSelect,
   highlightTerms,
   labels,
+  selectable,
+  selected,
+  onToggleSelect,
 }: {
   row: SmartMessageRow;
   isSelected: boolean;
@@ -122,6 +125,9 @@ function SmartRow({
   onSelect: (id: number) => void;
   highlightTerms?: string[];
   labels?: Label[];
+  selectable: boolean;
+  selected: boolean;
+  onToggleSelect: (id: number) => void;
 }) {
   const senderLabel = row.from_name ?? row.from_address;
 
@@ -135,6 +141,15 @@ function SmartRow({
       aria-selected={isSelected}
     >
       <div className="message-row__indicators">
+        {selectable && (
+          <input
+            type="checkbox"
+            aria-label="Select message"
+            checked={selected}
+            onClick={(e) => e.stopPropagation()}
+            onChange={() => onToggleSelect(row.message_id)}
+          />
+        )}
         {!row.seen && <span className="message-row__unread-dot" aria-label="unread" />}
       </div>
       {showAvatars && <Avatar seed={row.from_address} label={row.from_name ?? row.from_address} />}
@@ -212,6 +227,12 @@ export function MessageListPane() {
   const searchQuery = useUiStore((s) => s.searchQuery);
   const clearSearch = useUiStore((s) => s.clearSearch);
   const selectedLabelId = useUiStore((s) => s.selectedLabelId);
+  const selectionActive = useUiStore((s) => s.selectionActive);
+  const selectedMessageIds = useUiStore((s) => s.selectedMessageIds);
+  const toggleSelectionMode = useUiStore((s) => s.toggleSelectionMode);
+  const toggleMessageSelected = useUiStore((s) => s.toggleMessageSelected);
+  const clearSelection = useUiStore((s) => s.clearSelection);
+  const openLabelPicker = useUiStore((s) => s.openLabelPicker);
   const debouncedQuery = useDebouncedValue(searchQuery, 200);
 
   const { data: threads, isLoading: threadsLoading } = useThreads(selectedFolderId);
@@ -309,7 +330,32 @@ export function MessageListPane() {
         <span className="message-list__sort" aria-disabled="true">
           Newest <ChevronDown size={13} />
         </span>
+        {isFlatMode && (
+          <button
+            type="button"
+            className="message-list__select-toggle"
+            onClick={() => toggleSelectionMode()}
+          >
+            {selectionActive ? "Done" : "Select"}
+          </button>
+        )}
       </div>
+
+      {isFlatMode && selectionActive && (
+        <div className="message-list__selection-bar" role="toolbar" aria-label="Selection actions">
+          <span>{selectedMessageIds.length} selected</span>
+          <button
+            type="button"
+            disabled={selectedMessageIds.length === 0}
+            onClick={() => openLabelPicker(selectedMessageIds)}
+          >
+            Label
+          </button>
+          <button type="button" onClick={() => clearSelection()}>
+            Cancel
+          </button>
+        </div>
+      )}
 
       {searchActive && (
         <div className="message-list__search-banner" role="status">
@@ -400,6 +446,9 @@ export function MessageListPane() {
                       onSelect={setSelectedMessageId}
                       highlightTerms={searchActive ? highlightTerms : undefined}
                       labels={labelsByMessage.get(row.message_id)}
+                      selectable={selectionActive}
+                      selected={selectedMessageIds.includes(row.message_id)}
+                      onToggleSelect={toggleMessageSelected}
                     />
                   </div>
                 );

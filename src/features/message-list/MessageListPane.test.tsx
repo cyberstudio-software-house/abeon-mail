@@ -5,6 +5,13 @@ const mockOpenComposer = vi.fn();
 
 const mockSetSelectedThreadId = vi.fn();
 const mockSetSelectedMessageId = vi.fn();
+const mockSetSelectedLabelId = vi.fn();
+const mockToggleSelectionMode = vi.fn();
+const mockToggleMessageSelected = vi.fn();
+const mockClearSelection = vi.fn();
+const mockSelectAll = vi.fn();
+const mockOpenLabelPicker = vi.fn();
+const mockCloseLabelPicker = vi.fn();
 
 vi.mock("../../ipc/queries", () => ({
   useThreads: vi.fn(),
@@ -141,7 +148,9 @@ function setupStore(
   selectedSmartFolder: UiState["selectedSmartFolder"] = null,
   searchActive = false,
   searchQuery = "",
-  selectedLabelId: number | null = null
+  selectedLabelId: number | null = null,
+  selectionActive = false,
+  selectedMessageIds: number[] = []
 ) {
   mockUseUiStore.mockImplementation((selector: (s: UiState) => unknown) => {
     const state: UiState = {
@@ -184,6 +193,10 @@ function setupStore(
       searchQuery,
       searchActive,
       focusSearch: null,
+      selectionActive,
+      selectedMessageIds,
+      labelPickerOpen: false,
+      labelPickerTargetIds: [],
       setListContext: vi.fn(),
       setReplyTargetId: vi.fn(),
       setComposerSend: vi.fn(),
@@ -198,6 +211,13 @@ function setupStore(
       setSearchQuery: vi.fn(),
       clearSearch: vi.fn(),
       setFocusSearch: vi.fn(),
+      setSelectedLabelId: mockSetSelectedLabelId,
+      toggleSelectionMode: mockToggleSelectionMode,
+      toggleMessageSelected: mockToggleMessageSelected,
+      clearSelection: mockClearSelection,
+      selectAll: mockSelectAll,
+      openLabelPicker: mockOpenLabelPicker,
+      closeLabelPicker: mockCloseLabelPicker,
     };
     return selector ? selector(state) : state;
   });
@@ -489,5 +509,38 @@ describe("MessageListPane", () => {
     expect(screen.getByText(/Results for/)).toBeTruthy();
     const marks = screen.getAllByText("report");
     expect(marks.some((m) => m.tagName === "MARK")).toBe(true);
+  });
+
+  it("selects rows and opens the picker with selected ids", () => {
+    setupStore(null, "comfortable", "unread", false, "", null, true, [100]);
+    mockUseThreads.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isError: false,
+      error: null,
+    } as unknown as ReturnType<typeof useThreads>);
+    mockUseSmartFolder.mockReturnValue({
+      data: sampleSmartRows,
+      isLoading: false,
+      isError: false,
+      error: null,
+    } as unknown as ReturnType<typeof useSmartFolder>);
+
+    const { getAllByLabelText, getByText } = renderPane();
+
+    const checkboxes = getAllByLabelText("Select message");
+    expect(checkboxes.length).toBeGreaterThan(0);
+
+    fireEvent.click(getByText("Done"));
+    expect(mockToggleSelectionMode).toHaveBeenCalled();
+
+    fireEvent.click(checkboxes[0]);
+    expect(mockToggleMessageSelected).toHaveBeenCalledWith(100);
+
+    fireEvent.click(getByText("Label"));
+    expect(mockOpenLabelPicker).toHaveBeenCalledWith([100]);
+
+    fireEvent.click(getByText("Cancel"));
+    expect(mockClearSelection).toHaveBeenCalled();
   });
 });
