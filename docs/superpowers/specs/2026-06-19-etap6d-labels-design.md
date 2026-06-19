@@ -173,3 +173,35 @@ id→Label[] → render chipów. Picker toggluje → invalidacja query → chipy
 - Ten sam logiczny mail w wielu folderach = osobne wiersze `messages` = etykiety nie
   współdzielone między kopiami.
 - Zagnieżdżone etykiety, drag-to-label, filtry kombinowane (etykieta + nieprzeczytane).
+
+## Implementation notes (as built)
+
+Zrealizowano 13 zadaniami (subagent-driven), zmerge'owane do main. Odchylenia i decyzje
+do zapamiętania:
+
+- **Multi-select tylko w trybach płaskich** (search / smart folder / widok etykiety, gdzie
+  wiersz = wiadomość z `message_id`). W trybie folderów (grupowanym wątkami) NIE ma
+  multi-selecta — etykietowanie wątku idzie przez reader (przycisk Tag → picker na ostatniej
+  wiadomości wątku). Świadomy zakres MVP.
+- **Kolor tekstu chipów** liczony z luminancji tła (`labelTextColor` w `shared/labels/labels.ts`,
+  próg 110 → `#000000`/`#ffffff`) — jasne kolory palety (amber `#f59e0b`, sky `#0ea5e9`) dostają
+  czarny tekst (czytelność WCAG). Zastąpiło hardcode `color:#fff`.
+- **Idempotentne `rename_label`/`set_label_color`/`delete_label`** — brak `NotFound` przy
+  nieistniejącym id (świadomy wybór: działa się tylko na widocznych etykietach).
+- **`list_messages_by_label`** wyklucza tylko `draft=1`/`deleted=1` (NIE trash/spam) i reużywa
+  `smart_repo::row_to_smart`.
+- **`to:`-style chipy w liście** przez batch-query `labelsForMessages(visible ids)` — etykietuje
+  wszystkie pobrane wiersze (≤100, limit zapytania), nie tylko widoczne w wirtualizerze;
+  watch-item przy większej skali, nie problem przy obecnym capie 100.
+- GreenMail (Docker) testy integracyjne wymagają pobrania obrazu `greenmail/standalone` — w
+  środowisku bez dostępu do Docker Hub (401) nie startują; 6d nie zmienia am-protocols/am-sync,
+  więc to ortogonalne do tej zmiany.
+
+### Fast-follow (drobny UX, nie blokuje)
+
+- `rename_label` przy kolizji `UNIQUE(name)` zwraca surowy błąd; `LabelsSection` rename-on-blur
+  nie obsługuje błędu → cichy no-op (lista pokazuje starą nazwę). Do dodania: mapowanie błędu +
+  revert inputu.
+- „New label" w railu otwiera picker z pustą listą targetów (`openLabelPicker([])`) — wejście
+  „utwórz etykietę"; istniejące etykiety w pickerze są wtedy klikalne, ale toggle to no-op
+  (brak targetów). Rozważyć dedykowane „create label" albo ukrycie toggli gdy brak targetów.
