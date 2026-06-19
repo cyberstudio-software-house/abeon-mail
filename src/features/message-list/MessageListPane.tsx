@@ -2,7 +2,7 @@ import { useRef, useMemo, useEffect } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { PencilLine, ChevronDown } from "lucide-react";
 import { useThreads, useSmartFolder, useSearch, useLabelsForMessages, useMessagesByLabel, useLabels, useUnsnooze } from "../../ipc/queries";
-import { formatWakeTime } from "../../shared/snooze/snooze";
+import { formatListDate, formatWakeTime } from "../../shared/datetime/datetime";
 import { useDebouncedValue } from "../../shared/hooks/useDebouncedValue";
 import { useUiStore, type Density } from "../../app/store";
 import type { ThreadSummary, SmartMessageRow, Label } from "../../ipc/bindings";
@@ -20,20 +20,6 @@ const ROW_HEIGHT: Record<Density, number> = {
 
 const HEADER_HEIGHT = 28;
 
-function formatDate(epochSeconds: number): string {
-  const date = new Date(epochSeconds * 1000);
-  const now = new Date();
-  const isToday =
-    date.getFullYear() === now.getFullYear() &&
-    date.getMonth() === now.getMonth() &&
-    date.getDate() === now.getDate();
-
-  if (isToday) {
-    return date.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
-  }
-  return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
-}
-
 function ThreadRow({
   thread,
   isSelected,
@@ -49,6 +35,7 @@ function ThreadRow({
   showSnippet: boolean;
   onSelect: (id: number) => void;
 }) {
+  const timeFormat = useUiStore((s) => s.timeFormat);
   const isUnread = thread.unread_count > 0;
 
   return (
@@ -74,7 +61,7 @@ function ThreadRow({
           <span className={`message-row__sender${isUnread ? " message-row__sender--bold" : ""}`}>
             {thread.participants.join(", ")}
           </span>
-          <span className="message-row__date">{formatDate(thread.last_date)}</span>
+          <span className="message-row__date">{formatListDate(thread.last_date, timeFormat)}</span>
         </div>
         <div className="message-row__meta">
           <span className="message-row__subject">{thread.subject}</span>
@@ -132,6 +119,7 @@ function SmartRow({
   onToggleSelect: (id: number) => void;
   wakeAt?: number | null;
 }) {
+  const timeFormat = useUiStore((s) => s.timeFormat);
   const senderLabel = row.from_name ?? row.from_address;
 
   return (
@@ -174,7 +162,7 @@ function SmartRow({
             />
             {senderLabel}
           </span>
-          <span className="message-row__date">{formatDate(row.date)}</span>
+          <span className="message-row__date">{formatListDate(row.date, timeFormat)}</span>
         </div>
         <div className="message-row__meta">
           <span className="message-row__subject">
@@ -194,7 +182,7 @@ function SmartRow({
             {labels && labels.length > 0 && <LabelChips labels={labels} />}
             {wakeAt != null && (
               <span className="message-row__snooze" data-testid="snooze-wake">
-                {formatWakeTime(wakeAt)}
+                {formatWakeTime(wakeAt, timeFormat)}
               </span>
             )}
           </div>

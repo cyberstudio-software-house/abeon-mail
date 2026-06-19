@@ -3,7 +3,6 @@ import {
   nextWeekdayAt,
   tomorrowAt,
   presetTimestamp,
-  formatWakeTime,
   parseSnoozeSettings,
   DEFAULT_SNOOZE_CONFIG,
   SNOOZE_KEYS,
@@ -48,9 +47,6 @@ describe("snooze presets", () => {
     expect(presetTimestamp("next_week", FRIDAY, DEFAULT_SNOOZE_CONFIG)).toBe(nextWeekdayAt(FRIDAY, 1, 8));
   });
 
-  it("formatWakeTime returns a non-empty string", () => {
-    expect(formatWakeTime(Math.floor(FRIDAY.getTime() / 1000)).length).toBeGreaterThan(0);
-  });
 });
 
 describe("parseSnoozeSettings", () => {
