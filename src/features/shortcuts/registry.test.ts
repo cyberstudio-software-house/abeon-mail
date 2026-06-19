@@ -31,3 +31,11 @@ describe("ACTIONS registry", () => {
     expect(actionById("last-message")?.defaultBinding).toBe("");
   });
 });
+
+describe("search action", () => {
+  it("is enabled and bound to /", () => {
+    const search = actionById("search");
+    expect(search?.enabled).toBe(true);
+    expect(search?.defaultBinding).toBe("/");
+  });
+});

@@ -111,6 +111,7 @@ export function ShortcutsProvider({ children }: { children: ReactNode }) {
       "go-inbox": () => useUiStore.getState().setSelectedSmartFolder("all_inboxes"),
       "go-starred": () => useUiStore.getState().setSelectedSmartFolder("flagged"),
       "open-settings": () => useUiStore.getState().openSettings(),
+      search: () => useUiStore.getState().focusSearch?.(),
       "next-message": () => move(1),
       "prev-message": () => move(-1),
       "first-message": () => jumpTo("first"),
