@@ -13,6 +13,7 @@ pub fn list_smart_folder(
         SmartFolderKind::AllInboxes => list_all_inboxes(db, limit, offset),
         SmartFolderKind::Unread => list_unread(db, limit, offset),
         SmartFolderKind::Flagged => list_flagged(db, limit, offset),
+        SmartFolderKind::Snoozed => todo!(),
     }
 }
 
@@ -30,6 +31,7 @@ pub(crate) fn row_to_smart(row: &rusqlite::Row) -> rusqlite::Result<SmartMessage
         flagged: row.get::<_, i64>(9)? != 0,
         has_attachments: row.get::<_, i64>(10)? != 0,
         snippet: row.get(11)?,
+        snooze_wake_at: None,
     })
 }
 

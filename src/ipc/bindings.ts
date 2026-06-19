@@ -162,7 +162,7 @@ export type Signature = {
 	is_default: boolean,
 };
 
-export type SmartFolderKind = "all_inboxes" | "unread" | "flagged";
+export type SmartFolderKind = "all_inboxes" | "unread" | "flagged" | "snoozed";
 
 export type SmartMessageRow = {
 	message_id: number,
@@ -177,6 +177,7 @@ export type SmartMessageRow = {
 	flagged: boolean,
 	has_attachments: boolean,
 	snippet: string,
+	snooze_wake_at: number | null,
 };
 
 export type SyncProgress = {
