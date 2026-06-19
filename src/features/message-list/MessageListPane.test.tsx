@@ -234,6 +234,12 @@ function setupStore(
       closeLabelPicker: mockCloseLabelPicker,
       openSnoozePicker: mockOpenSnoozePicker,
       closeSnoozePicker: mockCloseSnoozePicker,
+      defaultAccountId: "",
+      timeFormat: "system",
+      generalHydrated: true,
+      setDefaultAccountId: vi.fn(),
+      setTimeFormat: vi.fn(),
+      hydrateGeneral: vi.fn(),
     };
     return selector ? selector(state) : state;
   });
