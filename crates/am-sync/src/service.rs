@@ -701,6 +701,11 @@ pub async fn drain_queue(db: &Database, account_id: i64, creds: &dyn CredentialS
     let mut selected: Option<String> = None;
 
     for op in due {
+        if op.op_type == "move_message" {
+            drain_one_move(db, &mut session, op.account_id, &op, now).await?;
+            selected = None;
+            continue;
+        }
         if op.op_type != "set_flag" {
             continue;
         }
@@ -755,6 +760,62 @@ pub async fn drain_queue(db: &Database, account_id: i64, creds: &dyn CredentialS
     }
 
     let _ = session.logout().await;
+    Ok(())
+}
+
+async fn drain_one_move(
+    db: &Database,
+    session: &mut ImapSession,
+    account_id: i64,
+    op: &am_storage::queue_repo::QueuedOp,
+    now: i64,
+) -> Result<(), SyncError> {
+    let parsed: serde_json::Value = match serde_json::from_str(&op.payload) {
+        Ok(v) => v,
+        Err(_) => { queue_repo::mark_done(db, op.id)?; return Ok(()); }
+    };
+    let folder_id = parsed["folder_id"].as_i64().unwrap_or(0);
+    let uid = parsed["uid"].as_i64().unwrap_or(0);
+    let payload_validity = parsed["uidvalidity"].as_i64().unwrap_or(-1);
+    let target = match parsed["target_type"].as_str() {
+        Some("archive") => MoveTarget::Archive,
+        Some("trash") => MoveTarget::Trash,
+        _ => { queue_repo::mark_done(db, op.id)?; return Ok(()); }
+    };
+
+    let src = match folders_repo::get_folder(db, folder_id) {
+        Ok(f) => f,
+        Err(_) => { queue_repo::mark_done(db, op.id)?; return Ok(()); }
+    };
+    match folders_repo::get_sync_markers(db, folder_id).ok().and_then(|m| m.uidvalidity) {
+        Some(v) if v == payload_validity => {}
+        _ => { queue_repo::mark_done(db, op.id)?; return Ok(()); }
+    }
+
+    let dst = match folders_repo::find_by_type(db, account_id, target.folder_type())? {
+        Some(f) => f,
+        None => {
+            let name = target.default_folder_name();
+            if session.create_folder(name).await.is_err() {
+                return retry_or_drop(db, op, now);
+            }
+            folders_repo::upsert_folder(db, account_id, name, name, target.folder_type())?
+        }
+    };
+
+    match session.move_uid(&src.remote_path, uid, &dst.remote_path).await {
+        Ok(()) => { queue_repo::mark_done(db, op.id)?; Ok(()) }
+        Err(_) => retry_or_drop(db, op, now),
+    }
+}
+
+fn retry_or_drop(db: &Database, op: &am_storage::queue_repo::QueuedOp, now: i64) -> Result<(), SyncError> {
+    if op.attempts + 1 >= MAX_QUEUE_ATTEMPTS {
+        queue_repo::mark_done(db, op.id)?;
+    } else {
+        let backoff = now + 2i64.pow((op.attempts + 1).min(5) as u32) * 30;
+        queue_repo::mark_retry(db, op.id, backoff, None)?;
+    }
     Ok(())
 }
 

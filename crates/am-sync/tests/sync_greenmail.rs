@@ -5,8 +5,9 @@ use std::sync::{Mutex, Once};
 use std::time::Duration;
 
 use am_auth::endpoints::Endpoints;
+use am_core::folder::FolderType;
 use am_storage::{accounts_repo, folders_repo, messages_repo, Database};
-use am_sync::service::{self, AddAccountInput};
+use am_sync::service::{self, AddAccountInput, MoveTarget, UNDO_GRACE_SECS};
 use async_imap::Client;
 use keyring::credential::{Credential, CredentialApi, CredentialBuilderApi, CredentialPersistence};
 use testcontainers::core::{ContainerPort, WaitFor};
@@ -253,4 +254,118 @@ async fn add_account_syncs_inbox_and_fetches_body() {
     let archive_headers = messages_repo::list_by_folder(&db, archive.id, 50, 0, i64::MAX).expect("archive list failed");
     assert_eq!(archive_headers.len(), 1, "expected 1 archived header");
     assert_eq!(archive_headers[0].subject, "Archived One");
+}
+
+async fn seed_inbox_only(port: u16) {
+    let tcp = TcpStream::connect(("127.0.0.1", port))
+        .await
+        .expect("connect for seeding failed");
+    let client = Client::new(tcp);
+    let mut session = client
+        .login(USER, PASSWORD)
+        .await
+        .map_err(|(e, _)| e)
+        .expect("seed login failed");
+
+    for (subject, body) in [
+        (SUBJECT_ONE, BODY_ONE),
+        (SUBJECT_TWO, BODY_TWO),
+        (SUBJECT_THREE, BODY_THREE),
+    ] {
+        session
+            .append("INBOX", None, None, raw_message(subject, body).as_bytes())
+            .await
+            .expect("append failed");
+    }
+
+    session.logout().await.expect("seed logout failed");
+}
+
+#[tokio::test]
+async fn archive_moves_message_out_of_inbox() {
+    if !docker_available() {
+        eprintln!("docker is not available; skipping greenmail archive e2e test");
+        return;
+    }
+
+    install_in_mem_builder();
+
+    let image = GenericImage::new("greenmail/standalone", "latest")
+        .with_wait_for(WaitFor::message_on_stdout("Starting GreenMail standalone"))
+        .with_exposed_port(ContainerPort::Tcp(IMAP_PORT))
+        .with_env_var(
+            "GREENMAIL_OPTS",
+            "-Dgreenmail.setup.test.all -Dgreenmail.auth.disabled -Dgreenmail.verbose -Dgreenmail.hostname=0.0.0.0",
+        );
+
+    let container = image
+        .start()
+        .await
+        .expect("failed to start greenmail container");
+
+    let mapped_port = container
+        .get_host_port_ipv4(ContainerPort::Tcp(IMAP_PORT))
+        .await
+        .expect("failed to get mapped imap port");
+
+    tokio::time::sleep(Duration::from_millis(500)).await;
+
+    seed_inbox_only(mapped_port).await;
+
+    let endpoints = Endpoints {
+        imap_host: "127.0.0.1".to_string(),
+        imap_port: mapped_port,
+        imap_tls: false,
+        smtp_host: "127.0.0.1".to_string(),
+        smtp_port: 0,
+        smtp_tls: false,
+    };
+
+    let db = Database::open_in_memory().expect("db open failed");
+
+    let input = AddAccountInput {
+        email: USER.to_string(),
+        display_name: "Sync User".to_string(),
+        password: PASSWORD.to_string(),
+        endpoints,
+    };
+
+    let account = service::add_account(&db, input)
+        .await
+        .expect("add_account failed");
+
+    let inbox = folders_repo::find_by_type(&db, account.id, FolderType::Inbox)
+        .unwrap()
+        .expect("inbox folder missing");
+
+    let headers = messages_repo::list_by_folder(&db, inbox.id, 50, 0, i64::MAX).unwrap();
+    assert_eq!(headers.len(), 3, "expected 3 headers in inbox before move");
+
+    let first_id = headers[0].id;
+    let first_subject = headers[0].subject.clone();
+
+    service::enqueue_move(&db, first_id, MoveTarget::Archive, 0).unwrap();
+
+    let creds = am_sync::auth::KeychainCredentialSource::new();
+    service::drain_queue(&db, account.id, creds.as_ref(), UNDO_GRACE_SECS)
+        .await
+        .expect("drain_queue failed");
+
+    let archive = folders_repo::find_by_type(&db, account.id, FolderType::Archive)
+        .unwrap()
+        .expect("archive folder should exist after auto-create");
+
+    service::sync_all_folders(&db, account.id, creds.as_ref(), |_| {})
+        .await
+        .ok();
+
+    let inbox_after = messages_repo::list_by_folder(&db, inbox.id, 50, 0, i64::MAX).unwrap();
+    assert_eq!(inbox_after.len(), 2, "inbox should have 2 messages after archiving one");
+    assert!(
+        !inbox_after.iter().any(|h| h.subject == first_subject),
+        "archived message subject should not remain in inbox"
+    );
+
+    let archive_after = messages_repo::list_by_folder(&db, archive.id, 50, 0, i64::MAX).unwrap();
+    assert_eq!(archive_after.len(), 1, "archive should contain the 1 moved message");
 }
