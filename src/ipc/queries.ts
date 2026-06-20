@@ -1,7 +1,8 @@
-import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
+import { useQuery, useQueries, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { commands } from "./bindings";
-import type { Account, Endpoints, Label, MessageFlag, OutgoingMessage, Rule, RuleInput, SendError, Signature, SmartFolderKind, SmartMessageRow } from "./bindings";
+import type { Account, Endpoints, Folder, Label, MessageFlag, OutgoingMessage, Rule, RuleInput, SendError, Signature, SmartFolderKind, SmartMessageRow } from "./bindings";
 import { useUiStore } from "../app/store";
+import { parsePinnedMap, pinKey, togglePinnedIds } from "../features/mailbox/pinned";
 
 type ResultOk<T> = { status: "ok"; data: T };
 type ResultErr = { status: "error"; error: string };
@@ -601,4 +602,45 @@ export function useDeleteRule() {
       queryClient.invalidateQueries({ queryKey: ["rules", v.accountId] });
     },
   });
+}
+
+export function usePinnedMap() {
+  return useQuery({
+    queryKey: ["pinned-folders"],
+    queryFn: () =>
+      commands
+        .getSettings()
+        .then(unwrap)
+        .then((all) => parsePinnedMap(all)),
+  });
+}
+
+export function useTogglePinnedFolder() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ accountId, folderId }: { accountId: number; folderId: number }) => {
+      const all = await commands.getSettings().then(unwrap);
+      const current = parsePinnedMap(all).get(accountId) ?? [];
+      const next = togglePinnedIds(current, folderId);
+      await commands.setSetting(pinKey(accountId), JSON.stringify(next)).then(unwrap);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["pinned-folders"] });
+    },
+  });
+}
+
+export function useAllAccountFolders(accounts: Account[]): Map<number, Folder[]> {
+  const results = useQueries({
+    queries: accounts.map((account) => ({
+      queryKey: ["folders", account.id],
+      queryFn: () => commands.listFolders(account.id).then(unwrap),
+    })),
+  });
+  const map = new Map<number, Folder[]>();
+  accounts.forEach((account, index) => {
+    const data = results[index]?.data;
+    if (data) map.set(account.id, data);
+  });
+  return map;
 }
