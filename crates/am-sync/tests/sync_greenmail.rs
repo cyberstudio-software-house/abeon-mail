@@ -351,13 +351,13 @@ async fn archive_moves_message_out_of_inbox() {
         .await
         .expect("drain_queue failed");
 
-    let archive = folders_repo::find_by_type(&db, account.id, FolderType::Archive)
-        .unwrap()
-        .expect("archive folder should exist after auto-create");
-
     service::sync_all_folders(&db, account.id, creds.as_ref(), |_| {})
         .await
         .ok();
+
+    let archive = folders_repo::find_by_type(&db, account.id, FolderType::Archive)
+        .unwrap()
+        .expect("Archive type must survive folder discovery");
 
     let inbox_after = messages_repo::list_by_folder(&db, inbox.id, 50, 0, i64::MAX).unwrap();
     assert_eq!(inbox_after.len(), 2, "inbox should have 2 messages after archiving one");
@@ -367,5 +367,5 @@ async fn archive_moves_message_out_of_inbox() {
     );
 
     let archive_after = messages_repo::list_by_folder(&db, archive.id, 50, 0, i64::MAX).unwrap();
-    assert_eq!(archive_after.len(), 1, "archive should contain the 1 moved message");
+    assert_eq!(archive_after.len(), 1);
 }

@@ -140,13 +140,21 @@ fn folder_type_for(remote_path: &str, special_use: Option<&str>) -> FolderType {
         return FolderType::Inbox;
     }
     match special_use {
-        Some("\\Sent") => FolderType::Sent,
-        Some("\\Drafts") => FolderType::Drafts,
-        Some("\\Trash") => FolderType::Trash,
-        Some("\\Junk") => FolderType::Spam,
-        Some("\\Archive") => FolderType::Archive,
-        _ => FolderType::Custom,
+        Some("\\Sent") => return FolderType::Sent,
+        Some("\\Drafts") => return FolderType::Drafts,
+        Some("\\Trash") => return FolderType::Trash,
+        Some("\\Junk") => return FolderType::Spam,
+        Some("\\Archive") | Some("\\All") => return FolderType::Archive,
+        _ => {}
     }
+    let leaf = remote_path.rsplit(['/', '.']).next().unwrap_or(remote_path);
+    if leaf.eq_ignore_ascii_case("Archive") {
+        return FolderType::Archive;
+    }
+    if leaf.eq_ignore_ascii_case("Trash") || leaf.eq_ignore_ascii_case("Deleted Items") {
+        return FolderType::Trash;
+    }
+    FolderType::Custom
 }
 
 fn imap_config(endpoints: &Endpoints, username: &str) -> ImapConfig {
@@ -1010,7 +1018,14 @@ mod tests {
         assert_eq!(folder_type_for("Junk", Some("\\Junk")), FolderType::Spam);
         assert_eq!(folder_type_for("Archive", Some("\\Archive")), FolderType::Archive);
         assert_eq!(folder_type_for("Work", None), FolderType::Custom);
-        assert_eq!(folder_type_for("All", Some("\\All")), FolderType::Custom);
+        assert_eq!(folder_type_for("All", Some("\\All")), FolderType::Archive);
+        assert_eq!(folder_type_for("[Gmail]/All Mail", Some("\\All")), FolderType::Archive);
+        assert_eq!(folder_type_for("Archive", None), FolderType::Archive);
+        assert_eq!(folder_type_for("INBOX.Archive", None), FolderType::Archive);
+        assert_eq!(folder_type_for("Trash", None), FolderType::Trash);
+        assert_eq!(folder_type_for("Deleted Items", None), FolderType::Trash);
+        assert_eq!(folder_type_for("Projects", None), FolderType::Custom);
+        assert_eq!(folder_type_for("Sent", Some("\\Sent")), FolderType::Sent);
     }
 
     #[test]
