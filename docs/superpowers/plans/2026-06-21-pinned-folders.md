@@ -58,7 +58,7 @@ function account(id: number, email = `a${id}@x.pl`): Account {
     id,
     email,
     display_name: `Account ${id}`,
-    provider_type: "imap",
+    provider_type: "imap_password",
     color: null,
     position: id,
     requires_reauth: false,
@@ -602,8 +602,8 @@ import type { Account, Folder } from "../../ipc/bindings";
 const mutate = vi.fn();
 
 const accounts: Account[] = [
-  { id: 1, email: "a1@x.pl", display_name: "Konto A", provider_type: "imap", color: null, position: 1, requires_reauth: false },
-  { id: 2, email: "a2@x.pl", display_name: "Konto B", provider_type: "imap", color: null, position: 2, requires_reauth: false },
+  { id: 1, email: "a1@x.pl", display_name: "Konto A", provider_type: "imap_password", color: null, position: 1, requires_reauth: false },
+  { id: 2, email: "a2@x.pl", display_name: "Konto B", provider_type: "imap_password", color: null, position: 2, requires_reauth: false },
 ];
 
 const foldersByAccount = new Map<number, Folder[]>([
