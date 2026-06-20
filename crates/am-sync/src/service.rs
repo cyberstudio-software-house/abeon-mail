@@ -812,7 +812,17 @@ async fn drain_one_move(
     };
 
     match session.move_uid(&src.remote_path, uid, &dst.remote_path).await {
-        Ok(()) => { queue_repo::mark_done(db, op.id)?; Ok(()) }
+        Ok(()) => {
+            let message_id = parsed["message_id"].as_i64().unwrap_or(0);
+            let thread_id = messages_repo::locate(db, message_id).ok().and_then(|l| l.thread_id);
+            messages_repo::delete_by_uids(db, folder_id, &[uid])?;
+            folders_repo::recount_unread(db, folder_id)?;
+            if let Some(t) = thread_id {
+                threads_repo::recompute(db, t)?;
+            }
+            queue_repo::mark_done(db, op.id)?;
+            Ok(())
+        }
         Err(_) => retry_or_drop(db, op, now),
     }
 }

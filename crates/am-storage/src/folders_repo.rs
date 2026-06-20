@@ -199,7 +199,7 @@ pub fn get_sync_markers(db: &Database, folder_id: i64) -> Result<SyncMarkers, St
 pub fn recount_unread(db: &Database, folder_id: i64) -> Result<i64, StorageError> {
     let conn = db.conn();
     let unread: i64 = conn.query_row(
-        "SELECT count(*) FROM messages WHERE folder_id = ?1 AND seen = 0",
+        "SELECT count(*) FROM messages WHERE folder_id = ?1 AND seen = 0 AND deleted = 0",
         params![folder_id],
         |row| row.get(0),
     )?;
@@ -319,6 +319,25 @@ mod tests {
         ]).unwrap();
         let unread = recount_unread(&db, folder.id).unwrap();
         assert_eq!(unread, 1);
+    }
+
+    #[test]
+    fn recount_unread_excludes_deleted() {
+        use am_core::message::NewMessageHeader;
+        let db = Database::open_in_memory().unwrap();
+        let account = insert_account(&db, &sample_account()).unwrap();
+        let folder = upsert_folder(&db, account.id, "INBOX", "Inbox", FolderType::Inbox).unwrap();
+        let h = |uid: i64, msgid: &str| NewMessageHeader {
+            uid, message_id_hdr: Some(msgid.into()), in_reply_to: None, references_hdr: None,
+            from_address: "s@e.com".into(), from_name: None, subject: "S".into(), date: uid,
+            seen: false, flagged: false, has_attachments: false, size: 1, snippet: "x".into(),
+        };
+        crate::messages_repo::insert_headers(&db, folder.id, &[h(1, "<a@e>"), h(2, "<b@e>")]).unwrap();
+        assert_eq!(recount_unread(&db, folder.id).unwrap(), 2);
+        let ids: Vec<i64> = crate::messages_repo::list_by_folder(&db, folder.id, 50, 0, i64::MAX)
+            .unwrap().iter().map(|m| m.id).collect();
+        crate::messages_repo::set_deleted(&db, ids[0], true).unwrap();
+        assert_eq!(recount_unread(&db, folder.id).unwrap(), 1);
     }
 
     #[test]

@@ -351,6 +351,12 @@ async fn archive_moves_message_out_of_inbox() {
         .await
         .expect("drain_queue failed");
 
+    assert_eq!(
+        messages_repo::count_by_folder(&db, inbox.id).unwrap(),
+        2,
+        "source row must be hard-deleted on move, not left as an orphan"
+    );
+
     service::sync_all_folders(&db, account.id, creds.as_ref(), |_| {})
         .await
         .ok();
