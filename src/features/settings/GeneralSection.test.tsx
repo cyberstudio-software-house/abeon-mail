@@ -2,17 +2,24 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, fireEvent, cleanup } from "@testing-library/react";
 import { GeneralSection } from "./GeneralSection";
 
-const { setDefaultAccountId, setTimeFormat } = vi.hoisted(() => ({
+const { state, setDefaultAccountId, setTimeFormat, setMarkReadMode, setMarkReadDelaySeconds } = vi.hoisted(() => ({
+  state: { markReadMode: "immediate" as "immediate" | "delay" | "never", markReadDelaySeconds: 2 },
   setDefaultAccountId: vi.fn(),
   setTimeFormat: vi.fn(),
+  setMarkReadMode: vi.fn(),
+  setMarkReadDelaySeconds: vi.fn(),
 }));
 
 vi.mock("../../shared/general/GeneralProvider", () => ({
   useGeneral: () => ({
     defaultAccountId: "",
     timeFormat: "system",
+    markReadMode: state.markReadMode,
+    markReadDelaySeconds: state.markReadDelaySeconds,
     setDefaultAccountId,
     setTimeFormat,
+    setMarkReadMode,
+    setMarkReadDelaySeconds,
   }),
 }));
 
@@ -27,7 +34,11 @@ vi.mock("../../ipc/queries", () => ({
   }),
 }));
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+  state.markReadMode = "immediate";
+  state.markReadDelaySeconds = 2;
+});
 afterEach(() => cleanup());
 
 describe("GeneralSection", () => {
@@ -49,5 +60,24 @@ describe("GeneralSection", () => {
     const { getByText } = render(<GeneralSection />);
     fireEvent.click(getByText("24-hour"));
     expect(setTimeFormat).toHaveBeenCalledWith("24h");
+  });
+
+  it("selecting a mark-as-read mode persists it", () => {
+    const { getByText } = render(<GeneralSection />);
+    fireEvent.click(getByText("After a delay"));
+    expect(setMarkReadMode).toHaveBeenCalledWith("delay");
+  });
+
+  it("shows the delay input only in delay mode and persists changes", () => {
+    state.markReadMode = "delay";
+    const { getByLabelText } = render(<GeneralSection />);
+    const input = getByLabelText("Mark as read delay seconds") as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "8" } });
+    expect(setMarkReadDelaySeconds).toHaveBeenCalledWith(8);
+  });
+
+  it("hides the delay input outside delay mode", () => {
+    const { queryByLabelText } = render(<GeneralSection />);
+    expect(queryByLabelText("Mark as read delay seconds")).toBeNull();
   });
 });

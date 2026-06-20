@@ -7,13 +7,17 @@ import {
 } from "react";
 import { commands } from "../../ipc/bindings";
 import { useUiStore } from "../../app/store";
-import { GENERAL_KEYS, parseGeneralSettings, type TimeFormat } from "./general";
+import { GENERAL_KEYS, parseGeneralSettings, type TimeFormat, type MarkReadMode } from "./general";
 
 type GeneralContextValue = {
   defaultAccountId: string;
   timeFormat: TimeFormat;
+  markReadMode: MarkReadMode;
+  markReadDelaySeconds: number;
   setDefaultAccountId: (value: string) => void;
   setTimeFormat: (value: TimeFormat) => void;
+  setMarkReadMode: (value: MarkReadMode) => void;
+  setMarkReadDelaySeconds: (value: number) => void;
 };
 
 const GeneralContext = createContext<GeneralContextValue | null>(null);
@@ -26,8 +30,12 @@ export function GeneralProvider({ children }: { children: ReactNode }) {
   const defaultAccountId = useUiStore((s) => s.defaultAccountId);
   const timeFormat = useUiStore((s) => s.timeFormat);
   const hydrateGeneral = useUiStore((s) => s.hydrateGeneral);
+  const markReadMode = useUiStore((s) => s.markReadMode);
+  const markReadDelaySeconds = useUiStore((s) => s.markReadDelaySeconds);
   const storeSetDefaultAccountId = useUiStore((s) => s.setDefaultAccountId);
   const storeSetTimeFormat = useUiStore((s) => s.setTimeFormat);
+  const storeSetMarkReadMode = useUiStore((s) => s.setMarkReadMode);
+  const storeSetMarkReadDelaySeconds = useUiStore((s) => s.setMarkReadDelaySeconds);
 
   useEffect(() => {
     let active = true;
@@ -49,6 +57,8 @@ export function GeneralProvider({ children }: { children: ReactNode }) {
     () => ({
       defaultAccountId,
       timeFormat,
+      markReadMode,
+      markReadDelaySeconds,
       setDefaultAccountId: (v) => {
         storeSetDefaultAccountId(v);
         persist(GENERAL_KEYS.defaultAccountId, v);
@@ -57,8 +67,25 @@ export function GeneralProvider({ children }: { children: ReactNode }) {
         storeSetTimeFormat(v);
         persist(GENERAL_KEYS.timeFormat, v);
       },
+      setMarkReadMode: (v) => {
+        storeSetMarkReadMode(v);
+        persist(GENERAL_KEYS.markReadMode, v);
+      },
+      setMarkReadDelaySeconds: (v) => {
+        storeSetMarkReadDelaySeconds(v);
+        persist(GENERAL_KEYS.markReadDelaySeconds, String(v));
+      },
     }),
-    [defaultAccountId, timeFormat, storeSetDefaultAccountId, storeSetTimeFormat]
+    [
+      defaultAccountId,
+      timeFormat,
+      markReadMode,
+      markReadDelaySeconds,
+      storeSetDefaultAccountId,
+      storeSetTimeFormat,
+      storeSetMarkReadMode,
+      storeSetMarkReadDelaySeconds,
+    ]
   );
 
   return <GeneralContext.Provider value={value}>{children}</GeneralContext.Provider>;

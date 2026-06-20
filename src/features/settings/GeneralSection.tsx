@@ -1,5 +1,5 @@
 import { useGeneral } from "../../shared/general/GeneralProvider";
-import { TIME_FORMATS } from "../../shared/general/general";
+import { TIME_FORMATS, MARK_READ_MODES } from "../../shared/general/general";
 import { useAccounts } from "../../ipc/queries";
 import { UpdatesPanel } from "../updates/UpdatesPanel";
 
@@ -42,6 +42,38 @@ export function GeneralSection() {
           </button>
         ))}
       </div>
+
+      <div className="appearance-field__label">Mark messages as read</div>
+      <div className="theme-cards">
+        {MARK_READ_MODES.map((m) => (
+          <button
+            key={m.value}
+            type="button"
+            aria-pressed={g.markReadMode === m.value}
+            className={`theme-card${g.markReadMode === m.value ? " theme-card--active" : ""}`}
+            onClick={() => g.setMarkReadMode(m.value)}
+          >
+            {m.label}
+          </button>
+        ))}
+      </div>
+
+      {g.markReadMode === "delay" && (
+        <>
+          <div className="appearance-field__label">Delay (seconds)</div>
+          <input
+            type="number"
+            aria-label="Mark as read delay seconds"
+            min={1}
+            max={60}
+            value={g.markReadDelaySeconds}
+            onChange={(e) => {
+              const n = Number(e.target.value);
+              if (Number.isInteger(n) && n >= 1 && n <= 60) g.setMarkReadDelaySeconds(n);
+            }}
+          />
+        </>
+      )}
 
       <div className="settings-field">
         <div className="settings-field__label">About</div>
