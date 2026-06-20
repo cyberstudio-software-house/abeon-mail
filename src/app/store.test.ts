@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { useUiStore } from "./store";
 import { DEFAULT_SNOOZE_CONFIG } from "../shared/snooze/snooze";
+import { DEFAULT_GENERAL } from "../shared/general/general";
 
 beforeEach(() => {
   useUiStore.setState({
@@ -290,5 +291,31 @@ describe("hydrateSnooze", () => {
     const s = useUiStore.getState();
     expect(s.snoozeMorningHour).toBe(DEFAULT_SNOOZE_CONFIG.morningHour);
     expect(s.snoozeWeekStartDay).toBe(DEFAULT_SNOOZE_CONFIG.weekStartDay);
+  });
+});
+
+describe("general mark-as-read slice", () => {
+  beforeEach(() => {
+    useUiStore.setState({
+      markReadMode: DEFAULT_GENERAL.markReadMode,
+      markReadDelaySeconds: DEFAULT_GENERAL.markReadDelaySeconds,
+      generalHydrated: false,
+    });
+  });
+
+  it("setters update the mark-as-read fields", () => {
+    useUiStore.getState().setMarkReadMode("delay");
+    useUiStore.getState().setMarkReadDelaySeconds(7);
+    const s = useUiStore.getState();
+    expect(s.markReadMode).toBe("delay");
+    expect(s.markReadDelaySeconds).toBe(7);
+  });
+
+  it("hydrateGeneral maps GeneralFields keys onto the store and flips generalHydrated", () => {
+    useUiStore.getState().hydrateGeneral({ markReadMode: "never", markReadDelaySeconds: 10 });
+    const s = useUiStore.getState();
+    expect(s.markReadMode).toBe("never");
+    expect(s.markReadDelaySeconds).toBe(10);
+    expect(s.generalHydrated).toBe(true);
   });
 });
