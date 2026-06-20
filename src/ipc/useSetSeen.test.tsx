@@ -39,4 +39,14 @@ describe("useSetSeen", () => {
       expect(commands.setMessageFlags).toHaveBeenCalledWith(5, "seen", false);
     });
   });
+
+  it("marking unread bumps the markUnreadEpoch", async () => {
+    const { useUiStore } = await import("../app/store");
+    const before = useUiStore.getState().markUnreadEpoch;
+    const { result } = renderHook(() => useSetSeen(), { wrapper });
+    result.current.mutate({ ids: [1], value: false });
+    await waitFor(() => {
+      expect(useUiStore.getState().markUnreadEpoch).toBe(before + 1);
+    });
+  });
 });

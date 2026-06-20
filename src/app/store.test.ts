@@ -318,4 +318,10 @@ describe("general mark-as-read slice", () => {
     expect(s.markReadDelaySeconds).toBe(10);
     expect(s.generalHydrated).toBe(true);
   });
+
+  it("bumpMarkUnreadEpoch increments the epoch", () => {
+    useUiStore.setState({ markUnreadEpoch: 0 });
+    useUiStore.getState().bumpMarkUnreadEpoch();
+    expect(useUiStore.getState().markUnreadEpoch).toBe(1);
+  });
 });

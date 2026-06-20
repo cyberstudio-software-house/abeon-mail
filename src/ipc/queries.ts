@@ -127,6 +127,7 @@ export function useSetSeen() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async ({ ids, value }: { ids: number[]; value: boolean }) => {
+      if (!value) useUiStore.getState().bumpMarkUnreadEpoch();
       for (const id of ids) {
         await commands.setMessageFlags(id, "seen", value).then(unwrap);
       }

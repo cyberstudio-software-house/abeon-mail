@@ -240,6 +240,8 @@ function setupStore(
       defaultAccountId: "",
       timeFormat: "system",
       generalHydrated: true,
+      markUnreadEpoch: 0,
+      bumpMarkUnreadEpoch: vi.fn(),
       setDefaultAccountId: vi.fn(),
       setTimeFormat: vi.fn(),
       hydrateGeneral: vi.fn(),

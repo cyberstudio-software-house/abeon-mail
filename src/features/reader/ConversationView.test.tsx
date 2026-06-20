@@ -176,6 +176,30 @@ describe("ConversationView", () => {
     vi.useRealTimers();
   });
 
+  it("delay mode does NOT mark read if the conversation is manually marked unread during the window", async () => {
+    const { commands } = await import("../../ipc/bindings");
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    qc.setQueryData(
+      ["thread-messages", 1],
+      [
+        { id: 1, account_id: 1, folder_id: 1, subject: "Hi", from_address: "a@x", from_name: "A", date: 1, seen: true, flagged: false, has_attachments: false, snippet: "" },
+        { id: 2, account_id: 1, folder_id: 1, subject: "Re: Hi", from_address: "b@y", from_name: "B", date: 2, seen: false, flagged: true, has_attachments: false, snippet: "" },
+      ]
+    );
+    useUiStore.setState({ generalHydrated: true, markReadMode: "delay", markReadDelaySeconds: 2 });
+    vi.useFakeTimers();
+    render(
+      <QueryClientProvider client={qc}>
+        <ConversationView threadId={1} />
+      </QueryClientProvider>
+    );
+    await vi.advanceTimersByTimeAsync(0);
+    useUiStore.getState().bumpMarkUnreadEpoch();
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(commands.setMessageFlags).not.toHaveBeenCalled();
+    vi.useRealTimers();
+  });
+
   it("clicking Reply calls startReply with message id and mode reply and opens composer", async () => {
     const { commands } = await import("../../ipc/bindings");
     render(<ConversationView threadId={1} />, { wrapper: Wrapper });

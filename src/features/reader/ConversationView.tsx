@@ -65,7 +65,9 @@ export function ConversationView({ threadId }: { threadId: number }) {
     if (markReadMode === "immediate") {
       setSeen.mutate({ ids, value: true });
     } else {
+      const epoch = useUiStore.getState().markUnreadEpoch;
       markTimerRef.current = setTimeout(() => {
+        if (useUiStore.getState().markUnreadEpoch !== epoch) return;
         setSeen.mutate({ ids, value: true });
       }, markReadDelaySeconds * 1000);
     }

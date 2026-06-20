@@ -48,6 +48,7 @@ export type UiState = {
   markReadMode: MarkReadMode;
   markReadDelaySeconds: number;
   generalHydrated: boolean;
+  markUnreadEpoch: number;
   snoozeMorningHour: number;
   snoozeLaterTodayHours: number;
   snoozeWeekendDay: number;
@@ -122,6 +123,7 @@ export type UiState = {
   closeLabelPicker: () => void;
   openSnoozePicker: (ids: number[]) => void;
   closeSnoozePicker: () => void;
+  bumpMarkUnreadEpoch: () => void;
 };
 
 export const useUiStore = create<UiState>((set) => ({
@@ -143,6 +145,7 @@ export const useUiStore = create<UiState>((set) => ({
   markReadMode: DEFAULT_GENERAL.markReadMode,
   markReadDelaySeconds: DEFAULT_GENERAL.markReadDelaySeconds,
   generalHydrated: false,
+  markUnreadEpoch: 0,
   snoozeMorningHour: DEFAULT_SNOOZE_CONFIG.morningHour,
   snoozeLaterTodayHours: DEFAULT_SNOOZE_CONFIG.laterTodayHours,
   snoozeWeekendDay: DEFAULT_SNOOZE_CONFIG.weekendDay,
@@ -266,4 +269,5 @@ export const useUiStore = create<UiState>((set) => ({
   closeLabelPicker: () => set({ labelPickerOpen: false, labelPickerTargetIds: [] }),
   openSnoozePicker: (ids) => set({ snoozePickerOpen: true, snoozePickerTargetIds: ids }),
   closeSnoozePicker: () => set({ snoozePickerOpen: false, snoozePickerTargetIds: [] }),
+  bumpMarkUnreadEpoch: () => set((s) => ({ markUnreadEpoch: s.markUnreadEpoch + 1 })),
 }));
