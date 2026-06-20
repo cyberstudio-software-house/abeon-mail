@@ -60,6 +60,19 @@ Archive folder until that folder syncs. So locally we only hide the source row.
 row (it already exists), and incremental flag sync never touches the `deleted`
 column. The moved copy appears when the Archive/Trash folder next syncs.
 
+**The `deleted` filter is not uniform — three list queries must be fixed first.**
+`smart_repo` (all smart folders), `labels_repo::list_messages_by_label`, and
+`search_repo` already exclude `deleted = 0`. But the folder/reader path does **not**:
+- `threads_repo::list_for_folder` — its thread-inclusion subquery filters `draft = 0`
+  and snooze, but **not** `deleted`, so an all-archived thread would still appear in
+  the folder list. (CRITICAL — this is the folder-view hide.)
+- `messages_repo::list_by_folder` — no `deleted` filter.
+- `messages_repo::list_by_thread` — no `deleted` filter (reader body list).
+
+Adding `AND deleted = 0` to these three is a prerequisite task. Flat-mode multi-select
+(smart/label/search) already hides correctly; folder/reader archive operates on whole
+threads, so the `list_for_folder` fix is what makes the archived thread vanish.
+
 ### Gmail
 
 Folder discovery already maps `[Gmail]/All Mail` → `FolderType::Archive`. A MOVE
