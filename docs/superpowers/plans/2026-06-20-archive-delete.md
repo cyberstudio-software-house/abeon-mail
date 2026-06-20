@@ -1405,6 +1405,117 @@ git commit -m "fix(sync): classify Gmail All Mail and named Archive/Trash folder
 
 ---
 
+## Task 14: Purge the source row on successful move + exclude hidden rows from unread count (FU1)
+
+**Why (final-review finding FU1):** On CONDSTORE/Gmail accounts the post-move server EXPUNGE is never reconciled locally (the vanished-row delete runs only in the non-CONDSTORE sync branch), so the optimistically-hidden `deleted=1` INBOX row is never purged — one orphan accumulates per archive/delete, forever. Fix at the source: when `drain_one_move` confirms the server move succeeded (undo window already elapsed, so the move is final), hard-delete the local source row. Separately, `folders_repo::recount_unread` counts `seen=0` rows without a `deleted` filter, so archiving an UNREAD message leaves it counted in the folder's unread badge — add the filter so the optimistic hide updates the badge immediately.
+
+**Files:**
+- Modify: `crates/am-storage/src/folders_repo.rs` (`recount_unread` + test)
+- Modify: `crates/am-sync/src/service.rs` (`drain_one_move` success arm)
+- Modify: `crates/am-sync/tests/sync_greenmail.rs` (assert no orphan immediately after drain)
+
+**Interfaces:** no signature changes; `drain_one_move` now consumes `messages_repo::delete_by_uids`, `folders_repo::recount_unread`, `threads_repo::recompute` on the success path.
+
+- [ ] **Step 1: Failing test — recount excludes deleted**
+
+Add to the `folders_repo` test module:
+
+```rust
+    #[test]
+    fn recount_unread_excludes_deleted() {
+        use am_core::message::NewMessageHeader;
+        let db = Database::open_in_memory().unwrap();
+        let account = insert_account(&db, &sample_account()).unwrap();
+        let folder = upsert_folder(&db, account.id, "INBOX", "Inbox", FolderType::Inbox).unwrap();
+        let h = |uid: i64, msgid: &str| NewMessageHeader {
+            uid, message_id_hdr: Some(msgid.into()), in_reply_to: None, references_hdr: None,
+            from_address: "s@e.com".into(), from_name: None, subject: "S".into(), date: uid,
+            seen: false, flagged: false, has_attachments: false, size: 1, snippet: "x".into(),
+        };
+        crate::messages_repo::insert_headers(&db, folder.id, &[h(1, "<a@e>"), h(2, "<b@e>")]).unwrap();
+        assert_eq!(recount_unread(&db, folder.id).unwrap(), 2);
+        let ids: Vec<i64> = crate::messages_repo::list_by_folder(&db, folder.id, 50, 0, i64::MAX)
+            .unwrap().iter().map(|m| m.id).collect();
+        crate::messages_repo::set_deleted(&db, ids[0], true).unwrap();
+        assert_eq!(recount_unread(&db, folder.id).unwrap(), 1);
+    }
+```
+
+- [ ] **Step 2: Run; verify it fails**
+
+Run: `cargo test -p am-storage recount_unread_excludes_deleted`
+Expected: FAIL — returns 2, expected 1.
+
+- [ ] **Step 3: Add the `deleted = 0` filter**
+
+In `crates/am-storage/src/folders_repo.rs` `recount_unread`, change:
+```rust
+        "SELECT count(*) FROM messages WHERE folder_id = ?1 AND seen = 0",
+```
+to:
+```rust
+        "SELECT count(*) FROM messages WHERE folder_id = ?1 AND seen = 0 AND deleted = 0",
+```
+
+- [ ] **Step 4: Run; verify it passes, plus the storage suite**
+
+Run: `cargo test -p am-storage`
+Expected: PASS (all, incl. the new test).
+
+- [ ] **Step 5: Hard-delete the source row in `drain_one_move`**
+
+In `crates/am-sync/src/service.rs`, replace the success arm of the final `match session.move_uid(...)`:
+```rust
+        Ok(()) => { queue_repo::mark_done(db, op.id)?; Ok(()) }
+```
+with:
+```rust
+        Ok(()) => {
+            let message_id = parsed["message_id"].as_i64().unwrap_or(0);
+            let thread_id = messages_repo::locate(db, message_id).ok().and_then(|l| l.thread_id);
+            messages_repo::delete_by_uids(db, folder_id, &[uid])?;
+            folders_repo::recount_unread(db, folder_id)?;
+            if let Some(t) = thread_id {
+                threads_repo::recompute(db, t)?;
+            }
+            queue_repo::mark_done(db, op.id)?;
+            Ok(())
+        }
+```
+(`parsed`, `folder_id`, `uid` are already in scope in `drain_one_move`.)
+
+- [ ] **Step 6: Build**
+
+Run: `cargo build -p am-sync`
+Expected: clean.
+
+- [ ] **Step 7: Strengthen the e2e — assert no orphan immediately after drain**
+
+In `crates/am-sync/tests/sync_greenmail.rs`, in `archive_moves_message_out_of_inbox`, add an assertion RIGHT AFTER `drain_queue(...).await` and BEFORE the `sync_all_folders` re-sync (GreenMail is non-CONDSTORE and would otherwise reconcile the orphan away on re-sync, masking the fix):
+
+```rust
+    assert_eq!(
+        messages_repo::count_by_folder(&db, inbox.id).unwrap(),
+        2,
+        "source row must be hard-deleted on move, not left as an orphan"
+    );
+```
+(`count_by_folder` counts ALL rows including `deleted=1`; with the fix it is 2, without it is 3.) Keep the existing post-sync Archive assertions. No code comments in the final test other than the assertion message string.
+
+- [ ] **Step 8: Run the suite (+ Docker e2e if available)**
+
+Run: `cargo test -p am-sync` (and `cargo test -p am-sync --test sync_greenmail archive_moves_message_out_of_inbox -- --nocapture` if Docker present)
+Expected: PASS / self-skip.
+
+- [ ] **Step 9: Commit**
+
+```bash
+git add crates/am-storage/src/folders_repo.rs crates/am-sync/src/service.rs crates/am-sync/tests/sync_greenmail.rs
+git commit -m "fix(sync): hard-delete source row on successful move; exclude hidden rows from unread count"
+```
+
+---
+
 ## Final verification
 
 - [ ] **Run the whole Rust workspace**
