@@ -1,7 +1,8 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { commands } from "../../ipc/bindings";
-import { useStartReply, useSetFlag } from "../../ipc/queries";
+import { useStartReply, useSetFlag, useSetSeen } from "../../ipc/queries";
+import { seenIdsForBulk } from "../reader/seen";
 import { useUiStore } from "../../app/store";
 import { resolveBindings, parseShortcutSettings, SHORTCUT_KEYS, type Profile } from "./bindings";
 import { type ActionId } from "./registry";
@@ -37,6 +38,7 @@ export function ShortcutsProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
   const startReply = useStartReply();
   const setFlag = useSetFlag();
+  const setSeenBulk = useSetSeen();
 
   useEffect(() => {
     let active = true;
@@ -88,10 +90,16 @@ export function ShortcutsProvider({ children }: { children: ReactNode }) {
   const setSeen = useCallback(
     (value: boolean) => {
       const s = useUiStore.getState();
-      if (s.replyTargetId == null) return;
-      setFlag.mutate({ messageId: s.replyTargetId, flag: "seen", value });
+      if (s.selectedThreadId == null) return;
+      const messages = queryClient.getQueryData<{ id: number; seen: boolean }[]>([
+        "thread-messages",
+        s.selectedThreadId,
+      ]);
+      const ids = seenIdsForBulk(messages, value);
+      if (ids.length === 0) return;
+      setSeenBulk.mutate({ ids, value });
     },
-    [setFlag]
+    [setSeenBulk, queryClient]
   );
 
   const toggleFlag = useCallback(() => {
