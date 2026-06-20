@@ -16,6 +16,7 @@ const mockOpenSnoozePicker = vi.fn();
 const mockCloseSnoozePicker = vi.fn();
 
 const mockUnsnooze = { mutate: vi.fn() };
+const mockSetSeen = { mutate: vi.fn() };
 
 vi.mock("../../ipc/queries", () => ({
   useThreads: vi.fn(),
@@ -28,6 +29,7 @@ vi.mock("../../ipc/queries", () => ({
   useLabels: () => ({ data: [{ id: 1, name: "Work", color: "#4f46e5" }] }),
   useLabelsForMessages: () => ({ data: [] }),
   useUnsnooze: () => mockUnsnooze,
+  useSetSeen: () => mockSetSeen,
 }));
 
 vi.mock("../../app/store", () => ({
@@ -645,5 +647,36 @@ describe("MessageListPane", () => {
     renderPane();
 
     expect(screen.getByTestId("snooze-wake").textContent?.length).toBeGreaterThan(0);
+  });
+
+  it("selection toolbar Mark read calls setSeen with value true and clears selection", () => {
+    setupStore(null, "comfortable", "unread", false, "", null, true, [100]);
+    mockUseSmartFolder.mockReturnValue({
+      data: [
+        { message_id: 100, account_id: 1, folder_id: 1, account_color: "#4f46e5", from_address: "a@b.com", from_name: "A", subject: "S", date: 1000, seen: false, flagged: false, has_attachments: false, snippet: "" },
+      ],
+      isLoading: false,
+    } as unknown as ReturnType<typeof useSmartFolder>);
+
+    renderPane();
+    fireEvent.click(screen.getByText("Mark read"));
+
+    expect(mockSetSeen.mutate).toHaveBeenCalledWith({ ids: [100], value: true });
+    expect(mockClearSelection).toHaveBeenCalled();
+  });
+
+  it("selection toolbar Mark unread calls setSeen with value false", () => {
+    setupStore(null, "comfortable", "unread", false, "", null, true, [100]);
+    mockUseSmartFolder.mockReturnValue({
+      data: [
+        { message_id: 100, account_id: 1, folder_id: 1, account_color: "#4f46e5", from_address: "a@b.com", from_name: "A", subject: "S", date: 1000, seen: true, flagged: false, has_attachments: false, snippet: "" },
+      ],
+      isLoading: false,
+    } as unknown as ReturnType<typeof useSmartFolder>);
+
+    renderPane();
+    fireEvent.click(screen.getByText("Mark unread"));
+
+    expect(mockSetSeen.mutate).toHaveBeenCalledWith({ ids: [100], value: false });
   });
 });
