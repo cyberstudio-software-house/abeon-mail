@@ -22,6 +22,8 @@ vi.mock("../../ipc/queries", () => ({
   useSnooze: () => ({ mutate: vi.fn() }),
   useSetSeen: () => ({ mutate: vi.fn() }),
   useUndoMove: () => ({ mutate: vi.fn() }),
+  useArchive: () => ({ mutate: vi.fn() }),
+  useDelete: () => ({ mutate: vi.fn() }),
 }));
 
 import { ShortcutsProvider } from "./ShortcutsProvider";

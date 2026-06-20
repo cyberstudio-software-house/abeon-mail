@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { commands } from "../../ipc/bindings";
-import { useStartReply, useSetFlag, useSetSeen } from "../../ipc/queries";
+import { useStartReply, useSetFlag, useSetSeen, useArchive, useDelete } from "../../ipc/queries";
 import { seenIdsForBulk } from "../reader/seen";
 import { useUiStore } from "../../app/store";
 import { resolveBindings, parseShortcutSettings, SHORTCUT_KEYS, type Profile } from "./bindings";
@@ -40,6 +40,8 @@ export function ShortcutsProvider({ children }: { children: ReactNode }) {
   const startReply = useStartReply();
   const setFlag = useSetFlag();
   const setSeenBulk = useSetSeen();
+  const archive = useArchive();
+  const del = useDelete();
 
   useEffect(() => {
     let active = true;
@@ -103,6 +105,26 @@ export function ShortcutsProvider({ children }: { children: ReactNode }) {
     [setSeenBulk, queryClient]
   );
 
+  const doMove = useCallback(
+    (kind: "archive" | "delete") => {
+      const s = useUiStore.getState();
+      let ids: number[] = [];
+      if (s.selectionActive && s.selectedMessageIds.length > 0) {
+        ids = s.selectedMessageIds;
+      } else if (s.selectedThreadId != null) {
+        const messages = queryClient.getQueryData<{ id: number }[]>(["thread-messages", s.selectedThreadId]);
+        ids = (messages ?? []).map((m) => m.id);
+      }
+      if (ids.length === 0) return;
+      if (kind === "archive") archive.mutate({ messageIds: ids });
+      else del.mutate({ messageIds: ids });
+      s.showUndoToast(kind, ids);
+      if (s.selectionActive) s.clearSelection();
+      if (s.selectedThreadId != null) s.setSelectedThreadId(null);
+    },
+    [archive, del, queryClient]
+  );
+
   const toggleFlag = useCallback(() => {
     const s = useUiStore.getState();
     if (s.replyTargetId == null || s.selectedThreadId == null) return;
@@ -152,8 +174,10 @@ export function ShortcutsProvider({ children }: { children: ReactNode }) {
           s.openSnoozePicker([s.replyTargetId]);
         }
       },
+      archive: () => doMove("archive"),
+      delete: () => doMove("delete"),
     };
-  }, [move, jumpTo, doReply, toggleFlag, setSeen]);
+  }, [move, jumpTo, doReply, toggleFlag, setSeen, doMove]);
 
   const resolvedRef = useRef(resolved);
   resolvedRef.current = resolved;
