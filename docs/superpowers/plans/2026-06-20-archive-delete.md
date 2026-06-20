@@ -1310,6 +1310,101 @@ git commit -m "feat(reader): wire Archive/Delete action-bar buttons"
 
 ---
 
+## Task 13: Stable Archive/Trash folder typing (corrective)
+
+**Why (discovered during Task 6):** `folder_type_for` classifies a folder as `Archive`/`Trash` only by IMAP SPECIAL-USE (`\Archive`/`\Trash`). Servers that omit those attributes — including Gmail, whose All Mail advertises `\All` (deliberately mapped to `Custom`) — leave the account with no `FolderType::Archive`. The archive feature then auto-creates an "Archive" folder, but on the next `discover_folders` its type is recomputed back to `Custom`, so `find_by_type(Archive)` returns `None` again and repeat archiving breaks. Fix the root: recognize Gmail All Mail (`\All`) as the archive target and add a leaf-name fallback for `Archive`/`Trash`, so the type is stable across syncs. (User decision: "A + Gmail via All Mail".)
+
+**Files:**
+- Modify: `crates/am-sync/src/service.rs` (`folder_type_for` + its tests)
+- Modify: `crates/am-sync/tests/sync_greenmail.rs` (drop the Task 6 workaround; assert post-sync stability)
+
+**Interfaces:**
+- Changes the behavior of the private `folder_type_for(remote_path, special_use)`; no signature change.
+
+- [ ] **Step 1: Update the failing unit test for `\All` and add name-fallback tests**
+
+In `crates/am-sync/src/service.rs` tests, change the existing assertion `folder_type_for("All", Some("\\All"))` from `FolderType::Custom` to `FolderType::Archive`. Add:
+
+```rust
+        assert_eq!(folder_type_for("[Gmail]/All Mail", Some("\\All")), FolderType::Archive);
+        assert_eq!(folder_type_for("Archive", None), FolderType::Archive);
+        assert_eq!(folder_type_for("INBOX.Archive", None), FolderType::Archive);
+        assert_eq!(folder_type_for("Trash", None), FolderType::Trash);
+        assert_eq!(folder_type_for("Deleted Items", None), FolderType::Trash);
+        assert_eq!(folder_type_for("Projects", None), FolderType::Custom);
+        assert_eq!(folder_type_for("Sent", Some("\\Sent")), FolderType::Sent);
+```
+
+- [ ] **Step 2: Run them; verify they fail**
+
+Run: `cargo test -p am-sync folder_type`
+Expected: FAIL — `\All` still maps to Custom; name fallback absent.
+
+- [ ] **Step 3: Implement the root fix**
+
+Replace `folder_type_for` in `crates/am-sync/src/service.rs` with:
+
+```rust
+fn folder_type_for(remote_path: &str, special_use: Option<&str>) -> FolderType {
+    if remote_path.eq_ignore_ascii_case(INBOX_PATH) {
+        return FolderType::Inbox;
+    }
+    match special_use {
+        Some("\\Sent") => return FolderType::Sent,
+        Some("\\Drafts") => return FolderType::Drafts,
+        Some("\\Trash") => return FolderType::Trash,
+        Some("\\Junk") => return FolderType::Spam,
+        Some("\\Archive") | Some("\\All") => return FolderType::Archive,
+        _ => {}
+    }
+    let leaf = remote_path.rsplit(['/', '.']).next().unwrap_or(remote_path);
+    if leaf.eq_ignore_ascii_case("Archive") {
+        return FolderType::Archive;
+    }
+    if leaf.eq_ignore_ascii_case("Trash") || leaf.eq_ignore_ascii_case("Deleted Items") {
+        return FolderType::Trash;
+    }
+    FolderType::Custom
+}
+```
+
+- [ ] **Step 4: Run them; verify they pass**
+
+Run: `cargo test -p am-sync folder_type`
+Expected: PASS.
+
+- [ ] **Step 5: Strengthen the e2e (remove the Task 6 workaround)**
+
+In `crates/am-sync/tests/sync_greenmail.rs`, in `archive_moves_message_out_of_inbox`, the Task 6 version captured `find_by_type(Archive)` immediately after `drain_queue` to dodge the type-flip. Now the type must survive discovery. Reorder so the Archive assertion happens AFTER the re-sync/discovery step, and assert the type is stable:
+
+```rust
+    am_sync::service::drain_queue(&db, account.id, creds.as_ref(), am_sync::service::UNDO_GRACE_SECS)
+        .await
+        .expect("drain_queue failed");
+    // re-sync the same way the existing Archive test does (discover + sync_all_folders)
+    let archive = folders_repo::find_by_type(&db, account.id, FolderType::Archive)
+        .unwrap()
+        .expect("Archive type must survive folder discovery");
+    let archive_after = messages_repo::list_by_folder(&db, archive.id, 50, 0, i64::MAX).unwrap();
+    assert_eq!(archive_after.len(), 1);
+```
+
+Keep the INBOX assertion (length 2, archived subject absent). Use the file's actual re-sync entry point (mirror the existing Archive-folder test); do not invent function names. No code comments in the final test — the inline note above is guidance only.
+
+- [ ] **Step 6: Run the suite (Docker e2e self-skips if unavailable)**
+
+Run: `cargo test -p am-sync` (and, if Docker present, `cargo test -p am-sync --test sync_greenmail archive_moves_message_out_of_inbox -- --nocapture`)
+Expected: PASS / self-skip.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add crates/am-sync/src/service.rs crates/am-sync/tests/sync_greenmail.rs
+git commit -m "fix(sync): classify Gmail All Mail and named Archive/Trash folders by type"
+```
+
+---
+
 ## Final verification
 
 - [ ] **Run the whole Rust workspace**
