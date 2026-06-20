@@ -46,6 +46,25 @@ pub struct MessageBody {
     pub text_html: Option<String>,
 }
 
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct NewAttachment {
+    pub filename: String,
+    pub mime_type: String,
+    pub size: i64,
+    pub content_id: Option<String>,
+    pub is_inline: bool,
+    #[serde(skip)]
+    pub content: Vec<u8>,
+}
+
+#[derive(Serialize, Deserialize, specta::Type, Clone, Debug, PartialEq)]
+pub struct Attachment {
+    pub id: i64,
+    pub filename: String,
+    pub mime_type: String,
+    pub size: i64,
+}
+
 #[derive(Serialize, Deserialize, specta::Type, Clone, Debug, PartialEq)]
 pub struct SyncProgress {
     pub account_id: i64,

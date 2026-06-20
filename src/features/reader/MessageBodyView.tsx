@@ -1,22 +1,12 @@
 import { useState, useEffect } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { useMessageBody, useMarkSeen } from "../../ipc/queries";
-import { commands } from "../../ipc/bindings";
+import { useRenderedMessage, useMessageBody, useMarkSeen } from "../../ipc/queries";
 import { SafeHtmlFrame } from "./SafeHtmlFrame";
 
-function RemoteContentBanner() {
-  const [dismissed, setDismissed] = useState(false);
-
-  if (dismissed) return null;
-
+function RemoteContentBanner({ onLoad }: { onLoad: () => void }) {
   return (
     <div className="remote-content-banner" role="alert">
       <span>Remote content blocked</span>
-      <button
-        type="button"
-        onClick={() => setDismissed(true)}
-        title="Loading remote images is not yet supported in this version"
-      >
+      <button type="button" onClick={onLoad}>
         Load images
       </button>
     </div>
@@ -24,8 +14,14 @@ function RemoteContentBanner() {
 }
 
 export function MessageBodyView({ messageId, shouldMarkSeen }: { messageId: number; shouldMarkSeen: boolean }) {
+  const [forceLoadRemote, setForceLoadRemote] = useState(false);
+  const { data: rendered, isLoading: renderLoading } = useRenderedMessage(messageId, forceLoadRemote);
   const { data: body, isLoading: bodyLoading } = useMessageBody(messageId);
   const markSeen = useMarkSeen();
+
+  useEffect(() => {
+    setForceLoadRemote(false);
+  }, [messageId]);
 
   useEffect(() => {
     if (shouldMarkSeen) {
@@ -33,25 +29,21 @@ export function MessageBodyView({ messageId, shouldMarkSeen }: { messageId: numb
     }
   }, [messageId, shouldMarkSeen]);
 
-  const htmlSource = body?.text_html ?? null;
-
-  const { data: sanitized, isLoading: sanitizeLoading } = useQuery({
-    queryKey: ["sanitized", messageId],
-    queryFn: () => commands.sanitizeMessageHtml(htmlSource!),
-    enabled: htmlSource != null,
-  });
-
-  if (bodyLoading || (htmlSource != null && sanitizeLoading && sanitized == null)) {
+  if (renderLoading && rendered == null) {
     return <p className="loading-state">Loading…</p>;
   }
 
-  if (htmlSource != null && sanitized != null) {
+  if (rendered?.html != null) {
     return (
       <div className="message-body">
-        {sanitized.blocked_remote_content && <RemoteContentBanner />}
-        <SafeHtmlFrame html={sanitized.html} />
+        {rendered.blocked_remote_content && <RemoteContentBanner onLoad={() => setForceLoadRemote(true)} />}
+        <SafeHtmlFrame html={rendered.html} />
       </div>
     );
+  }
+
+  if (bodyLoading) {
+    return <p className="loading-state">Loading…</p>;
   }
 
   if (body?.text_plain != null) {

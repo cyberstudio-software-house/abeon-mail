@@ -63,9 +63,10 @@ export function SignaturesSection() {
 
   return (
     <div className="settings-section">
-      <label className="signatures-settings__account">
-        Account
+      <label className="settings-account">
+        <span className="settings-account__label">Account</span>
         <select
+          className="settings-select"
           aria-label="Signatures account"
           value={accountId ?? ""}
           onChange={(e) => setChosenAccountId(Number(e.target.value))}
@@ -100,6 +101,7 @@ export function SignaturesSection() {
             </label>
             <button
               type="button"
+              className="settings-btn settings-btn--icon"
               aria-label={`Delete signature ${sig.name}`}
               onClick={() => remove(sig.id)}
             >
@@ -112,6 +114,7 @@ export function SignaturesSection() {
       <div className="signatures-settings__editor">
         <input
           type="text"
+          className="settings-input"
           aria-label="Signature name"
           placeholder="Signature name"
           value={name}
@@ -119,10 +122,10 @@ export function SignaturesSection() {
         />
         <EditorContent editor={editor} className="signatures-settings__body" />
         <div className="signatures-settings__actions">
-          <button type="button" onClick={startNew}>
+          <button type="button" className="settings-btn" onClick={startNew}>
             New signature
           </button>
-          <button type="button" onClick={save}>
+          <button type="button" className="settings-btn settings-btn--primary" onClick={save}>
             Save signature
           </button>
         </div>

@@ -1,31 +1,10 @@
-import React from "react";
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import { render, screen, cleanup, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
-let capturedOnDragEnd: ((event: { active: { id: unknown }; over: { id: unknown } | null }) => void) | null = null;
-
-vi.mock("@dnd-kit/core", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@dnd-kit/core")>();
-  return {
-    ...actual,
-    DndContext: ({ children, onDragEnd }: { children: React.ReactNode; onDragEnd: (event: { active: { id: unknown }; over: { id: unknown } | null }) => void }) => {
-      capturedOnDragEnd = onDragEnd;
-      return <div>{children}</div>;
-    },
-  };
-});
-
-const mockRemoveAccount = vi.fn();
-const mockBeginReauth = vi.fn();
-const mockReorderAccounts = vi.fn();
-
 vi.mock("../../ipc/queries", () => ({
   useAccounts: vi.fn(),
   useFolders: vi.fn(),
-  useRemoveAccount: vi.fn(),
-  useBeginReauth: vi.fn(),
-  useReorderAccounts: vi.fn(),
   useLabels: () => ({ data: [{ id: 1, name: "Work", color: "#4f46e5" }] }),
 }));
 
@@ -34,23 +13,12 @@ vi.mock("../../app/store", async (importOriginal) => {
   return actual;
 });
 
-vi.mock("../accounts/AddAccountWizard", () => ({
-  AddAccountWizard: ({ onClose }: { onClose: () => void; onAdded: (id: number) => void }) => (
-    <div data-testid="add-account-wizard">
-      <button onClick={onClose}>Close wizard</button>
-    </div>
-  ),
-}));
-
-import { useAccounts, useFolders, useRemoveAccount, useBeginReauth, useReorderAccounts } from "../../ipc/queries";
+import { useAccounts, useFolders } from "../../ipc/queries";
 import { useUiStore } from "../../app/store";
 import { MailboxRail } from "./MailboxRail";
 
 const mockUseAccounts = vi.mocked(useAccounts);
 const mockUseFolders = vi.mocked(useFolders);
-const mockUseRemoveAccount = vi.mocked(useRemoveAccount);
-const mockUseBeginReauth = vi.mocked(useBeginReauth);
-const mockUseReorderAccounts = vi.mocked(useReorderAccounts);
 
 const accountWithReauth = {
   id: 1,
@@ -92,202 +60,119 @@ const singleFolder = {
   remote_path: "INBOX",
 };
 
-function setupStore(selectedAccountId: number | null = 1, selectedSmartFolder: string | null = null) {
-  useUiStore.setState({
-    selectedAccountId,
-    selectedFolderId: null,
-    selectedSmartFolder: selectedSmartFolder as ReturnType<typeof useUiStore.getState>["selectedSmartFolder"],
-    searchQuery: "",
-    searchActive: false,
-    focusSearch: null,
-  });
+function folder(id: number, name: string, folder_type: string) {
+  return {
+    id,
+    account_id: 1,
+    name,
+    folder_type,
+    unread_count: 0,
+    total_count: 0,
+    remote_path: name,
+  };
 }
 
-function setupMutations() {
-  mockUseRemoveAccount.mockReturnValue({
-    mutate: mockRemoveAccount,
-    isPending: false,
-  } as unknown as ReturnType<typeof useRemoveAccount>);
+function accounts(data: unknown[]) {
+  mockUseAccounts.mockReturnValue({
+    data,
+    isLoading: false,
+    isError: false,
+    error: null,
+  } as unknown as ReturnType<typeof useAccounts>);
+}
 
-  mockUseBeginReauth.mockReturnValue({
-    mutate: mockBeginReauth,
-    isPending: false,
-  } as unknown as ReturnType<typeof useBeginReauth>);
-
-  mockUseReorderAccounts.mockReturnValue({
-    mutate: mockReorderAccounts,
-    isPending: false,
-  } as unknown as ReturnType<typeof useReorderAccounts>);
-
+function folders(data: unknown[]) {
   mockUseFolders.mockReturnValue({
-    data: [],
+    data,
     isLoading: false,
     isError: false,
     error: null,
   } as unknown as ReturnType<typeof useFolders>);
 }
 
+function setupStore(selectedAccountId: number | null = 1) {
+  useUiStore.setState({
+    selectedAccountId,
+    selectedFolderId: null,
+    selectedSmartFolder: null,
+    selectedLabelId: null,
+    searchQuery: "",
+    searchActive: false,
+    focusSearch: null,
+  });
+}
+
 describe("MailboxRail", () => {
   beforeEach(() => {
-    useUiStore.setState({
-      selectedAccountId: null,
-      selectedFolderId: null,
-      selectedSmartFolder: null,
-      searchQuery: "",
-      searchActive: false,
-      focusSearch: null,
-    });
+    setupStore(null);
+    folders([]);
   });
 
   afterEach(() => {
     cleanup();
     vi.clearAllMocks();
-    capturedOnDragEnd = null;
   });
 
-  it("renders 4 enabled smart folders (no Drafts)", () => {
-    setupStore(null);
-    setupMutations();
-    mockUseAccounts.mockReturnValue({
-      data: [],
-      isLoading: false,
-      isError: false,
-      error: null,
-    } as unknown as ReturnType<typeof useAccounts>);
-
+  it("renders 4 smart folders (no Drafts)", () => {
+    accounts([]);
     render(<MailboxRail />);
-
     expect(screen.getByText("All Inboxes")).toBeTruthy();
     expect(screen.getByText("Unread")).toBeTruthy();
     expect(screen.getByText("Flagged")).toBeTruthy();
+    expect(screen.getByText("Snoozed")).toBeTruthy();
     expect(screen.queryByText("Drafts")).toBeNull();
-
-    const allInboxesEl = screen.getByText("All Inboxes");
-    expect(allInboxesEl.closest("[aria-disabled]")).toBeNull();
   });
 
-  it("smart folders remain clickable and select the smart folder", async () => {
+  it("clicking a smart folder selects it", async () => {
     const user = userEvent.setup();
-    setupStore(null);
-    setupMutations();
-    mockUseAccounts.mockReturnValue({
-      data: [],
-      isLoading: false,
-      isError: false,
-      error: null,
-    } as unknown as ReturnType<typeof useAccounts>);
-
+    accounts([]);
     render(<MailboxRail />);
-
     await user.click(screen.getByText("All Inboxes"));
     expect(useUiStore.getState().selectedSmartFolder).toBe("all_inboxes");
+    await user.click(screen.getByText("Unread"));
+    expect(useUiStore.getState().selectedSmartFolder).toBe("unread");
+    await user.click(screen.getByText("Flagged"));
+    expect(useUiStore.getState().selectedSmartFolder).toBe("flagged");
+    await user.click(screen.getByText("Snoozed"));
+    expect(useUiStore.getState().selectedSmartFolder).toBe("snoozed");
   });
 
-  it("Snoozed is a live smart folder; Labels section shows live list; search is a real input", () => {
-    setupStore(null);
-    setupMutations();
-    mockUseAccounts.mockReturnValue({
-      data: [],
-      isLoading: false,
-      isError: false,
-      error: null,
-    } as unknown as ReturnType<typeof useAccounts>);
-
+  it("shows search input and live labels, no 'Coming soon'", () => {
+    accounts([]);
     render(<MailboxRail />);
-
     expect(screen.getByLabelText("Search mail")).toBeTruthy();
-
-    const snoozedEl = screen.getByText("Snoozed");
-    expect(snoozedEl.closest("[aria-disabled='true']")).toBeNull();
-
     expect(screen.queryByText("Coming soon")).toBeNull();
     expect(screen.getByText("Work")).toBeTruthy();
   });
 
+  it("footer has only the settings button — no Add account button", () => {
+    accounts([]);
+    render(<MailboxRail />);
+    expect(screen.getByRole("button", { name: /open settings/i })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /add account/i })).toBeNull();
+  });
+
+  it("does not render the IPC status line", () => {
+    accounts([]);
+    render(<MailboxRail />);
+    expect(screen.queryByText(/^IPC:/)).toBeNull();
+  });
+
   it("Open settings button calls openSettings", async () => {
     const user = userEvent.setup();
-    setupStore(null);
-    setupMutations();
+    accounts([]);
     const openSettingsSpy = vi.spyOn(useUiStore.getState(), "openSettings");
-    mockUseAccounts.mockReturnValue({
-      data: [],
-      isLoading: false,
-      isError: false,
-      error: null,
-    } as unknown as ReturnType<typeof useAccounts>);
-
     render(<MailboxRail />);
-
     await user.click(screen.getByRole("button", { name: /open settings/i }));
     expect(openSettingsSpy).toHaveBeenCalled();
     openSettingsSpy.mockRestore();
   });
 
-  it("clicking All Inboxes calls setSelectedSmartFolder('all_inboxes')", async () => {
-    const user = userEvent.setup();
-    setupStore(null);
-    setupMutations();
-    mockUseAccounts.mockReturnValue({
-      data: [],
-      isLoading: false,
-      isError: false,
-      error: null,
-    } as unknown as ReturnType<typeof useAccounts>);
-
-    render(<MailboxRail />);
-    await user.click(screen.getByText("All Inboxes"));
-    expect(useUiStore.getState().selectedSmartFolder).toBe("all_inboxes");
-  });
-
-  it("clicking Unread calls setSelectedSmartFolder('unread')", async () => {
-    const user = userEvent.setup();
-    setupStore(null);
-    setupMutations();
-    mockUseAccounts.mockReturnValue({
-      data: [],
-      isLoading: false,
-      isError: false,
-      error: null,
-    } as unknown as ReturnType<typeof useAccounts>);
-
-    render(<MailboxRail />);
-    await user.click(screen.getByText("Unread"));
-    expect(useUiStore.getState().selectedSmartFolder).toBe("unread");
-  });
-
-  it("clicking Flagged calls setSelectedSmartFolder('flagged')", async () => {
-    const user = userEvent.setup();
-    setupStore(null);
-    setupMutations();
-    mockUseAccounts.mockReturnValue({
-      data: [],
-      isLoading: false,
-      isError: false,
-      error: null,
-    } as unknown as ReturnType<typeof useAccounts>);
-
-    render(<MailboxRail />);
-    await user.click(screen.getByText("Flagged"));
-    expect(useUiStore.getState().selectedSmartFolder).toBe("flagged");
-  });
-
-  it("renders account and folder, clicking folder calls setSelectedFolderId", async () => {
+  it("renders account and folder, clicking folder selects it", async () => {
     const user = userEvent.setup();
     setupStore(1);
-    setupMutations();
-    mockUseAccounts.mockReturnValue({
-      data: [singleAccount],
-      isLoading: false,
-      isError: false,
-      error: null,
-    } as unknown as ReturnType<typeof useAccounts>);
-    mockUseFolders.mockReturnValue({
-      data: [singleFolder],
-      isLoading: false,
-      isError: false,
-      error: null,
-    } as unknown as ReturnType<typeof useFolders>);
-
+    accounts([singleAccount]);
+    folders([singleFolder]);
     render(<MailboxRail />);
     expect(screen.getAllByText("A").length).toBeGreaterThan(0);
     expect(screen.getByText("Inbox")).toBeTruthy();
@@ -295,175 +180,94 @@ describe("MailboxRail", () => {
     expect(useUiStore.getState().selectedFolderId).toBe(10);
   });
 
-  it("renders empty state when no accounts", () => {
-    setupStore(null);
-    setupMutations();
-    mockUseAccounts.mockReturnValue({
-      data: [],
-      isLoading: false,
-      isError: false,
-      error: null,
-    } as unknown as ReturnType<typeof useAccounts>);
+  it("collapses and re-expands the selected account's folders on click", async () => {
+    const user = userEvent.setup();
+    setupStore(1);
+    accounts([singleAccount]);
+    folders([singleFolder]);
+    render(<MailboxRail />);
+    const nameLabel = () =>
+      screen.getAllByText("A").find((el) => el.className.includes("rail__item-label"))!;
+    expect(screen.getByText("Inbox")).toBeTruthy();
+    await user.click(nameLabel());
+    expect(screen.queryByText("Inbox")).toBeNull();
+    await user.click(nameLabel());
+    expect(screen.getByText("Inbox")).toBeTruthy();
+  });
 
+  it("renders key folders on top, then the rest alphabetically", () => {
+    setupStore(1);
+    accounts([singleAccount]);
+    folders([
+      folder(30, "Zebra", "custom"),
+      folder(31, "Alpha", "custom"),
+      folder(32, "INBOX", "inbox"),
+    ]);
+    render(<MailboxRail />);
+    const inbox = screen.getByText("INBOX");
+    const alpha = screen.getByText("Alpha");
+    const zebra = screen.getByText("Zebra");
+    expect(inbox.compareDocumentPosition(alpha) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(alpha.compareDocumentPosition(zebra) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("renders empty state when no accounts", () => {
+    accounts([]);
     render(<MailboxRail />);
     expect(screen.getByText(/no accounts/i)).toBeTruthy();
   });
 
-  it("shows reauth badge when account.requires_reauth is true", () => {
+  it("shows a non-interactive reauth indicator when requires_reauth is true", () => {
     setupStore(1);
-    setupMutations();
-    mockUseAccounts.mockReturnValue({
-      data: [accountWithReauth],
-      isLoading: false,
-      isError: false,
-      error: null,
-    } as unknown as ReturnType<typeof useAccounts>);
-
+    accounts([accountWithReauth]);
     render(<MailboxRail />);
-
-    expect(screen.getByText("⚠ Reconnect")).toBeTruthy();
+    const badge = screen.getByLabelText(/needs reconnect/i);
+    expect(badge).toBeTruthy();
+    expect(badge.tagName).toBe("SPAN");
+    expect(screen.queryByRole("button", { name: /reconnect/i })).toBeNull();
   });
 
-  it("clicking Reconnect badge calls beginReauth with account id", async () => {
-    const user = userEvent.setup();
-    setupStore(1);
-    setupMutations();
-    mockUseAccounts.mockReturnValue({
-      data: [accountWithReauth],
-      isLoading: false,
-      isError: false,
-      error: null,
-    } as unknown as ReturnType<typeof useAccounts>);
-
-    render(<MailboxRail />);
-
-    await user.click(screen.getByText("⚠ Reconnect"));
-
-    expect(mockBeginReauth).toHaveBeenCalledWith(1);
-  });
-
-  it("no reauth badge when account.requires_reauth is false", () => {
+  it("no reauth indicator when requires_reauth is false", () => {
     setupStore(2);
-    setupMutations();
-    mockUseAccounts.mockReturnValue({
-      data: [accountNormal],
-      isLoading: false,
-      isError: false,
-      error: null,
-    } as unknown as ReturnType<typeof useAccounts>);
-
+    accounts([accountNormal]);
     render(<MailboxRail />);
-
-    expect(screen.queryByText("⚠ Reconnect")).toBeNull();
+    expect(screen.queryByLabelText(/needs reconnect/i)).toBeNull();
   });
 
-  it("shows confirm dialog when remove button clicked, calls removeAccount on confirm", async () => {
-    const user = userEvent.setup();
+  it("does not render account management controls (remove)", () => {
     setupStore(1);
-    setupMutations();
-    mockUseAccounts.mockReturnValue({
-      data: [accountWithReauth],
-      isLoading: false,
-      isError: false,
-      error: null,
-    } as unknown as ReturnType<typeof useAccounts>);
-
+    accounts([singleAccount]);
     render(<MailboxRail />);
-
-    await user.click(screen.getByRole("button", { name: /remove account a/i }));
-
-    expect(screen.getByText(/permanently remove/i)).toBeTruthy();
-
-    await user.click(screen.getByRole("button", { name: /confirm/i }));
-
-    expect(mockRemoveAccount).toHaveBeenCalledWith(1);
+    expect(screen.queryByRole("button", { name: /remove account/i })).toBeNull();
   });
 
-  it("cancelling remove dialog does not call removeAccount", async () => {
+  it("clicking an account selects it", async () => {
     const user = userEvent.setup();
-    setupStore(1);
-    setupMutations();
-    mockUseAccounts.mockReturnValue({
-      data: [accountWithReauth],
-      isLoading: false,
-      isError: false,
-      error: null,
-    } as unknown as ReturnType<typeof useAccounts>);
-
+    setupStore(null);
+    accounts([accountNormal]);
     render(<MailboxRail />);
-
-    await user.click(screen.getByRole("button", { name: /remove account a/i }));
-    await user.click(screen.getByRole("button", { name: /cancel/i }));
-
-    expect(mockRemoveAccount).not.toHaveBeenCalled();
+    const nameLabel = screen
+      .getAllByText("B")
+      .find((el) => el.className.includes("rail__item-label"));
+    await user.click(nameLabel!);
+    expect(useUiStore.getState().selectedAccountId).toBe(2);
   });
 
   it("typing in the search input updates the store and clears via the clear button", async () => {
     const user = userEvent.setup();
-    setupStore(null);
-    setupMutations();
-    mockUseAccounts.mockReturnValue({
-      data: [],
-      isLoading: false,
-      isError: false,
-      error: null,
-    } as unknown as ReturnType<typeof useAccounts>);
-
+    accounts([]);
     render(<MailboxRail />);
     const input = screen.getByLabelText("Search mail");
     await user.type(input, "report");
     expect(useUiStore.getState().searchQuery).toBe("report");
     expect(useUiStore.getState().searchActive).toBe(true);
-
     await user.click(screen.getByLabelText("Clear search"));
     expect(useUiStore.getState().searchQuery).toBe("");
     expect(useUiStore.getState().searchActive).toBe(false);
   });
 
-  it("drag-and-drop reorder calls reorderAccounts with swapped id order", () => {
-    setupStore(1);
-    setupMutations();
-    mockUseAccounts.mockReturnValue({
-      data: [accountWithReauth, accountNormal],
-      isLoading: false,
-      isError: false,
-      error: null,
-    } as unknown as ReturnType<typeof useAccounts>);
-
-    render(<MailboxRail />);
-
-    expect(capturedOnDragEnd).not.toBeNull();
-    capturedOnDragEnd!({ active: { id: 1 }, over: { id: 2 } });
-
-    expect(mockReorderAccounts).toHaveBeenCalledWith([2, 1]);
-  });
-
-  it("renders a Snoozed smart folder and selects it on click", () => {
-    setupStore(null);
-    setupMutations();
-    mockUseAccounts.mockReturnValue({
-      data: [],
-      isLoading: false,
-      isError: false,
-      error: null,
-    } as unknown as ReturnType<typeof useAccounts>);
-
-    render(<MailboxRail />);
-    const snoozed = screen.getByText("Snoozed");
-    fireEvent.click(snoozed);
-    expect(useUiStore.getState().selectedSmartFolder).toBe("snoozed");
-  });
-
   it("renders labels and selects one on click", async () => {
-    setupStore(null);
-    setupMutations();
-    mockUseAccounts.mockReturnValue({
-      data: [],
-      isLoading: false,
-      isError: false,
-      error: null,
-    } as unknown as ReturnType<typeof useAccounts>);
-
+    accounts([]);
     render(<MailboxRail />);
     const chip = await screen.findByText("Work");
     fireEvent.click(chip);

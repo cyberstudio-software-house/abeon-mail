@@ -131,6 +131,223 @@ pub fn sanitize_message_html(html: String) -> am_mime::sanitize::SanitizedHtml {
     am_mime::sanitize::sanitize_html(&html)
 }
 
+#[derive(serde::Serialize, serde::Deserialize, specta::Type)]
+pub struct RenderedMessage {
+    pub html: Option<String>,
+    pub blocked_remote_content: bool,
+    pub remote_loaded: bool,
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn render_message_html(
+    state: tauri::State<'_, AppState>,
+    message_id: i64,
+    force_load_remote: bool,
+) -> Result<RenderedMessage, String> {
+    use base64::Engine;
+
+    let db: Arc<am_storage::Database> = Arc::clone(&state.db);
+    let creds = Arc::clone(&state.creds);
+
+    let body = am_sync::service::get_or_fetch_body(&db, message_id, creds.as_ref())
+        .await
+        .map_err(|_| "Failed to fetch message body".to_string())?;
+
+    let html = match body.text_html {
+        Some(h) => h,
+        None => {
+            return Ok(RenderedMessage {
+                html: None,
+                blocked_remote_content: false,
+                remote_loaded: false,
+            })
+        }
+    };
+
+    let account_id = messages_repo::get_header(&db, message_id)
+        .map(|h| h.account_id)
+        .map_err(|e| e.to_string())?;
+    let autoload = settings_repo::get_setting(&db, &format!("images.autoload.{account_id}"))
+        .ok()
+        .flatten()
+        .map(|v| v == "true")
+        .unwrap_or(false);
+    let load_remote = force_load_remote || autoload;
+
+    let inline = am_storage::attachments_repo::inline_parts(&db, message_id).map_err(|e| e.to_string())?;
+    let mut cid_map: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    for (cid, mime, content) in inline {
+        let b64 = base64::engine::general_purpose::STANDARD.encode(&content);
+        cid_map.insert(cid.to_ascii_lowercase(), format!("data:{mime};base64,{b64}"));
+    }
+
+    let empty = std::collections::HashMap::new();
+    let first = am_mime::sanitize::sanitize_for_reader(&html, load_remote, &cid_map, &empty);
+    if !load_remote {
+        return Ok(RenderedMessage {
+            html: Some(first.html),
+            blocked_remote_content: first.blocked_remote_content,
+            remote_loaded: false,
+        });
+    }
+
+    let mut remote_map: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    for url in first.remote_urls {
+        if let Some(data_uri) = fetch_remote_image(&url).await {
+            remote_map.insert(url, data_uri);
+        }
+    }
+
+    let second = am_mime::sanitize::sanitize_for_reader(&html, false, &cid_map, &remote_map);
+    Ok(RenderedMessage {
+        html: Some(second.html),
+        blocked_remote_content: second.blocked_remote_content,
+        remote_loaded: true,
+    })
+}
+
+fn is_blocked_ip(ip: std::net::IpAddr) -> bool {
+    use std::net::IpAddr;
+    match ip {
+        IpAddr::V4(v4) => {
+            let o = v4.octets();
+            v4.is_loopback()
+                || v4.is_private()
+                || v4.is_link_local()
+                || v4.is_unspecified()
+                || v4.is_broadcast()
+                || v4.is_multicast()
+                || v4.is_documentation()
+                || o[0] == 0
+                || (o[0] == 100 && (o[1] & 0xc0) == 0x40)
+        }
+        IpAddr::V6(v6) => {
+            if v6.is_loopback() || v6.is_unspecified() || v6.is_multicast() {
+                return true;
+            }
+            if let Some(v4) = v6.to_ipv4_mapped() {
+                return is_blocked_ip(IpAddr::V4(v4));
+            }
+            let seg0 = v6.segments()[0];
+            (seg0 & 0xfe00) == 0xfc00 || (seg0 & 0xffc0) == 0xfe80
+        }
+    }
+}
+
+async fn fetch_remote_image(url: &str) -> Option<String> {
+    use base64::Engine;
+
+    const MAX_BYTES: usize = 8 * 1024 * 1024;
+
+    let parsed = reqwest::Url::parse(url).ok()?;
+    if !matches!(parsed.scheme(), "http" | "https") {
+        return None;
+    }
+    let host = parsed.host_str()?.to_string();
+    let port = parsed.port_or_known_default()?;
+
+    let resolved: Vec<std::net::SocketAddr> = tokio::net::lookup_host((host.as_str(), port))
+        .await
+        .ok()?
+        .collect();
+    if resolved.is_empty() || resolved.iter().any(|addr| is_blocked_ip(addr.ip())) {
+        return None;
+    }
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .redirect(reqwest::redirect::Policy::none())
+        .resolve(&host, resolved[0])
+        .build()
+        .ok()?;
+
+    let resp = client.get(parsed).send().await.ok()?;
+    if !resp.status().is_success() {
+        return None;
+    }
+    let mime = match resp
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+    {
+        Some(ct) => {
+            let m = ct.split(';').next().unwrap_or("").trim().to_string();
+            if !m.starts_with("image/") {
+                return None;
+            }
+            m
+        }
+        None => "image/png".to_string(),
+    };
+    let bytes = resp.bytes().await.ok()?;
+    if bytes.is_empty() || bytes.len() > MAX_BYTES {
+        return None;
+    }
+    let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
+    Some(format!("data:{mime};base64,{b64}"))
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn list_attachments(
+    state: tauri::State<'_, AppState>,
+    message_id: i64,
+) -> Result<Vec<am_core::message::Attachment>, String> {
+    let db: Arc<am_storage::Database> = Arc::clone(&state.db);
+    let creds = Arc::clone(&state.creds);
+    let _ = am_sync::service::get_or_fetch_body(&db, message_id, creds.as_ref()).await;
+    am_storage::attachments_repo::list_meta(&db, message_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn save_attachment(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+    attachment_id: i64,
+) -> Result<bool, String> {
+    let (filename, _mime, content) =
+        am_storage::attachments_repo::get_content(&state.db, attachment_id).map_err(|e| e.to_string())?;
+
+    let chosen = tokio::task::spawn_blocking(move || {
+        app.dialog().file().set_file_name(filename).blocking_save_file()
+    })
+    .await
+    .map_err(|_| "Save dialog task failed".to_string())?;
+
+    let fp = match chosen {
+        None => return Ok(false),
+        Some(v) => v,
+    };
+    let path = fp
+        .as_path()
+        .ok_or_else(|| "Invalid save path".to_string())?
+        .to_path_buf();
+    std::fs::write(&path, &content).map_err(|e| e.to_string())?;
+    Ok(true)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn open_attachment(
+    state: tauri::State<'_, AppState>,
+    attachment_id: i64,
+) -> Result<(), String> {
+    let (filename, _mime, content) =
+        am_storage::attachments_repo::get_content(&state.db, attachment_id).map_err(|e| e.to_string())?;
+
+    let mut dir = std::env::temp_dir();
+    dir.push("abeonmail-attachments");
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let safe: String = filename.replace(['/', '\\'], "_");
+    dir.push(format!("{attachment_id}-{safe}"));
+    std::fs::write(&dir, &content).map_err(|e| e.to_string())?;
+
+    tauri_plugin_opener::open_path(dir, None::<&str>).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 #[tauri::command]
 #[specta::specta]
 pub fn set_message_flags(
@@ -518,6 +735,45 @@ pub fn reorder_accounts(
     ordered_ids: Vec<i64>,
 ) -> Result<(), String> {
     accounts_repo::reorder_accounts(&state.db, &ordered_ids).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn get_account_endpoints(
+    state: tauri::State<'_, AppState>,
+    account_id: i64,
+) -> Result<am_auth::endpoints::Endpoints, String> {
+    am_sync::service::load_endpoints_pub(&state.db, account_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn update_account(
+    state: tauri::State<'_, AppState>,
+    account_id: i64,
+    display_name: String,
+    color: Option<String>,
+    endpoints: Option<am_auth::endpoints::Endpoints>,
+    password: Option<String>,
+) -> Result<Account, String> {
+    let db: Arc<am_storage::Database> = Arc::clone(&state.db);
+    let input = am_sync::service::UpdateAccountInput {
+        account_id,
+        display_name,
+        color,
+        endpoints,
+        password,
+    };
+    let account = am_sync::service::update_account(&db, input).await.map_err(|e| match e {
+        am_sync::service::SyncError::Keychain => "Keychain unavailable".to_string(),
+        am_sync::service::SyncError::InvalidSettings => "Invalid server settings".to_string(),
+        other => other.to_string(),
+    })?;
+    if let Some(engine) = state.engine.lock().unwrap().as_ref() {
+        engine.stop_account(account_id);
+        engine.spawn_account(account_id);
+    }
+    Ok(account)
 }
 
 #[tauri::command]
@@ -934,6 +1190,34 @@ mod tests {
         let (code, state) = super::parse_redirect_line(line).unwrap();
         assert_eq!(code, "AUTH_CODE_XYZ");
         assert_eq!(state, "CSRF_STATE_123");
+    }
+
+    #[test]
+    fn ssrf_guard_blocks_internal_addresses() {
+        use std::net::IpAddr;
+        let blocked = [
+            "127.0.0.1",
+            "10.0.0.1",
+            "172.16.0.1",
+            "192.168.1.1",
+            "169.254.169.254",
+            "0.0.0.0",
+            "100.64.0.1",
+            "::1",
+            "fc00::1",
+            "fe80::1",
+            "::ffff:127.0.0.1",
+        ];
+        for s in blocked {
+            let ip: IpAddr = s.parse().unwrap();
+            assert!(super::is_blocked_ip(ip), "expected blocked: {s}");
+        }
+
+        let allowed = ["8.8.8.8", "1.1.1.1", "93.184.216.34", "2606:2800:220:1:248:1893:25c8:1946"];
+        for s in allowed {
+            let ip: IpAddr = s.parse().unwrap();
+            assert!(!super::is_blocked_ip(ip), "expected allowed: {s}");
+        }
     }
 
     #[test]

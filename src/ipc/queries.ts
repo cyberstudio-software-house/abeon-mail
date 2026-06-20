@@ -61,6 +61,49 @@ export function useMessageBody(messageId: number | null) {
   });
 }
 
+export function useRenderedMessage(messageId: number | null, forceLoadRemote: boolean) {
+  return useQuery({
+    queryKey: ["rendered", messageId, forceLoadRemote],
+    queryFn: () => commands.renderMessageHtml(messageId!, forceLoadRemote).then(unwrap),
+    enabled: messageId != null,
+  });
+}
+
+export function useMessageAttachments(messageId: number | null) {
+  return useQuery({
+    queryKey: ["attachments", messageId],
+    queryFn: () => commands.listAttachments(messageId!).then(unwrap),
+    enabled: messageId != null,
+  });
+}
+
+export function useImageAutoload(accountId: number | null) {
+  return useQuery({
+    queryKey: ["image-autoload", accountId],
+    queryFn: () =>
+      commands
+        .getSettings()
+        .then(unwrap)
+        .then((all) => {
+          const key = `images.autoload.${accountId}`;
+          const found = all.find(([k]) => k === key);
+          return found ? found[1] === "true" : false;
+        }),
+    enabled: accountId != null,
+  });
+}
+
+export function useSetImageAutoload() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ accountId, value }: { accountId: number; value: boolean }) =>
+      commands.setSetting(`images.autoload.${accountId}`, value ? "true" : "false").then(unwrap),
+    onSuccess: (_data, { accountId }) => {
+      queryClient.invalidateQueries({ queryKey: ["image-autoload", accountId] });
+    },
+  });
+}
+
 export function useResolveEndpoints() {
   return useMutation({
     mutationFn: (email: string) => commands.resolveEndpoints(email),
@@ -196,6 +239,41 @@ export function useReorderAccounts() {
       commands.reorderAccounts(orderedIds).then(unwrap),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["accounts"] });
+    },
+  });
+}
+
+export function useAccountEndpoints(accountId: number | null) {
+  return useQuery<Endpoints>({
+    queryKey: ["account-endpoints", accountId],
+    queryFn: () => commands.getAccountEndpoints(accountId!).then(unwrap),
+    enabled: accountId != null,
+  });
+}
+
+export function useUpdateAccount() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (vars: {
+      accountId: number;
+      displayName: string;
+      color?: string | null;
+      endpoints?: Endpoints | null;
+      password?: string | null;
+    }) =>
+      commands
+        .updateAccount(
+          vars.accountId,
+          vars.displayName,
+          vars.color ?? null,
+          vars.endpoints ?? null,
+          vars.password ?? null,
+        )
+        .then(unwrap),
+    onSuccess: (_data, vars) => {
+      queryClient.invalidateQueries({ queryKey: ["accounts"] });
+      queryClient.invalidateQueries({ queryKey: ["account-endpoints", vars.accountId] });
+      queryClient.invalidateQueries({ queryKey: ["folders", vars.accountId] });
     },
   });
 }

@@ -31,6 +31,7 @@ export function LabelsSection() {
         {labels.map((label) => (
           <li key={label.id} className="labels-settings__row">
             <select
+              className="settings-select"
               aria-label={`Color for ${label.name}`}
               value={label.color}
               onChange={(e) => setLabelColor.mutate({ id: label.id, color: e.target.value })}
@@ -43,6 +44,7 @@ export function LabelsSection() {
             </select>
             <input
               type="text"
+              className="settings-input"
               aria-label={`Rename ${label.name}`}
               defaultValue={label.name}
               onBlur={(e) => {
@@ -52,6 +54,7 @@ export function LabelsSection() {
             />
             <button
               type="button"
+              className="settings-btn settings-btn--icon"
               aria-label={`Delete label ${label.name}`}
               onClick={() => deleteLabel.mutate(label.id)}
             >
@@ -63,6 +66,7 @@ export function LabelsSection() {
       <div className="labels-settings__add">
         <input
           type="text"
+          className="settings-input"
           aria-label="New label name"
           placeholder="New label name"
           value={newName}
@@ -71,7 +75,7 @@ export function LabelsSection() {
             if (e.key === "Enter") add();
           }}
         />
-        <button type="button" onClick={add}>
+        <button type="button" className="settings-btn settings-btn--primary" onClick={add}>
           Add label
         </button>
       </div>

@@ -8,7 +8,7 @@ export function UpdatesPanel() {
       <div className="updates-panel__version">AbeonMail {u.version}</div>
       <button
         type="button"
-        className="updates-panel__check"
+        className="updates-panel__check settings-btn settings-btn--sm"
         onClick={u.checkForUpdate}
         disabled={u.status === "checking" || u.status === "downloading"}
       >
@@ -22,7 +22,13 @@ export function UpdatesPanel() {
       {u.status === "available" && (
         <div className="updates-panel__available">
           <span className="updates-panel__status">Version {u.newVersion} is available.</span>
-          <button type="button" onClick={u.installUpdate}>Download &amp; install</button>
+          <button
+            type="button"
+            className="settings-btn settings-btn--sm settings-btn--primary"
+            onClick={u.installUpdate}
+          >
+            Download &amp; install
+          </button>
         </div>
       )}
       {u.status === "downloading" && <span className="updates-panel__status">Downloading…</span>}

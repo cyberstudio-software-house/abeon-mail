@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use serde::{Deserialize, Serialize};
@@ -7,6 +8,13 @@ use specta::Type;
 pub struct SanitizedHtml {
     pub html: String,
     pub blocked_remote_content: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize, Type)]
+pub struct ReaderHtml {
+    pub html: String,
+    pub blocked_remote_content: bool,
+    pub remote_urls: Vec<String>,
 }
 
 fn normalize_url(value: &str) -> String {
@@ -29,14 +37,59 @@ fn is_remote_url(normalized: &str) -> bool {
     normalized.starts_with("http://") || normalized.starts_with("https://")
 }
 
-pub fn sanitize_html(raw_html: &str) -> SanitizedHtml {
+fn email_style_properties() -> std::collections::HashSet<&'static str> {
+    [
+        "color", "font", "font-family", "font-size", "font-weight", "font-style",
+        "font-variant", "line-height", "letter-spacing", "word-spacing", "text-align",
+        "text-decoration", "text-transform", "text-indent", "text-shadow", "text-overflow",
+        "white-space", "word-break", "word-wrap", "overflow-wrap", "direction",
+        "vertical-align", "list-style", "list-style-type", "list-style-position",
+        "width", "height", "max-width", "min-width", "max-height", "min-height",
+        "margin", "margin-top", "margin-right", "margin-bottom", "margin-left",
+        "padding", "padding-top", "padding-right", "padding-bottom", "padding-left",
+        "display", "box-sizing", "overflow", "overflow-x", "overflow-y", "float", "clear",
+        "position", "top", "right", "bottom", "left", "z-index",
+        "border", "border-top", "border-right", "border-bottom", "border-left",
+        "border-width", "border-style", "border-color", "border-radius",
+        "border-collapse", "border-spacing",
+        "border-top-left-radius", "border-top-right-radius",
+        "border-bottom-left-radius", "border-bottom-right-radius",
+        "background", "background-color", "background-image", "background-position",
+        "background-repeat", "background-size", "background-clip", "background-origin",
+        "box-shadow", "outline", "opacity", "visibility",
+        "table-layout", "caption-side", "empty-cells",
+        "flex", "flex-direction", "flex-wrap", "flex-flow", "justify-content",
+        "align-items", "align-self", "align-content", "gap", "row-gap", "column-gap",
+        "order", "flex-grow", "flex-shrink", "flex-basis",
+        "cursor", "object-fit", "content",
+    ]
+    .into_iter()
+    .collect()
+}
+
+fn sanitize_internal(
+    raw_html: &str,
+    allow_remote: bool,
+    resolve_cid: bool,
+    cid_map: &HashMap<String, String>,
+    remote_map: &HashMap<String, String>,
+) -> (String, bool, Vec<String>) {
     let blocked = Arc::new(Mutex::new(false));
     let blocked_clone = Arc::clone(&blocked);
+    let remote = Arc::new(Mutex::new(Vec::<String>::new()));
+    let remote_clone = Arc::clone(&remote);
+    let cid_map = cid_map.clone();
+    let remote_map = remote_map.clone();
 
     let html = ammonia::Builder::default()
         .rm_tags(&["iframe", "object", "embed", "form", "input", "button", "select", "textarea"])
         .add_clean_content_tags(&["iframe", "object", "embed", "form"])
         .add_url_schemes(&["cid", "data"])
+        .add_generic_attributes(&[
+            "style", "align", "valign", "bgcolor", "width", "height", "border",
+            "cellpadding", "cellspacing",
+        ])
+        .filter_style_properties(email_style_properties())
         .set_tag_attribute_value("a", "target", "_blank")
         .link_rel(Some("noopener noreferrer"))
         .attribute_filter(move |element, attribute, value| {
@@ -49,11 +102,27 @@ pub fn sanitize_html(raw_html: &str) -> SanitizedHtml {
 
             if element == "img" && attribute == "src" {
                 if is_remote_url(&normalized) {
+                    if let Some(data_uri) = remote_map.get(value) {
+                        return Some(data_uri.clone().into());
+                    }
+                    if allow_remote {
+                        remote_clone.lock().unwrap().push(value.to_string());
+                        return Some(value.into());
+                    }
                     *blocked_clone.lock().unwrap() = true;
                     return None;
                 }
                 if scheme == "cid" {
-                    return Some(value.into());
+                    if !resolve_cid {
+                        return Some(value.into());
+                    }
+                    let id = normalized
+                        .trim_start_matches("cid:")
+                        .trim_matches(|c| c == '<' || c == '>');
+                    if let Some(data_uri) = cid_map.get(id) {
+                        return Some(data_uri.clone().into());
+                    }
+                    return None;
                 }
                 if scheme == "data" && normalized.starts_with("data:image/") {
                     return Some(value.into());
@@ -71,10 +140,31 @@ pub fn sanitize_html(raw_html: &str) -> SanitizedHtml {
         .to_string();
 
     let blocked_remote_content = *blocked.lock().unwrap();
+    let remote_urls = std::mem::take(&mut *remote.lock().unwrap());
+    (html, blocked_remote_content, remote_urls)
+}
 
+pub fn sanitize_html(raw_html: &str) -> SanitizedHtml {
+    let (html, blocked_remote_content, _) =
+        sanitize_internal(raw_html, false, false, &HashMap::new(), &HashMap::new());
     SanitizedHtml {
         html,
         blocked_remote_content,
+    }
+}
+
+pub fn sanitize_for_reader(
+    raw_html: &str,
+    allow_remote: bool,
+    cid_map: &HashMap<String, String>,
+    remote_map: &HashMap<String, String>,
+) -> ReaderHtml {
+    let (html, blocked_remote_content, remote_urls) =
+        sanitize_internal(raw_html, allow_remote, true, cid_map, remote_map);
+    ReaderHtml {
+        html,
+        blocked_remote_content,
+        remote_urls,
     }
 }
 
@@ -208,5 +298,78 @@ mod tests {
         let result = sanitize_html("<svg onload=\"alert(1)\"><circle/></svg>");
         assert!(!result.html.contains("onload"));
         assert!(!result.html.contains("<svg"));
+    }
+
+    #[test]
+    fn cid_image_resolved_to_data_uri() {
+        let mut cid = HashMap::new();
+        cid.insert("logo".to_string(), "data:image/png;base64,AAA".to_string());
+        let r = sanitize_for_reader("<img src=\"cid:logo\">", false, &cid, &HashMap::new());
+        assert!(r.html.contains("data:image/png;base64,AAA"));
+        assert!(!r.html.contains("cid:logo"));
+    }
+
+    #[test]
+    fn cid_image_dropped_when_unknown() {
+        let r = sanitize_for_reader("<img src=\"cid:missing\">", false, &HashMap::new(), &HashMap::new());
+        assert!(!r.html.contains("cid:missing"));
+        assert!(!r.blocked_remote_content);
+    }
+
+    #[test]
+    fn remote_collected_when_allowed() {
+        let r = sanitize_for_reader("<img src=\"https://x/a.png\">", true, &HashMap::new(), &HashMap::new());
+        assert_eq!(r.remote_urls, vec!["https://x/a.png".to_string()]);
+        assert!(!r.blocked_remote_content);
+    }
+
+    #[test]
+    fn remote_replaced_from_map() {
+        let mut remote = HashMap::new();
+        remote.insert("https://x/a.png".to_string(), "data:image/png;base64,BBB".to_string());
+        let r = sanitize_for_reader("<img src=\"https://x/a.png\">", false, &HashMap::new(), &remote);
+        assert!(r.html.contains("data:image/png;base64,BBB"));
+        assert!(!r.html.contains("https://x/a.png"));
+        assert!(!r.blocked_remote_content);
+    }
+
+    #[test]
+    fn remote_blocked_when_not_allowed_and_absent() {
+        let r = sanitize_for_reader("<img src=\"https://x/a.png\">", false, &HashMap::new(), &HashMap::new());
+        assert!(r.blocked_remote_content);
+        assert!(!r.html.contains("https://x/a.png"));
+    }
+
+    #[test]
+    fn inline_style_is_preserved() {
+        let result = sanitize_html("<div style=\"color:#635bff;padding:24px;border-radius:8px\">hi</div>");
+        assert!(result.html.contains("color:#635bff"));
+        assert!(result.html.contains("padding:24px"));
+        assert!(result.html.contains("border-radius:8px"));
+    }
+
+    #[test]
+    fn disallowed_style_property_is_stripped() {
+        let result = sanitize_html("<div style=\"color:red;behavior:url(evil.htc);-moz-binding:url(x)\">hi</div>");
+        assert!(result.html.contains("color:red"));
+        assert!(!result.html.contains("behavior"));
+        assert!(!result.html.contains("-moz-binding"));
+    }
+
+    #[test]
+    fn table_presentational_attributes_survive() {
+        let result = sanitize_html(
+            "<table bgcolor=\"#f6f9fc\" width=\"600\" cellpadding=\"0\" cellspacing=\"0\"><tr><td align=\"center\">x</td></tr></table>",
+        );
+        assert!(result.html.contains("bgcolor=\"#f6f9fc\""));
+        assert!(result.html.contains("width=\"600\""));
+        assert!(result.html.contains("align=\"center\""));
+    }
+
+    #[test]
+    fn style_attribute_does_not_reintroduce_scripting() {
+        let result = sanitize_html("<div style=\"color:red\" onclick=\"evil()\">hi</div>");
+        assert!(result.html.contains("color:red"));
+        assert!(!result.html.contains("onclick"));
     }
 }

@@ -178,6 +178,12 @@
 .rail__account-row--active {
   color: var(--accent);
 }
+.rail__reauth-badge {
+  flex-shrink: 0;
+  font-size: 12px;
+  color: var(--color-amber-500, #f59e0b);
+  cursor: help;
+}
 
 .rail__label-dot {
   width: 10px;

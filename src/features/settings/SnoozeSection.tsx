@@ -19,57 +19,69 @@ export function SnoozeSection() {
     <div className="appearance-section">
       <p className="appearance-section__intro">Tune the snooze preset times.</p>
 
-      <div className="appearance-field__label">Morning hour</div>
-      <select
-        aria-label="Morning hour"
-        value={s.morningHour}
-        onChange={(e) => s.setMorningHour(Number(e.target.value))}
-      >
-        {HOURS.map((h) => (
-          <option key={h} value={h}>
-            {String(h).padStart(2, "0")}:00
-          </option>
-        ))}
-      </select>
+      <div className="settings-field">
+        <div className="settings-field__label">Morning hour</div>
+        <select
+          className="settings-select"
+          aria-label="Morning hour"
+          value={s.morningHour}
+          onChange={(e) => s.setMorningHour(Number(e.target.value))}
+        >
+          {HOURS.map((h) => (
+            <option key={h} value={h}>
+              {String(h).padStart(2, "0")}:00
+            </option>
+          ))}
+        </select>
+      </div>
 
-      <div className="appearance-field__label">"Later today" offset</div>
-      <select
-        aria-label="Later today offset"
-        value={s.laterTodayHours}
-        onChange={(e) => s.setLaterTodayHours(Number(e.target.value))}
-      >
-        {OFFSETS.map((h) => (
-          <option key={h} value={h}>
-            {h} hours
-          </option>
-        ))}
-      </select>
+      <div className="settings-field">
+        <div className="settings-field__label">"Later today" offset</div>
+        <select
+          className="settings-select"
+          aria-label="Later today offset"
+          value={s.laterTodayHours}
+          onChange={(e) => s.setLaterTodayHours(Number(e.target.value))}
+        >
+          {OFFSETS.map((h) => (
+            <option key={h} value={h}>
+              {h} hours
+            </option>
+          ))}
+        </select>
+      </div>
 
-      <div className="appearance-field__label">Weekend day</div>
-      <select
-        aria-label="Weekend day"
-        value={s.weekendDay}
-        onChange={(e) => s.setWeekendDay(Number(e.target.value))}
-      >
-        {WEEKDAYS.map((d) => (
-          <option key={d.value} value={d.value}>
-            {d.label}
-          </option>
-        ))}
-      </select>
+      <div className="settings-field">
+        <div className="settings-field__label">Weekend day</div>
+        <select
+          className="settings-select"
+          aria-label="Weekend day"
+          value={s.weekendDay}
+          onChange={(e) => s.setWeekendDay(Number(e.target.value))}
+        >
+          {WEEKDAYS.map((d) => (
+            <option key={d.value} value={d.value}>
+              {d.label}
+            </option>
+          ))}
+        </select>
+      </div>
 
-      <div className="appearance-field__label">Start of week</div>
-      <select
-        aria-label="Start of week"
-        value={s.weekStartDay}
-        onChange={(e) => s.setWeekStartDay(Number(e.target.value))}
-      >
-        {WEEKDAYS.map((d) => (
-          <option key={d.value} value={d.value}>
-            {d.label}
-          </option>
-        ))}
-      </select>
+      <div className="settings-field">
+        <div className="settings-field__label">Start of week</div>
+        <select
+          className="settings-select"
+          aria-label="Start of week"
+          value={s.weekStartDay}
+          onChange={(e) => s.setWeekStartDay(Number(e.target.value))}
+        >
+          {WEEKDAYS.map((d) => (
+            <option key={d.value} value={d.value}>
+              {d.label}
+            </option>
+          ))}
+        </select>
+      </div>
     </div>
   );
 }

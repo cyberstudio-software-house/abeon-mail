@@ -1,9 +1,10 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Reply, ReplyAll, Forward, Star, Archive, Clock, Trash2, MoreHorizontal, SendHorizontal, Tag } from "lucide-react";
 import { useThreadMessages, useStartReply, useSetFlag, useLabelsForMessages } from "../../ipc/queries";
 import { useUiStore } from "../../app/store";
 import { Avatar } from "../../shared/appearance/Avatar";
 import { MessageBodyView } from "./MessageBodyView";
+import { AttachmentsBar } from "./AttachmentsBar";
 import { LabelChips } from "../labels/LabelChips";
 import { formatMessageTime } from "../../shared/datetime/datetime";
 import "./reader.css";
@@ -20,6 +21,12 @@ export function ConversationView({ threadId }: { threadId: number }) {
   const lastId = messages && messages.length > 0 ? messages[messages.length - 1].id : null;
   const labelPairs = useLabelsForMessages(lastId ? [lastId] : []);
   const lastLabels = (labelPairs.data ?? []).map(([, label]) => label);
+
+  const [activeId, setActiveId] = useState<number | null>(null);
+  useEffect(() => {
+    setActiveId(null);
+  }, [threadId]);
+
   useEffect(() => {
     setReplyTargetId(lastId);
     return () => setReplyTargetId(null);
@@ -30,6 +37,7 @@ export function ConversationView({ threadId }: { threadId: number }) {
 
   const last = messages[messages.length - 1];
   const senderName = last.from_name || last.from_address;
+  const effectiveActiveId = activeId ?? lastId;
 
   async function handleReply(mode: "reply" | "reply_all" | "forward") {
     const prefill = await startReplyMutation.mutateAsync({ messageId: last.id, mode });
@@ -96,18 +104,43 @@ export function ConversationView({ threadId }: { threadId: number }) {
             </div>
           )}
 
-          {messages.map((m) => (
-            <div key={m.id} className="reader__message">
-              <div className="reader__sender">
-                <Avatar seed={m.from_address} label={m.from_name || m.from_address} size={46} />
-                <div className="reader__sender-info">
-                  <div className="reader__sender-name">{m.from_name || m.from_address}</div>
+          <div className="reader__thread">
+            {messages.map((m) => {
+              const name = m.from_name || m.from_address;
+              const time = formatMessageTime(m.date, timeFormat);
+              if (m.id !== effectiveActiveId) {
+                return (
+                  <button
+                    key={m.id}
+                    type="button"
+                    className="reader__collapsed"
+                    aria-label={`Expand message from ${name}`}
+                    onClick={() => setActiveId(m.id)}
+                  >
+                    <Avatar seed={m.from_address} label={name} size={34} />
+                    <div className="reader__collapsed-info">
+                      <span className="reader__collapsed-name">{name}</span>
+                      {m.snippet && <span className="reader__collapsed-snippet">{m.snippet}</span>}
+                    </div>
+                    <span className="reader__sender-time">{time}</span>
+                  </button>
+                );
+              }
+              return (
+                <div key={m.id} className="reader__active">
+                  <div className="reader__sender">
+                    <Avatar seed={m.from_address} label={name} size={46} />
+                    <div className="reader__sender-info">
+                      <div className="reader__sender-name">{name}</div>
+                    </div>
+                    <span className="reader__sender-time">{time}</span>
+                  </div>
+                  <MessageBodyView messageId={m.id} shouldMarkSeen={m.id === last.id} />
+                  <AttachmentsBar messageId={m.id} />
                 </div>
-                <span className="reader__sender-time">{formatMessageTime(m.date, timeFormat)}</span>
-              </div>
-              <MessageBodyView messageId={m.id} shouldMarkSeen={m.id === last.id} />
-            </div>
-          ))}
+              );
+            })}
+          </div>
         </div>
       </div>
 

@@ -11,19 +11,22 @@ export function GeneralSection() {
     <div className="appearance-section">
       <p className="appearance-section__intro">General application preferences.</p>
 
-      <div className="appearance-field__label">Default account</div>
-      <select
-        aria-label="Default account"
-        value={g.defaultAccountId}
-        onChange={(e) => g.setDefaultAccountId(e.target.value)}
-      >
-        <option value="">Automatic (first account)</option>
-        {accounts.map((a) => (
-          <option key={a.id} value={String(a.id)}>
-            {a.email}
-          </option>
-        ))}
-      </select>
+      <div className="settings-field">
+        <div className="settings-field__label">Default account</div>
+        <select
+          className="settings-select"
+          aria-label="Default account"
+          value={g.defaultAccountId}
+          onChange={(e) => g.setDefaultAccountId(e.target.value)}
+        >
+          <option value="">Automatic (first account)</option>
+          {accounts.map((a) => (
+            <option key={a.id} value={String(a.id)}>
+              {a.email}
+            </option>
+          ))}
+        </select>
+      </div>
 
       <div className="appearance-field__label">Time format</div>
       <div className="theme-cards">
@@ -40,8 +43,10 @@ export function GeneralSection() {
         ))}
       </div>
 
-      <div className="appearance-field__label">About</div>
-      <UpdatesPanel />
+      <div className="settings-field">
+        <div className="settings-field__label">About</div>
+        <UpdatesPanel />
+      </div>
     </div>
   );
 }

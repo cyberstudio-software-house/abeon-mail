@@ -11,12 +11,25 @@ export const commands = {
 	addAccount: (email: string, displayName: string, password: string, endpoints: Endpoints) => typedError<Account, string>(__TAURI_INVOKE("add_account", { email, displayName, password, endpoints })),
 	removeAccount: (accountId: number) => typedError<null, string>(__TAURI_INVOKE("remove_account", { accountId })),
 	reorderAccounts: (orderedIds: number[]) => typedError<null, string>(__TAURI_INVOKE("reorder_accounts", { orderedIds })),
+	getAccountEndpoints: (accountId: number) => typedError<Endpoints, string>(__TAURI_INVOKE("get_account_endpoints", { accountId })),
+	updateAccount: (accountId: number, displayName: string, color: string | null, endpoints: {
+	imap_host: string,
+	imap_port: number,
+	imap_tls: boolean,
+	smtp_host: string,
+	smtp_port: number,
+	smtp_tls: boolean,
+} | null, password: string | null) => typedError<Account, string>(__TAURI_INVOKE("update_account", { accountId, displayName, color, endpoints, password })),
 	beginReauth: (accountId: number) => typedError<null, string>(__TAURI_INVOKE("begin_reauth", { accountId })),
 	beginGoogleOauth: () => typedError<Account, string>(__TAURI_INVOKE("begin_google_oauth")),
 	listFolders: (accountId: number) => typedError<Folder[], string>(__TAURI_INVOKE("list_folders", { accountId })),
 	listMessages: (folderId: number, limit: number, offset: number) => typedError<MessageHeader[], string>(__TAURI_INVOKE("list_messages", { folderId, limit, offset })),
 	getMessageBody: (messageId: number) => typedError<MessageBody, string>(__TAURI_INVOKE("get_message_body", { messageId })),
 	sanitizeMessageHtml: (html: string) => __TAURI_INVOKE<SanitizedHtml>("sanitize_message_html", { html }),
+	renderMessageHtml: (messageId: number, forceLoadRemote: boolean) => typedError<RenderedMessage, string>(__TAURI_INVOKE("render_message_html", { messageId, forceLoadRemote })),
+	listAttachments: (messageId: number) => typedError<Attachment[], string>(__TAURI_INVOKE("list_attachments", { messageId })),
+	saveAttachment: (attachmentId: number) => typedError<boolean, string>(__TAURI_INVOKE("save_attachment", { attachmentId })),
+	openAttachment: (attachmentId: number) => typedError<null, string>(__TAURI_INVOKE("open_attachment", { attachmentId })),
 	setMessageFlags: (messageId: number, flag: MessageFlag, value: boolean) => typedError<null, string>(__TAURI_INVOKE("set_message_flags", { messageId, flag, value })),
 	markMessageSeen: (messageId: number) => typedError<null, string>(__TAURI_INVOKE("mark_message_seen", { messageId })),
 	listThreads: (folderId: number, limit: number, offset: number) => typedError<ThreadSummary[], string>(__TAURI_INVOKE("list_threads", { folderId, limit, offset })),
@@ -82,6 +95,13 @@ export type Account = {
 export type AccountAuthChanged = {
 	account_id: number,
 	requires_reauth: boolean,
+};
+
+export type Attachment = {
+	id: number,
+	filename: string,
+	mime_type: string,
+	size: number,
 };
 
 export type ConditionField = "from" | "subject" | "recipient" | "has_attachment";
@@ -177,6 +197,12 @@ export type OutgoingMessage = {
 };
 
 export type ProviderType = "imap_password" | "google_oauth";
+
+export type RenderedMessage = {
+	html: string | null,
+	blocked_remote_content: boolean,
+	remote_loaded: boolean,
+};
 
 export type Rule = {
 	id: number,

@@ -100,9 +100,10 @@ export function RulesSection() {
 
   return (
     <div className="settings-section">
-      <label className="signatures-settings__account">
-        Account
+      <div className="settings-account">
+        <span className="settings-account__label">Account</span>
         <select
+          className="settings-select"
           aria-label="Rules account"
           value={accountId ?? ""}
           onChange={(e) => setChosenAccountId(Number(e.target.value))}
@@ -113,190 +114,234 @@ export function RulesSection() {
             </option>
           ))}
         </select>
-      </label>
+      </div>
 
-      <ul className="rules-settings__list">
-        {rules.map((r) => (
-          <li key={r.id} className="rules-settings__row">
-            <button type="button" className="rules-settings__name" onClick={() => loadRule(r.id)}>
-              {r.name}
-            </button>
-            <label className="rules-settings__enabled">
-              <input
-                type="checkbox"
-                aria-label={`Enable rule ${r.name}`}
-                checked={r.enabled}
-                onChange={() =>
-                  accountId != null &&
-                  setRuleEnabled.mutate({ ruleId: r.id, accountId, enabled: !r.enabled })
-                }
-              />
-              Enabled
-            </label>
-            <button
-              type="button"
-              aria-label={`Delete rule ${r.name}`}
-              onClick={() => accountId != null && deleteRule.mutate({ ruleId: r.id, accountId })}
-            >
-              <Trash2 size={15} />
-            </button>
-          </li>
-        ))}
-      </ul>
+      {rules.length > 0 && (
+        <ul className="rules-settings__list">
+          {rules.map((r) => (
+            <li key={r.id} className="rules-settings__row">
+              <button type="button" className="rules-settings__name" onClick={() => loadRule(r.id)}>
+                {r.name}
+              </button>
+              <label className="rules-settings__enabled">
+                <input
+                  type="checkbox"
+                  aria-label={`Enable rule ${r.name}`}
+                  checked={r.enabled}
+                  onChange={() =>
+                    accountId != null &&
+                    setRuleEnabled.mutate({ ruleId: r.id, accountId, enabled: !r.enabled })
+                  }
+                />
+                Enabled
+              </label>
+              <button
+                type="button"
+                className="settings-btn settings-btn--icon"
+                aria-label={`Delete rule ${r.name}`}
+                onClick={() => accountId != null && deleteRule.mutate({ ruleId: r.id, accountId })}
+              >
+                <Trash2 size={15} />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
 
       <div className="rules-settings__editor">
-        <input
-          type="text"
-          aria-label="Rule name"
-          placeholder="Rule name"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-        />
-        <label>
-          Match
-          <select aria-label="Match type" value={matchType} onChange={(e) => setMatchType(e.target.value as MatchType)}>
+        <div className="settings-field">
+          <div className="settings-field__label">Rule name</div>
+          <input
+            type="text"
+            className="settings-input"
+            aria-label="Rule name"
+            placeholder="Rule name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+          />
+        </div>
+
+        <div className="settings-field">
+          <div className="settings-field__label">Match</div>
+          <select
+            className="settings-select"
+            aria-label="Match type"
+            value={matchType}
+            onChange={(e) => setMatchType(e.target.value as MatchType)}
+          >
             <option value="all">all conditions</option>
             <option value="any">any condition</option>
           </select>
-        </label>
+        </div>
 
-        <div className="rules-settings__conditions">
-          {conditions.map((c, i) => (
-            <div key={i} className="rules-settings__condition-row">
-              <select
-                aria-label={`Condition ${i + 1} field`}
-                value={c.field}
-                onChange={(e) => {
-                  const next = [...conditions];
-                  next[i] = { ...c, field: e.target.value as ConditionField };
-                  setConditions(next);
-                }}
-              >
-                {FIELDS.map((f) => (
-                  <option key={f.value} value={f.value}>{f.label}</option>
-                ))}
-              </select>
-              {c.field === "has_attachment" ? (
+        <div className="settings-field">
+          <div className="settings-field__label">Conditions</div>
+          <div className="rules-settings__conditions">
+            {conditions.map((c, i) => (
+              <div key={i} className="settings-row">
                 <select
-                  aria-label={`Condition ${i + 1} value`}
-                  value={c.value || "true"}
+                  className="settings-select"
+                  aria-label={`Condition ${i + 1} field`}
+                  value={c.field}
                   onChange={(e) => {
                     const next = [...conditions];
-                    next[i] = { ...c, op: "is", value: e.target.value };
+                    next[i] = { ...c, field: e.target.value as ConditionField };
                     setConditions(next);
                   }}
                 >
-                  <option value="true">true</option>
-                  <option value="false">false</option>
+                  {FIELDS.map((f) => (
+                    <option key={f.value} value={f.value}>{f.label}</option>
+                  ))}
                 </select>
-              ) : (
-                <>
+                {c.field === "has_attachment" ? (
                   <select
-                    aria-label={`Condition ${i + 1} operator`}
-                    value={c.op}
+                    className="settings-select"
+                    aria-label={`Condition ${i + 1} value`}
+                    value={c.value || "true"}
                     onChange={(e) => {
                       const next = [...conditions];
-                      next[i] = { ...c, op: e.target.value as ConditionOp };
+                      next[i] = { ...c, op: "is", value: e.target.value };
                       setConditions(next);
                     }}
                   >
-                    {OPS.map((o) => (
-                      <option key={o.value} value={o.value}>{o.label}</option>
-                    ))}
+                    <option value="true">true</option>
+                    <option value="false">false</option>
                   </select>
-                  <input
-                    type="text"
-                    aria-label={`Condition ${i + 1} value`}
-                    value={c.value}
-                    onChange={(e) => {
-                      const next = [...conditions];
-                      next[i] = { ...c, value: e.target.value };
-                      setConditions(next);
-                    }}
-                  />
-                </>
-              )}
-              {conditions.length > 1 && (
-                <button
-                  type="button"
-                  aria-label={`Remove condition ${i + 1}`}
-                  onClick={() => setConditions(conditions.filter((_, j) => j !== i))}
-                >
-                  ✕
-                </button>
-              )}
+                ) : (
+                  <>
+                    <select
+                      className="settings-select"
+                      aria-label={`Condition ${i + 1} operator`}
+                      value={c.op}
+                      onChange={(e) => {
+                        const next = [...conditions];
+                        next[i] = { ...c, op: e.target.value as ConditionOp };
+                        setConditions(next);
+                      }}
+                    >
+                      {OPS.map((o) => (
+                        <option key={o.value} value={o.value}>{o.label}</option>
+                      ))}
+                    </select>
+                    <input
+                      type="text"
+                      className="settings-input"
+                      aria-label={`Condition ${i + 1} value`}
+                      value={c.value}
+                      onChange={(e) => {
+                        const next = [...conditions];
+                        next[i] = { ...c, value: e.target.value };
+                        setConditions(next);
+                      }}
+                    />
+                  </>
+                )}
+                {conditions.length > 1 && (
+                  <button
+                    type="button"
+                    className="settings-btn settings-btn--icon"
+                    aria-label={`Remove condition ${i + 1}`}
+                    onClick={() => setConditions(conditions.filter((_, j) => j !== i))}
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+            ))}
+            <div className="settings-row">
+              <button
+                type="button"
+                className="settings-btn settings-btn--sm"
+                onClick={() => setConditions([...conditions, emptyCondition()])}
+              >
+                Add condition
+              </button>
             </div>
-          ))}
-          <button type="button" onClick={() => setConditions([...conditions, emptyCondition()])}>
-            Add condition
-          </button>
+          </div>
         </div>
 
-        <div className="rules-settings__actions-list">
-          {actions.map((a, i) => (
-            <div key={i} className="rules-settings__action-row">
-              <select
-                aria-label={`Action ${i + 1} kind`}
-                value={a.kind}
-                onChange={(e) => {
-                  const next = [...actions];
-                  next[i] = { kind: e.target.value as RuleActionKind, value: "" };
-                  setActions(next);
-                }}
-              >
-                {ACTION_KINDS.map((k) => (
-                  <option key={k.value} value={k.value}>{k.label}</option>
-                ))}
-              </select>
-              {a.kind === "label" && (
+        <div className="settings-field">
+          <div className="settings-field__label">Actions</div>
+          <div className="rules-settings__actions-list">
+            {actions.map((a, i) => (
+              <div key={i} className="settings-row">
                 <select
-                  aria-label={`Action ${i + 1} label`}
-                  value={a.value}
+                  className="settings-select"
+                  aria-label={`Action ${i + 1} kind`}
+                  value={a.kind}
                   onChange={(e) => {
                     const next = [...actions];
-                    next[i] = { ...a, value: e.target.value };
+                    next[i] = { kind: e.target.value as RuleActionKind, value: "" };
                     setActions(next);
                   }}
                 >
-                  <option value="">Select label…</option>
-                  {labels.map((l) => (
-                    <option key={l.id} value={String(l.id)}>{l.name}</option>
+                  {ACTION_KINDS.map((k) => (
+                    <option key={k.value} value={k.value}>{k.label}</option>
                   ))}
                 </select>
-              )}
-              {a.kind === "snooze" && (
-                <input
-                  type="number"
-                  aria-label={`Action ${i + 1} hours`}
-                  min={1}
-                  value={a.value}
-                  placeholder="24"
-                  onChange={(e) => {
-                    const next = [...actions];
-                    next[i] = { ...a, value: e.target.value };
-                    setActions(next);
-                  }}
-                />
-              )}
-              {actions.length > 1 && (
-                <button
-                  type="button"
-                  aria-label={`Remove action ${i + 1}`}
-                  onClick={() => setActions(actions.filter((_, j) => j !== i))}
-                >
-                  ✕
-                </button>
-              )}
+                {a.kind === "label" && (
+                  <select
+                    className="settings-select"
+                    aria-label={`Action ${i + 1} label`}
+                    value={a.value}
+                    onChange={(e) => {
+                      const next = [...actions];
+                      next[i] = { ...a, value: e.target.value };
+                      setActions(next);
+                    }}
+                  >
+                    <option value="">Select label…</option>
+                    {labels.map((l) => (
+                      <option key={l.id} value={String(l.id)}>{l.name}</option>
+                    ))}
+                  </select>
+                )}
+                {a.kind === "snooze" && (
+                  <input
+                    type="number"
+                    className="settings-input"
+                    aria-label={`Action ${i + 1} hours`}
+                    min={1}
+                    value={a.value}
+                    placeholder="24"
+                    onChange={(e) => {
+                      const next = [...actions];
+                      next[i] = { ...a, value: e.target.value };
+                      setActions(next);
+                    }}
+                  />
+                )}
+                {actions.length > 1 && (
+                  <button
+                    type="button"
+                    className="settings-btn settings-btn--icon"
+                    aria-label={`Remove action ${i + 1}`}
+                    onClick={() => setActions(actions.filter((_, j) => j !== i))}
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+            ))}
+            <div className="settings-row">
+              <button
+                type="button"
+                className="settings-btn settings-btn--sm"
+                onClick={() => setActions([...actions, emptyAction()])}
+              >
+                Add action
+              </button>
             </div>
-          ))}
-          <button type="button" onClick={() => setActions([...actions, emptyAction()])}>
-            Add action
-          </button>
+          </div>
         </div>
 
         <div className="rules-settings__editor-actions">
-          <button type="button" onClick={resetEditor}>New rule</button>
-          <button type="button" onClick={save}>Save rule</button>
+          <button type="button" className="settings-btn" onClick={resetEditor}>
+            New rule
+          </button>
+          <button type="button" className="settings-btn settings-btn--primary" onClick={save}>
+            Save rule
+          </button>
         </div>
       </div>
     </div>

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 vi.mock("../ipc/events", () => ({
@@ -132,11 +132,10 @@ function Wrapper({ children }: { children: React.ReactNode }) {
 }
 
 describe("AppShell", () => {
-  it("renders three panes and shows ipc status", async () => {
+  it("renders three panes", () => {
     render(<AppShell />, { wrapper: Wrapper });
     expect(screen.getByLabelText("message-list")).toBeTruthy();
     expect(screen.getByLabelText("reader")).toBeTruthy();
-    await waitFor(() => expect(screen.getByText("IPC: ok")).toBeTruthy());
   });
 
   it("mounts sync-event hook on render", () => {

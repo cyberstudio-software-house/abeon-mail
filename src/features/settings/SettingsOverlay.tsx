@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useUiStore } from "../../app/store";
+import { AccountsSection } from "./AccountsSection";
 import { AppearanceSection } from "./AppearanceSection";
 import { LabelsSection } from "./LabelsSection";
 import { NotificationsSection } from "./NotificationsSection";
@@ -77,6 +78,8 @@ export function SettingsOverlay() {
           </header>
           {active === "general" ? (
             <GeneralSection />
+          ) : active === "accounts" ? (
+            <AccountsSection />
           ) : active === "appearance" ? (
             <AppearanceSection />
           ) : active === "labels" ? (

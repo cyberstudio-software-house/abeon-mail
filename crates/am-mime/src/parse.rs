@@ -1,3 +1,4 @@
+use am_core::message::NewAttachment;
 use mail_parser::{Address, MessageParser, MimeHeaders};
 use serde::{Deserialize, Serialize};
 
@@ -13,6 +14,7 @@ pub struct ParsedMessage {
     pub text_plain: Option<String>,
     pub text_html: Option<String>,
     pub attachment_names: Vec<String>,
+    pub attachments: Vec<NewAttachment>,
     pub snippet: String,
 }
 
@@ -82,6 +84,7 @@ pub fn parse_message(raw: &[u8]) -> ParsedMessage {
             text_plain: None,
             text_html: None,
             attachment_names: Vec::new(),
+            attachments: Vec::new(),
             snippet: String::new(),
         };
     };
@@ -121,9 +124,47 @@ pub fn parse_message(raw: &[u8]) -> ParsedMessage {
     let text_plain = msg.body_text(0).map(|s| s.into_owned());
     let text_html = msg.body_html(0).map(|s| s.into_owned());
 
-    let attachment_names: Vec<String> = msg
+    let attachments: Vec<NewAttachment> = msg
         .attachments()
-        .filter_map(|part| part.attachment_name().map(str::to_string))
+        .filter(|part| part.sub_parts().is_none())
+        .map(|part| {
+            let content_id = part
+                .content_id()
+                .map(|c| c.trim_matches(|ch| ch == '<' || ch == '>').to_string());
+            let disposition_inline = part
+                .content_disposition()
+                .map(|d| d.is_inline())
+                .unwrap_or(false);
+            let is_inline = content_id.is_some() || disposition_inline;
+            let mime_type = part
+                .content_type()
+                .map(|ct| match ct.subtype() {
+                    Some(sub) => format!("{}/{}", ct.ctype(), sub),
+                    None => ct.ctype().to_string(),
+                })
+                .unwrap_or_else(|| "application/octet-stream".to_string());
+            let content = part.contents().to_vec();
+            let size = content.len() as i64;
+            let filename = part
+                .attachment_name()
+                .map(str::to_string)
+                .or_else(|| content_id.clone())
+                .unwrap_or_else(|| "attachment".to_string());
+            NewAttachment {
+                filename,
+                mime_type,
+                size,
+                content_id,
+                is_inline,
+                content,
+            }
+        })
+        .collect();
+
+    let attachment_names: Vec<String> = attachments
+        .iter()
+        .filter(|a| !a.is_inline)
+        .map(|a| a.filename.clone())
         .collect();
 
     let snippet = extract_snippet(text_plain.as_deref(), text_html.as_deref());
@@ -139,6 +180,7 @@ pub fn parse_message(raw: &[u8]) -> ParsedMessage {
         text_plain,
         text_html,
         attachment_names,
+        attachments,
         snippet,
     }
 }
@@ -198,6 +240,41 @@ BINARYDATA\r\n\
     fn test_date_extraction() {
         let result = parse_message(MULTIPART_RAW);
         assert!(result.date > 0);
+    }
+
+    #[test]
+    fn extracts_attachment_bytes_and_metadata() {
+        let result = parse_message(MULTIPART_RAW);
+        assert_eq!(result.attachments.len(), 1);
+        let att = &result.attachments[0];
+        assert_eq!(att.filename, "test.bin");
+        assert_eq!(att.content, b"BINARYDATA");
+        assert_eq!(att.size, 10);
+        assert!(!att.is_inline);
+    }
+
+    #[test]
+    fn inline_image_with_content_id_is_marked_inline() {
+        let raw = b"From: a@x.com\r\n\
+MIME-Version: 1.0\r\n\
+Content-Type: multipart/related; boundary=\"b\"\r\n\
+\r\n\
+--b\r\n\
+Content-Type: text/html\r\n\
+\r\n\
+<img src=\"cid:logo\">\r\n\
+--b\r\n\
+Content-Type: image/png\r\n\
+Content-ID: <logo>\r\n\
+Content-Transfer-Encoding: base64\r\n\
+\r\n\
+iVBORw0KGgo=\r\n\
+--b--\r\n";
+        let result = parse_message(raw);
+        let inline: Vec<_> = result.attachments.iter().filter(|a| a.is_inline).collect();
+        assert_eq!(inline.len(), 1);
+        assert_eq!(inline[0].content_id.as_deref(), Some("logo"));
+        assert!(result.attachment_names.is_empty());
     }
 
     #[test]

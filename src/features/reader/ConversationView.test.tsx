@@ -39,6 +39,11 @@ vi.mock("../../ipc/bindings", () => ({
       status: "ok",
       data: { message_id: 2, text_plain: "body", text_html: null },
     }),
+    renderMessageHtml: vi.fn().mockResolvedValue({
+      status: "ok",
+      data: { html: null, blocked_remote_content: false, remote_loaded: false },
+    }),
+    listAttachments: vi.fn().mockResolvedValue({ status: "ok", data: [] }),
     markMessageSeen: vi.fn().mockResolvedValue({ status: "ok", data: null }),
     startReply: vi.fn().mockResolvedValue({
       status: "ok",

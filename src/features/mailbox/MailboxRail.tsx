@@ -1,20 +1,5 @@
 import { useState, useEffect, useRef } from "react";
 import {
-  DndContext,
-  closestCenter,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  DragEndEvent,
-} from "@dnd-kit/core";
-import {
-  SortableContext,
-  useSortable,
-  verticalListSortingStrategy,
-  arrayMove,
-} from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
-import {
   Search,
   Layers,
   MailOpen,
@@ -32,18 +17,15 @@ import {
   Folder,
   Plus,
 } from "lucide-react";
-import {
-  useAccounts,
-  useFolders,
-  useRemoveAccount,
-  useBeginReauth,
-  useReorderAccounts,
-  useLabels,
-} from "../../ipc/queries";
+import { useAccounts, useFolders, useLabels } from "../../ipc/queries";
 import { useUiStore } from "../../app/store";
-import { AddAccountWizard } from "../accounts/AddAccountWizard";
 import { Avatar } from "../../shared/appearance/Avatar";
-import { buildFolderTree } from "./folder-tree";
+import {
+  buildFolderTree,
+  partitionPriorityFolders,
+  sortFolderNodes,
+  decodeImapUtf7,
+} from "./folder-tree";
 import type { FolderNode } from "./folder-tree";
 import type { Account, SmartFolderKind } from "../../ipc/bindings";
 import "./MailboxRail.css";
@@ -127,168 +109,41 @@ function FolderTreeNodes({
   );
 }
 
-interface RemoveConfirmProps {
-  account: Account;
-  onConfirm: () => void;
-  onCancel: () => void;
-}
-
-function RemoveConfirmDialog({ account, onConfirm, onCancel }: RemoveConfirmProps) {
-  return (
-    <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0,0,0,0.5)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        zIndex: 200,
-      }}
-    >
-      <div
-        style={{
-          background: "var(--bg-surface)",
-          borderRadius: "var(--radius-md)",
-          padding: "var(--space-6)",
-          maxWidth: 380,
-          width: "100%",
-        }}
-      >
-        <p style={{ marginBottom: "var(--space-4)", fontSize: "14px" }}>
-          Permanently remove <strong>{account.display_name || account.email}</strong>? This deletes all
-          locally cached messages and cannot be undone.
-        </p>
-        <div style={{ display: "flex", gap: "var(--space-2)", justifyContent: "flex-end" }}>
-          <button
-            onClick={onCancel}
-            aria-label="Cancel"
-            style={{
-              background: "transparent",
-              border: "1px solid var(--border)",
-              borderRadius: "var(--radius-sm)",
-              padding: "var(--space-1) var(--space-3)",
-              cursor: "pointer",
-              fontSize: "13px",
-            }}
-          >
-            Cancel
-          </button>
-          <button
-            onClick={onConfirm}
-            aria-label="Confirm"
-            style={{
-              background: "var(--color-red-600, #dc2626)",
-              border: "none",
-              borderRadius: "var(--radius-sm)",
-              color: "white",
-              padding: "var(--space-1) var(--space-3)",
-              cursor: "pointer",
-              fontSize: "13px",
-            }}
-          >
-            Confirm
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-interface SortableAccountRowProps {
-  account: Account;
-  isSelected: boolean;
-  onAccountClick: (id: number) => void;
-  onRemoveClick: (account: Account) => void;
-  onReauthClick: (id: number) => void;
-}
-
-function SortableAccountRow({
+function AccountRow({
   account,
   isSelected,
-  onAccountClick,
-  onRemoveClick,
-  onReauthClick,
-}: SortableAccountRowProps) {
-  const { attributes, listeners, setNodeRef, transform, transition } = useSortable({
-    id: account.id,
-  });
-
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-  };
-
+  isExpanded,
+  onClick,
+}: {
+  account: Account;
+  isSelected: boolean;
+  isExpanded: boolean;
+  onClick: (id: number) => void;
+}) {
   return (
-    <div ref={setNodeRef} style={style}>
-      <div
-        className={`rail__account-row${isSelected ? " rail__account-row--active" : ""}`}
-        onClick={() => onAccountClick(account.id)}
-      >
+    <div
+      className={`rail__account-row${isSelected ? " rail__account-row--active" : ""}`}
+      onClick={() => onClick(account.id)}
+    >
+      {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+      <Avatar seed={account.email} label={account.display_name || account.email} size={22} />
+      <span className="rail__item-label">{account.display_name || account.email}</span>
+      {account.requires_reauth && (
         <span
-          {...attributes}
-          {...listeners}
-          style={{ cursor: "grab", padding: "0 2px", color: "var(--text-muted)" }}
-          aria-label={`Drag to reorder ${account.display_name || account.email}`}
+          className="rail__reauth-badge"
+          title="Reconnect needed — open Settings → Accounts"
+          aria-label={`Account ${account.display_name || account.email} needs reconnect`}
         >
-          ⠿
+          ⚠
         </span>
-        <Avatar
-          seed={account.email}
-          label={account.display_name || account.email}
-          size={22}
-        />
-        <span className="rail__item-label">{account.display_name || account.email}</span>
-        {account.requires_reauth && (
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onReauthClick(account.id);
-            }}
-            aria-label={`Reconnect account ${account.display_name || account.email}`}
-            style={{
-              background: "transparent",
-              border: "none",
-              cursor: "pointer",
-              fontSize: "12px",
-              color: "var(--color-amber-500, #f59e0b)",
-              padding: "0 2px",
-            }}
-          >
-            ⚠ Reconnect
-          </button>
-        )}
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onRemoveClick(account);
-          }}
-          aria-label={`Remove account ${account.display_name || account.email}`}
-          style={{
-            background: "transparent",
-            border: "none",
-            cursor: "pointer",
-            fontSize: "12px",
-            color: "var(--text-muted)",
-            padding: "0 2px",
-            opacity: 0.5,
-          }}
-        >
-          ✕
-        </button>
-      </div>
+      )}
     </div>
   );
 }
 
-interface Props {
-  status?: string;
-}
-
-export function MailboxRail({ status }: Props) {
-  const [wizardOpen, setWizardOpen] = useState(false);
-  const [confirmAccount, setConfirmAccount] = useState<Account | null>(null);
+export function MailboxRail() {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [collapsedAccounts, setCollapsedAccounts] = useState<Set<number>>(new Set());
 
   const selectedAccountId = useUiStore((s) => s.selectedAccountId);
   const selectedFolderId = useUiStore((s) => s.selectedFolderId);
@@ -307,18 +162,21 @@ export function MailboxRail({ status }: Props) {
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   const { data: labels = [] } = useLabels();
-
   const { data: accounts = [], isLoading: accountsLoading } = useAccounts();
   const { data: folders = [] } = useFolders(selectedAccountId);
-  const removeAccount = useRemoveAccount();
-  const beginReauth = useBeginReauth();
-  const reorderAccounts = useReorderAccounts();
 
-  const sensors = useSensors(useSensor(PointerSensor));
+  const { priority: priorityFolders, rest: restFolders } = partitionPriorityFolders(folders);
+  const priorityNodes: FolderNode[] = priorityFolders.map((f) => ({
+    segment: decodeImapUtf7(f.name),
+    fullPath: f.remote_path,
+    folder: f,
+    children: [],
+  }));
+  const restTree = sortFolderNodes(buildFolderTree(restFolders));
 
   const folderIds = folders.map((f) => f.id).join(",");
   useEffect(() => {
-    const tree = buildFolderTree(folders);
+    const tree = buildFolderTree(partitionPriorityFolders(folders).rest);
     setExpanded(new Set(tree.map((n) => n.fullPath)));
   }, [folderIds]);
 
@@ -337,47 +195,28 @@ export function MailboxRail({ status }: Props) {
   }
 
   function handleAccountClick(accountId: number) {
+    if (selectedAccountId === accountId) {
+      setCollapsedAccounts((prev) => {
+        const next = new Set(prev);
+        if (next.has(accountId)) next.delete(accountId);
+        else next.add(accountId);
+        return next;
+      });
+      return;
+    }
     setSelectedAccountId(accountId);
     setSelectedFolderId(null);
+    setCollapsedAccounts((prev) => {
+      if (!prev.has(accountId)) return prev;
+      const next = new Set(prev);
+      next.delete(accountId);
+      return next;
+    });
   }
 
   function handleFolderClick(folderId: number, accountId: number) {
     setSelectedAccountId(accountId);
     setSelectedFolderId(folderId);
-  }
-
-  function handleAdded(accountId: number) {
-    setSelectedAccountId(accountId);
-    setWizardOpen(false);
-  }
-
-  function handleRemoveClick(account: Account) {
-    setConfirmAccount(account);
-  }
-
-  function handleRemoveConfirm() {
-    if (confirmAccount) {
-      removeAccount.mutate(confirmAccount.id);
-    }
-    setConfirmAccount(null);
-  }
-
-  function handleRemoveCancel() {
-    setConfirmAccount(null);
-  }
-
-  function handleReauthClick(accountId: number) {
-    beginReauth.mutate(accountId);
-  }
-
-  function handleDragEnd(event: DragEndEvent) {
-    const { active, over } = event;
-    if (!over || active.id === over.id) return;
-    const oldIndex = accounts.findIndex((a) => a.id === active.id);
-    const newIndex = accounts.findIndex((a) => a.id === over.id);
-    if (oldIndex === -1 || newIndex === -1) return;
-    const reordered = arrayMove(accounts, oldIndex, newIndex);
-    reorderAccounts.mutate(reordered.map((a) => a.id));
   }
 
   const headerAccount = accounts.find((a) => a.id === selectedAccountId) ?? accounts[0];
@@ -440,38 +279,40 @@ export function MailboxRail({ status }: Props) {
         {!accountsLoading && accounts.length > 0 && (
           <>
             <div className="rail__section">Accounts</div>
-            <DndContext
-              sensors={sensors}
-              collisionDetection={closestCenter}
-              onDragEnd={handleDragEnd}
-            >
-              <SortableContext
-                items={accounts.map((a) => a.id)}
-                strategy={verticalListSortingStrategy}
-              >
-                {accounts.map((account) => (
-                  <div key={account.id}>
-                    <SortableAccountRow
-                      account={account}
-                      isSelected={selectedAccountId === account.id}
-                      onAccountClick={handleAccountClick}
-                      onRemoveClick={handleRemoveClick}
-                      onReauthClick={handleReauthClick}
+            {accounts.map((account) => {
+              const isExpanded =
+                selectedAccountId === account.id && !collapsedAccounts.has(account.id);
+              return (
+              <div key={account.id}>
+                <AccountRow
+                  account={account}
+                  isSelected={selectedAccountId === account.id}
+                  isExpanded={isExpanded}
+                  onClick={handleAccountClick}
+                />
+                {isExpanded && (
+                  <>
+                    <FolderTreeNodes
+                      nodes={priorityNodes}
+                      depth={0}
+                      expanded={expanded}
+                      toggle={toggle}
+                      selectedFolderId={selectedFolderId}
+                      onFolderClick={handleFolderClick}
                     />
-                    {selectedAccountId === account.id && (
-                      <FolderTreeNodes
-                        nodes={buildFolderTree(folders)}
-                        depth={0}
-                        expanded={expanded}
-                        toggle={toggle}
-                        selectedFolderId={selectedFolderId}
-                        onFolderClick={handleFolderClick}
-                      />
-                    )}
-                  </div>
-                ))}
-              </SortableContext>
-            </DndContext>
+                    <FolderTreeNodes
+                      nodes={restTree}
+                      depth={0}
+                      expanded={expanded}
+                      toggle={toggle}
+                      selectedFolderId={selectedFolderId}
+                      onFolderClick={handleFolderClick}
+                    />
+                  </>
+                )}
+              </div>
+              );
+            })}
           </>
         )}
 
@@ -515,12 +356,6 @@ export function MailboxRail({ status }: Props) {
 
       <footer className="rail__footer">
         <button
-          className="rail__add"
-          onClick={() => setWizardOpen(true)}
-        >
-          Add account
-        </button>
-        <button
           type="button"
           className="rail__settings"
           onClick={openSettings}
@@ -529,43 +364,6 @@ export function MailboxRail({ status }: Props) {
           <Settings size={16} />
         </button>
       </footer>
-
-      {status !== undefined && (
-        <div
-          className="status"
-          style={{
-            padding: "var(--space-2) var(--space-4)",
-            fontSize: "11px",
-            color: "var(--text-muted)",
-          }}
-        >
-          IPC: {status}
-        </div>
-      )}
-
-      {wizardOpen && (
-        <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0,0,0,0.5)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 100,
-          }}
-        >
-          <AddAccountWizard onClose={() => setWizardOpen(false)} onAdded={handleAdded} />
-        </div>
-      )}
-
-      {confirmAccount && (
-        <RemoveConfirmDialog
-          account={confirmAccount}
-          onConfirm={handleRemoveConfirm}
-          onCancel={handleRemoveCancel}
-        />
-      )}
     </aside>
   );
 }

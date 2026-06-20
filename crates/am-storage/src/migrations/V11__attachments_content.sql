@@ -1,0 +1,2 @@
+ALTER TABLE attachments ADD COLUMN content BLOB;
+ALTER TABLE attachments ADD COLUMN is_inline INTEGER NOT NULL DEFAULT 0;

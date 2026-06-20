@@ -189,7 +189,14 @@ pub fn list_by_thread(db: &Database, thread_id: i64) -> Result<Vec<MessageHeader
     let conn = db.conn();
     let mut stmt = conn.prepare(
         "SELECT id, account_id, folder_id, subject, from_address, from_name, date, seen, flagged, has_attachments, snippet
-         FROM messages WHERE thread_id = ?1 AND draft = 0 ORDER BY date ASC",
+         FROM messages
+         WHERE thread_id = ?1 AND draft = 0
+           AND id IN (
+             SELECT MIN(id) FROM messages
+             WHERE thread_id = ?1 AND draft = 0
+             GROUP BY COALESCE(message_id_hdr, 'id:' || id)
+           )
+         ORDER BY date ASC",
     )?;
     let rows = stmt.query_map(params![thread_id], row_to_header)?;
     let mut out = Vec::new();
@@ -706,6 +713,60 @@ mod tests {
         };
         assign_thread(&db, unthreaded[0].id, conn_thread_id).unwrap();
         assert!(list_unthreaded(&db, account_id).unwrap().is_empty());
+    }
+
+    #[test]
+    fn list_by_thread_dedupes_same_message_across_folders() {
+        let db = Database::open_in_memory().unwrap();
+        let account = insert_account(&db, &sample_account()).unwrap();
+        let inbox = upsert_folder(&db, account.id, "INBOX", "Inbox", FolderType::Inbox).unwrap().id;
+        let archive = upsert_folder(&db, account.id, "[Gmail]/All Mail", "All Mail", FolderType::Archive).unwrap().id;
+
+        let mut in_inbox = make_header(1, 1000);
+        in_inbox.message_id_hdr = Some("<dup@example.com>".into());
+        let mut in_archive = make_header(1, 1000);
+        in_archive.message_id_hdr = Some("<dup@example.com>".into());
+        insert_headers(&db, inbox, &[in_inbox]).unwrap();
+        insert_headers(&db, archive, &[in_archive]).unwrap();
+
+        let thread_id = {
+            let conn = db.conn();
+            conn.execute(
+                "INSERT INTO threads (account_id, subject_root, last_date) VALUES (?1, 's', 1000)",
+                params![account.id],
+            ).unwrap();
+            let id = conn.last_insert_rowid();
+            conn.execute(
+                "UPDATE messages SET thread_id = ?1 WHERE message_id_hdr = ?2",
+                params![id, "<dup@example.com>"],
+            ).unwrap();
+            id
+        };
+
+        let msgs = list_by_thread(&db, thread_id).unwrap();
+        assert_eq!(msgs.len(), 1);
+    }
+
+    #[test]
+    fn list_by_thread_keeps_distinct_messages() {
+        let db = Database::open_in_memory().unwrap();
+        let account = insert_account(&db, &sample_account()).unwrap();
+        let inbox = upsert_folder(&db, account.id, "INBOX", "Inbox", FolderType::Inbox).unwrap().id;
+        insert_headers(&db, inbox, &[make_header(1, 1000), make_header(2, 2000)]).unwrap();
+
+        let thread_id = {
+            let conn = db.conn();
+            conn.execute(
+                "INSERT INTO threads (account_id, subject_root, last_date) VALUES (?1, 's', 2000)",
+                params![account.id],
+            ).unwrap();
+            let id = conn.last_insert_rowid();
+            conn.execute("UPDATE messages SET thread_id = ?1", params![id]).unwrap();
+            id
+        };
+
+        let msgs = list_by_thread(&db, thread_id).unwrap();
+        assert_eq!(msgs.len(), 2);
     }
 
     fn sample_outgoing() -> OutgoingMessage {

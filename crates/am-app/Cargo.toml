@@ -10,6 +10,8 @@ am-mime = { path = "../am-mime" }
 am-storage = { path = "../am-storage" }
 am-sync = { path = "../am-sync" }
 rand.workspace = true
+reqwest.workspace = true
+base64 = "0.22"
 serde.workspace = true
 serde_json.workspace = true
 specta.workspace = true

@@ -148,6 +148,30 @@ pub fn set_requires_reauth(db: &Database, id: i64, value: bool) -> Result<(), St
     Ok(())
 }
 
+pub fn update_account(
+    db: &Database,
+    id: i64,
+    display_name: &str,
+    color: Option<&str>,
+    settings: Option<&str>,
+) -> Result<Account, StorageError> {
+    {
+        let conn = db.conn();
+        let changed = conn.execute(
+            "UPDATE accounts
+             SET display_name = ?1,
+                 color = COALESCE(?2, color),
+                 settings = COALESCE(?3, settings)
+             WHERE id = ?4",
+            params![display_name, color, settings, id],
+        )?;
+        if changed == 0 {
+            return Err(StorageError::NotFound);
+        }
+    }
+    get_account(db, id)
+}
+
 pub fn reorder_accounts(db: &Database, ordered_ids: &[i64]) -> Result<(), StorageError> {
     let mut conn = db.conn();
     let tx = conn.transaction()?;
@@ -261,6 +285,34 @@ mod tests {
         set_requires_reauth(&db, created.id, false).unwrap();
         let fetched2 = get_account(&db, created.id).unwrap();
         assert!(!fetched2.requires_reauth);
+    }
+
+    #[test]
+    fn update_account_changes_name_and_settings_preserving_color() {
+        let db = Database::open_in_memory().unwrap();
+        let created =
+            insert_account_with_settings(&db, &sample(), "user@example.com", "{\"a\":1}").unwrap();
+        let updated =
+            update_account(&db, created.id, "New Name", None, Some("{\"b\":2}")).unwrap();
+        assert_eq!(updated.display_name, "New Name");
+        assert_eq!(updated.color, created.color);
+        assert_eq!(get_account_settings(&db, created.id).unwrap(), "{\"b\":2}");
+    }
+
+    #[test]
+    fn update_account_keeps_settings_when_none() {
+        let db = Database::open_in_memory().unwrap();
+        let created =
+            insert_account_with_settings(&db, &sample(), "user@example.com", "{\"a\":1}").unwrap();
+        update_account(&db, created.id, "X", None, None).unwrap();
+        assert_eq!(get_account_settings(&db, created.id).unwrap(), "{\"a\":1}");
+    }
+
+    #[test]
+    fn update_missing_account_returns_not_found() {
+        let db = Database::open_in_memory().unwrap();
+        let err = update_account(&db, 999, "X", None, None).unwrap_err();
+        assert!(matches!(err, StorageError::NotFound));
     }
 
     #[test]

@@ -39,6 +39,27 @@ impl std::fmt::Debug for AddAccountInput {
     }
 }
 
+#[derive(Clone)]
+pub struct UpdateAccountInput {
+    pub account_id: i64,
+    pub display_name: String,
+    pub color: Option<String>,
+    pub endpoints: Option<Endpoints>,
+    pub password: Option<String>,
+}
+
+impl std::fmt::Debug for UpdateAccountInput {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("UpdateAccountInput")
+            .field("account_id", &self.account_id)
+            .field("display_name", &self.display_name)
+            .field("color", &self.color)
+            .field("endpoints", &self.endpoints)
+            .field("password", &self.password.as_ref().map(|_| "***"))
+            .finish()
+    }
+}
+
 #[derive(thiserror::Error, Debug)]
 pub enum SyncError {
     #[error("storage error: {0}")]
@@ -187,6 +208,33 @@ pub async fn add_account(db: &Database, input: AddAccountInput) -> Result<Accoun
     Ok(account)
 }
 
+pub async fn update_account(db: &Database, input: UpdateAccountInput) -> Result<Account, SyncError> {
+    let account = accounts_repo::get_account(db, input.account_id)?;
+
+    if let Some(ref password) = input.password {
+        if !password.is_empty() {
+            am_auth::credentials::store_password(&account.email, password)?;
+        }
+    }
+
+    let settings = match input.endpoints {
+        Some(ref endpoints) => {
+            Some(serde_json::to_string(endpoints).map_err(|_| SyncError::InvalidSettings)?)
+        }
+        None => None,
+    };
+
+    let updated = accounts_repo::update_account(
+        db,
+        input.account_id,
+        &input.display_name,
+        input.color.as_deref(),
+        settings.as_deref(),
+    )?;
+
+    Ok(updated)
+}
+
 pub fn assign_threads(db: &Database, account_id: i64) -> Result<(), SyncError> {
     let pending = messages_repo::list_unthreaded(db, account_id)?;
     let mut touched: std::collections::HashSet<i64> = std::collections::HashSet::new();
@@ -308,10 +356,23 @@ pub async fn sync_all_folders(
 }
 
 pub async fn get_or_fetch_body(db: &Database, message_id: i64, creds: &dyn CredentialSource) -> Result<MessageBody, SyncError> {
-    if let Some(body) = messages_repo::get_body(db, message_id)? {
-        return Ok(body);
+    let cached = messages_repo::get_body(db, message_id)?;
+    if let Some(body) = &cached {
+        if !am_storage::attachments_repo::needs_refresh(db, message_id)? {
+            return Ok(body.clone());
+        }
     }
 
+    match fetch_and_store_body(db, message_id, creds).await {
+        Ok(body) => Ok(body),
+        Err(err) => match cached {
+            Some(body) => Ok(body),
+            None => Err(err),
+        },
+    }
+}
+
+async fn fetch_and_store_body(db: &Database, message_id: i64, creds: &dyn CredentialSource) -> Result<MessageBody, SyncError> {
     let (folder_id, uid) = messages_repo::message_uid(db, message_id)?;
     let folder = folders_repo::get_folder(db, folder_id)?;
     let account = accounts_repo::get_account(db, folder.account_id)?;
@@ -337,7 +398,7 @@ pub async fn get_or_fetch_body(db: &Database, message_id: i64, creds: &dyn Crede
         &parsed.snippet,
         !parsed.attachment_names.is_empty(),
     )?;
-    am_storage::attachments_repo::replace_for_message(db, message_id, &parsed.attachment_names)?;
+    am_storage::attachments_repo::replace_for_message(db, message_id, &parsed.attachments)?;
     messages_repo::store_recipients(db, message_id, &parsed.to, &parsed.cc)?;
     am_storage::search_repo::reindex_message(db, message_id)?;
     Ok(body)

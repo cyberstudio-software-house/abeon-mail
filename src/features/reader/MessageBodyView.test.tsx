@@ -8,9 +8,9 @@ vi.mock("../../ipc/bindings", () => ({
       status: "ok",
       data: { message_id: 42, text_plain: null, text_html: "<p>hi</p>" },
     }),
-    sanitizeMessageHtml: vi.fn().mockResolvedValue({
-      html: "<p>safe</p>",
-      blocked_remote_content: false,
+    renderMessageHtml: vi.fn().mockResolvedValue({
+      status: "ok",
+      data: { html: "<p>safe</p>", blocked_remote_content: false, remote_loaded: false },
     }),
     markMessageSeen: vi.fn().mockResolvedValue({ status: "ok", data: null }),
   },

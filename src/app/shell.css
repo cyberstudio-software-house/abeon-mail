@@ -1,16 +1,19 @@
 .shell {
   display: grid;
   grid-template-columns: 264px 360px 1fr;
-  height: 100%;
+  grid-template-rows: minmax(0, 1fr);
+  height: 100vh;
+  overflow: hidden;
 }
 
 .rail {
+  min-height: 0;
   background: var(--bg-rail);
   color: var(--text-on-rail);
-  padding: var(--space-4);
 }
 
 .pane {
+  min-height: 0;
   background: var(--bg-surface);
   border-left: 1px solid var(--border-subtle);
   padding: var(--space-4);
