@@ -29,6 +29,15 @@ pub fn enqueue(db: &Database, account_id: i64, op_type: &str, payload: &str) -> 
     Ok(conn.last_insert_rowid())
 }
 
+pub fn enqueue_at(db: &Database, account_id: i64, op_type: &str, payload: &str, next_retry_at: i64) -> Result<i64, StorageError> {
+    let conn = db.conn();
+    conn.execute(
+        "INSERT INTO sync_queue (account_id, op_type, payload, state, attempts, next_retry_at) VALUES (?1, ?2, ?3, 'pending', 0, ?4)",
+        params![account_id, op_type, payload, next_retry_at],
+    )?;
+    Ok(conn.last_insert_rowid())
+}
+
 pub fn list_due(db: &Database, account_id: i64, now: i64) -> Result<Vec<QueuedOp>, StorageError> {
     let conn = db.conn();
     let mut stmt = conn.prepare(
@@ -37,6 +46,23 @@ pub fn list_due(db: &Database, account_id: i64, now: i64) -> Result<Vec<QueuedOp
          ORDER BY id ASC",
     )?;
     let rows = stmt.query_map(params![account_id, now], |row| {
+        Ok(QueuedOp {
+            id: row.get(0)?, account_id: row.get(1)?, op_type: row.get(2)?,
+            payload: row.get(3)?, attempts: row.get(4)?,
+        })
+    })?;
+    let mut out = Vec::new();
+    for r in rows { out.push(r?); }
+    Ok(out)
+}
+
+pub fn list_pending_by_type(db: &Database, account_id: i64, op_type: &str) -> Result<Vec<QueuedOp>, StorageError> {
+    let conn = db.conn();
+    let mut stmt = conn.prepare(
+        "SELECT id, account_id, op_type, payload, attempts FROM sync_queue
+         WHERE account_id = ?1 AND op_type = ?2 AND state = 'pending' ORDER BY id ASC",
+    )?;
+    let rows = stmt.query_map(params![account_id, op_type], |row| {
         Ok(QueuedOp {
             id: row.get(0)?, account_id: row.get(1)?, op_type: row.get(2)?,
             payload: row.get(3)?, attempts: row.get(4)?,
@@ -195,5 +221,25 @@ mod tests {
         reset_for_retry(&db, id).unwrap();
         assert_eq!(list_due(&db, a, 0).unwrap().len(), 1);
         assert!(list_send_errors(&db, a).unwrap().is_empty());
+    }
+
+    #[test]
+    fn enqueue_at_delays_until_due() {
+        let db = Database::open_in_memory().unwrap();
+        let a = acc(&db);
+        enqueue_at(&db, a, "move_message", "{}", 500).unwrap();
+        assert!(list_due(&db, a, 100).unwrap().is_empty());
+        assert_eq!(list_due(&db, a, 600).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn list_pending_by_type_filters() {
+        let db = Database::open_in_memory().unwrap();
+        let a = acc(&db);
+        enqueue(&db, a, "set_flag", "{}").unwrap();
+        let mv = enqueue_at(&db, a, "move_message", "{\"message_id\":7}", 0).unwrap();
+        let pending = list_pending_by_type(&db, a, "move_message").unwrap();
+        assert_eq!(pending.len(), 1);
+        assert_eq!(pending[0].id, mv);
     }
 }
