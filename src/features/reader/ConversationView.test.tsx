@@ -2,6 +2,17 @@ import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import { render, screen, cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
+const archiveMutate = vi.fn();
+const deleteMutate = vi.fn();
+vi.mock("../../ipc/queries", async (orig) => {
+  const actual = await orig<typeof import("../../ipc/queries")>();
+  return {
+    ...actual,
+    useArchive: () => ({ mutate: archiveMutate }),
+    useDelete: () => ({ mutate: deleteMutate }),
+  };
+});
+
 vi.mock("../../ipc/bindings", () => ({
   commands: {
     listThreadMessages: vi.fn().mockResolvedValue({
@@ -103,6 +114,8 @@ describe("ConversationView", () => {
   afterEach(() => {
     cleanup();
     vi.clearAllMocks();
+    archiveMutate.mockReset();
+    deleteMutate.mockReset();
     useUiStore.setState({ composer: { open: false, draftId: null, prefill: null } });
   });
 
@@ -264,19 +277,48 @@ describe("ConversationView", () => {
     });
   });
 
-  it("reader toolbar Archive/Delete/More are disabled placeholders", async () => {
+  it("reader toolbar More is a disabled placeholder", async () => {
     render(<ConversationView threadId={1} />, { wrapper: Wrapper });
 
     await screen.findAllByText("B");
 
-    const archive = await screen.findByRole("button", { name: "Archive" });
-    expect(archive.getAttribute("aria-disabled")).toBe("true");
-
-    const del = await screen.findByRole("button", { name: "Delete" });
-    expect(del.getAttribute("aria-disabled")).toBe("true");
-
     const more = await screen.findByRole("button", { name: "More" });
     expect(more.getAttribute("aria-disabled")).toBe("true");
+  });
+
+  it("archive button is enabled and not aria-disabled", async () => {
+    render(<ConversationView threadId={1} />, { wrapper: Wrapper });
+
+    await screen.findAllByText("B");
+
+    const btn = await screen.findByRole("button", { name: "Archive" });
+    expect(btn.getAttribute("aria-disabled")).not.toBe("true");
+  });
+
+  it("clicking Archive calls archive mutate with thread message ids and navigates back", async () => {
+    useUiStore.setState({ selectedThreadId: 1, undoToast: null });
+    render(<ConversationView threadId={1} />, { wrapper: Wrapper });
+
+    await screen.findAllByText("B");
+
+    fireEvent.click(await screen.findByRole("button", { name: "Archive" }));
+
+    expect(archiveMutate).toHaveBeenCalledWith({ messageIds: [1, 2] });
+    expect(useUiStore.getState().undoToast).toEqual({ kind: "archive", messageIds: [1, 2] });
+    expect(useUiStore.getState().selectedThreadId).toBeNull();
+  });
+
+  it("clicking Delete calls delete mutate with thread message ids and navigates back", async () => {
+    useUiStore.setState({ selectedThreadId: 1, undoToast: null });
+    render(<ConversationView threadId={1} />, { wrapper: Wrapper });
+
+    await screen.findAllByText("B");
+
+    fireEvent.click(await screen.findByRole("button", { name: "Delete" }));
+
+    expect(deleteMutate).toHaveBeenCalledWith({ messageIds: [1, 2] });
+    expect(useUiStore.getState().undoToast).toEqual({ kind: "delete", messageIds: [1, 2] });
+    expect(useUiStore.getState().selectedThreadId).toBeNull();
   });
 
   it("Snooze button opens the picker for all messages in the conversation", async () => {

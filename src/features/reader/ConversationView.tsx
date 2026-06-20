@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Reply, ReplyAll, Forward, Star, Archive, Clock, Trash2, MoreHorizontal, SendHorizontal, Tag, Mail, MailOpen } from "lucide-react";
-import { useThreadMessages, useStartReply, useSetFlag, useLabelsForMessages, useSetSeen } from "../../ipc/queries";
+import { useThreadMessages, useStartReply, useSetFlag, useLabelsForMessages, useSetSeen, useArchive, useDelete } from "../../ipc/queries";
 import { useUiStore } from "../../app/store";
 import { Avatar } from "../../shared/appearance/Avatar";
 import { MessageBodyView } from "./MessageBodyView";
@@ -22,6 +22,10 @@ export function ConversationView({ threadId }: { threadId: number }) {
   const setSeen = useSetSeen();
   const startReplyMutation = useStartReply();
   const setFlag = useSetFlag();
+  const archive = useArchive();
+  const del = useDelete();
+  const showUndoToast = useUiStore((s) => s.showUndoToast);
+  const setSelectedThreadId = useUiStore((s) => s.setSelectedThreadId);
   const setReplyTargetId = useUiStore((s) => s.setReplyTargetId);
   const lastId = messages && messages.length > 0 ? messages[messages.length - 1].id : null;
   const labelPairs = useLabelsForMessages(lastId ? [lastId] : []);
@@ -81,6 +85,15 @@ export function ConversationView({ threadId }: { threadId: number }) {
   const anyUnread = messages.some((m) => !m.seen);
   const effectiveActiveId = activeId ?? lastId;
 
+  function moveThread(kind: "archive" | "delete") {
+    const ids = (messages ?? []).map((m) => m.id);
+    if (ids.length === 0) return;
+    if (kind === "archive") archive.mutate({ messageIds: ids });
+    else del.mutate({ messageIds: ids });
+    showUndoToast(kind, ids);
+    setSelectedThreadId(null);
+  }
+
   async function handleReply(mode: "reply" | "reply_all" | "forward") {
     const prefill = await startReplyMutation.mutateAsync({ messageId: last.id, mode });
     openComposer(null, prefill);
@@ -89,7 +102,7 @@ export function ConversationView({ threadId }: { threadId: number }) {
   return (
     <div className="reader">
       <div className="reader__toolbar">
-        <button type="button" className="reader__icon" aria-label="Archive" aria-disabled="true">
+        <button type="button" className="reader__icon" aria-label="Archive" onClick={() => moveThread("archive")}>
           <Archive size={18} />
         </button>
         <button
@@ -108,7 +121,7 @@ export function ConversationView({ threadId }: { threadId: number }) {
         >
           {anyUnread ? <MailOpen size={18} /> : <Mail size={18} />}
         </button>
-        <button type="button" className="reader__icon" aria-label="Delete" aria-disabled="true">
+        <button type="button" className="reader__icon" aria-label="Delete" onClick={() => moveThread("delete")}>
           <Trash2 size={18} />
         </button>
         <div className="reader__divider" />
