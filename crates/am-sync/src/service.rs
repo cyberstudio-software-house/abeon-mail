@@ -780,7 +780,7 @@ async fn drain_one_move(
 ) -> Result<(), SyncError> {
     let parsed: serde_json::Value = match serde_json::from_str(&op.payload) {
         Ok(v) => v,
-        Err(_) => { queue_repo::mark_done(db, op.id)?; return Ok(()); }
+        Err(_) => return mark_move_failed(db, op, "invalid move payload"),
     };
     let folder_id = parsed["folder_id"].as_i64().unwrap_or(0);
     let uid = parsed["uid"].as_i64().unwrap_or(0);
@@ -788,16 +788,17 @@ async fn drain_one_move(
     let target = match parsed["target_type"].as_str() {
         Some("archive") => MoveTarget::Archive,
         Some("trash") => MoveTarget::Trash,
-        _ => { queue_repo::mark_done(db, op.id)?; return Ok(()); }
+        _ => return mark_move_failed(db, op, "unknown move target"),
     };
 
     let src = match folders_repo::get_folder(db, folder_id) {
         Ok(f) => f,
-        Err(_) => { queue_repo::mark_done(db, op.id)?; return Ok(()); }
+        Err(_) => return retry_or_drop(db, op, now),
     };
     match folders_repo::get_sync_markers(db, folder_id).ok().and_then(|m| m.uidvalidity) {
         Some(v) if v == payload_validity => {}
-        _ => { queue_repo::mark_done(db, op.id)?; return Ok(()); }
+        Some(_) => return mark_move_failed(db, op, "source folder uidvalidity changed"),
+        None => return retry_or_drop(db, op, now),
     }
 
     let dst = match folders_repo::find_by_type(db, account_id, target.folder_type())? {
@@ -829,11 +830,17 @@ async fn drain_one_move(
 
 fn retry_or_drop(db: &Database, op: &am_storage::queue_repo::QueuedOp, now: i64) -> Result<(), SyncError> {
     if op.attempts + 1 >= MAX_QUEUE_ATTEMPTS {
-        queue_repo::mark_done(db, op.id)?;
+        mark_move_failed(db, op, "move retries exhausted")
     } else {
         let backoff = now + 2i64.pow((op.attempts + 1).min(5) as u32) * 30;
         queue_repo::mark_retry(db, op.id, backoff, None)?;
+        Ok(())
     }
+}
+
+fn mark_move_failed(db: &Database, op: &am_storage::queue_repo::QueuedOp, reason: &str) -> Result<(), SyncError> {
+    eprintln!("move_message failed (op {}): {reason}", op.id);
+    queue_repo::mark_failed(db, op.id, reason)?;
     Ok(())
 }
 
@@ -864,6 +871,43 @@ mod move_tests {
         messages_repo::insert_headers(&db, inbox.id, &[header(1)]).unwrap();
         let mid = messages_repo::list_by_folder(&db, inbox.id, 10, 0, i64::MAX).unwrap()[0].id;
         (db, account.id, mid)
+    }
+
+    fn move_op(account_id: i64, op_id: i64, attempts: i64) -> queue_repo::QueuedOp {
+        queue_repo::QueuedOp {
+            id: op_id, account_id, op_type: "move_message".into(),
+            payload: "{}".into(), attempts,
+        }
+    }
+
+    #[test]
+    fn mark_move_failed_keeps_op_as_failed_not_deleted() {
+        let (db, account_id, _mid) = setup();
+        let op_id = queue_repo::enqueue_at(&db, account_id, "move_message", "{}", 0).unwrap();
+        mark_move_failed(&db, &move_op(account_id, op_id, 0), "boom").unwrap();
+        assert!(queue_repo::list_due(&db, account_id, 1000).unwrap().is_empty());
+        assert!(queue_repo::list_pending_by_type(&db, account_id, "move_message").unwrap().is_empty());
+        queue_repo::reset_for_retry(&db, op_id).unwrap();
+        assert_eq!(queue_repo::list_due(&db, account_id, 1000).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn retry_or_drop_at_cap_records_failure_not_deletes() {
+        let (db, account_id, _mid) = setup();
+        let op_id = queue_repo::enqueue_at(&db, account_id, "move_message", "{}", 0).unwrap();
+        retry_or_drop(&db, &move_op(account_id, op_id, MAX_QUEUE_ATTEMPTS - 1), 1000).unwrap();
+        assert!(queue_repo::list_pending_by_type(&db, account_id, "move_message").unwrap().is_empty());
+        queue_repo::reset_for_retry(&db, op_id).unwrap();
+        assert_eq!(queue_repo::list_due(&db, account_id, 1000).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn retry_or_drop_below_cap_reschedules() {
+        let (db, account_id, _mid) = setup();
+        let op_id = queue_repo::enqueue_at(&db, account_id, "move_message", "{}", 0).unwrap();
+        retry_or_drop(&db, &move_op(account_id, op_id, 0), 1000).unwrap();
+        assert_eq!(queue_repo::list_pending_by_type(&db, account_id, "move_message").unwrap().len(), 1);
+        assert!(queue_repo::list_due(&db, account_id, 1000).unwrap().is_empty());
     }
 
     #[test]
