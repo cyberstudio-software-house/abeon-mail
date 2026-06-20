@@ -359,6 +359,34 @@ impl ImapSession {
         Ok(())
     }
 
+    pub async fn move_uid(&mut self, src_folder: &str, uid: i64, dst_folder: &str) -> Result<(), ProtocolError> {
+        let uid_str = uid.to_string();
+        let del = "+FLAGS (\\Deleted)";
+        match &mut self.session {
+            SessionStream::Plain(s) => {
+                s.select(src_folder).await?;
+                s.uid_copy(&uid_str, dst_folder).await?;
+                let _: Vec<_> = s.uid_store(&uid_str, del).await?.try_collect().await?;
+                s.expunge().await?.try_collect::<Vec<_>>().await?;
+            }
+            SessionStream::Tls(s) => {
+                s.select(src_folder).await?;
+                s.uid_copy(&uid_str, dst_folder).await?;
+                let _: Vec<_> = s.uid_store(&uid_str, del).await?.try_collect().await?;
+                s.expunge().await?.try_collect::<Vec<_>>().await?;
+            }
+        }
+        Ok(())
+    }
+
+    pub async fn create_folder(&mut self, name: &str) -> Result<(), ProtocolError> {
+        match &mut self.session {
+            SessionStream::Plain(s) => s.create(name).await?,
+            SessionStream::Tls(s) => s.create(name).await?,
+        }
+        Ok(())
+    }
+
     pub async fn idle_wait(self, timeout: Duration) -> Result<(ImapSession, IdleOutcome), ProtocolError> {
         match self.session {
             SessionStream::Plain(s) => {
