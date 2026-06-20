@@ -362,6 +362,43 @@ pub fn set_message_flags(
 
 #[tauri::command]
 #[specta::specta]
+pub fn archive_messages(
+    state: tauri::State<'_, AppState>,
+    message_ids: Vec<i64>,
+) -> Result<(), String> {
+    let now = am_sync::service::now_secs();
+    for id in message_ids {
+        am_sync::service::enqueue_move(&state.db, id, am_sync::service::MoveTarget::Archive, now)
+            .map_err(|_| "Failed to archive".to_string())?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn delete_messages(
+    state: tauri::State<'_, AppState>,
+    message_ids: Vec<i64>,
+) -> Result<(), String> {
+    let now = am_sync::service::now_secs();
+    for id in message_ids {
+        am_sync::service::enqueue_move(&state.db, id, am_sync::service::MoveTarget::Trash, now)
+            .map_err(|_| "Failed to delete".to_string())?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn undo_move(
+    state: tauri::State<'_, AppState>,
+    message_ids: Vec<i64>,
+) -> Result<(), String> {
+    am_sync::service::undo_move(&state.db, &message_ids).map_err(|_| "Failed to undo".to_string())
+}
+
+#[tauri::command]
+#[specta::specta]
 pub fn list_threads(
     state: tauri::State<'_, AppState>,
     folder_id: i64,
