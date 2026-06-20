@@ -39,10 +39,13 @@ describe("CheatSheet", () => {
     expect(screen.getByText("C")).toBeTruthy();
   });
 
-  it("marks disabled actions as coming soon", () => {
+  it("does not mark archive as coming soon", () => {
     render(<CheatSheet />);
-    const archiveRow = screen.getByText("Archive").closest(".cheat-row");
-    expect(archiveRow?.className).toContain("cheat-row--disabled");
+    const archiveRows = screen.getAllByText("Archive");
+    for (const row of archiveRows) {
+      const archiveRow = row.closest(".cheat-row");
+      expect(archiveRow?.className).not.toContain("cheat-row--disabled");
+    }
   });
 
   it("closes on the close button", () => {

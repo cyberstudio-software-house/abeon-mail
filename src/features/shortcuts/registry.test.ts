@@ -11,10 +11,12 @@ describe("ACTIONS registry", () => {
     expect(ACTIONS.every((a) => a.contexts.length > 0)).toBe(true);
   });
 
-  it("placeholder actions are disabled", () => {
-    const disabled: ActionId[] = ["archive", "delete"];
-    for (const id of disabled) {
-      expect(actionById(id)?.enabled).toBe(false);
+  it("archive and delete are enabled in reader and list", () => {
+    for (const id of ["archive", "delete"] as ActionId[]) {
+      const a = actionById(id);
+      expect(a?.enabled).toBe(true);
+      expect(a?.contexts).toContain("reader");
+      expect(a?.contexts).toContain("list");
     }
   });
 

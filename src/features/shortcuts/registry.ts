@@ -55,8 +55,8 @@ export const ACTIONS: ActionMeta[] = [
   { id: "mark-unread", label: "Mark unread", contexts: ["reader"], defaultBinding: "U", enabled: true },
   { id: "send-message", label: "Send", contexts: ["composer"], defaultBinding: "Mod+Enter", enabled: true },
   { id: "close-composer", label: "Close composer", contexts: ["composer"], defaultBinding: "Escape", enabled: true },
-  { id: "archive", label: "Archive", contexts: ["reader"], defaultBinding: "e", enabled: false },
-  { id: "delete", label: "Delete", contexts: ["reader"], defaultBinding: "#", enabled: false },
+  { id: "archive", label: "Archive", contexts: ["reader", "list"], defaultBinding: "e", enabled: true },
+  { id: "delete", label: "Delete", contexts: ["reader", "list"], defaultBinding: "#", enabled: true },
   { id: "snooze", label: "Snooze", contexts: ["reader", "list"], defaultBinding: "b", enabled: true },
   { id: "label", label: "Label", contexts: ["reader", "list"], defaultBinding: "l", enabled: true },
 ];
