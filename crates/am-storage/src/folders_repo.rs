@@ -107,6 +107,20 @@ pub fn list_folders(db: &Database, account_id: i64) -> Result<Vec<Folder>, Stora
     Ok(out)
 }
 
+pub fn find_by_type(db: &Database, account_id: i64, folder_type: FolderType) -> Result<Option<Folder>, StorageError> {
+    let ft_str = folder_type_to_str(&folder_type);
+    let conn = db.conn();
+    let mut stmt = conn.prepare(
+        "SELECT id, account_id, remote_path, name, folder_type, unread_count, total_count
+         FROM folders WHERE account_id = ?1 AND folder_type = ?2 ORDER BY id ASC LIMIT 1",
+    )?;
+    let mut rows = stmt.query_map(params![account_id, ft_str], row_to_folder)?;
+    match rows.next() {
+        Some(r) => Ok(Some(tuple_to_folder(r?)?)),
+        None => Ok(None),
+    }
+}
+
 pub fn delete_folder(db: &Database, id: i64) -> Result<usize, StorageError> {
     let conn = db.conn();
     Ok(conn.execute("DELETE FROM folders WHERE id = ?1", params![id])?)
@@ -305,5 +319,15 @@ mod tests {
         ]).unwrap();
         let unread = recount_unread(&db, folder.id).unwrap();
         assert_eq!(unread, 1);
+    }
+
+    #[test]
+    fn find_by_type_returns_matching_or_none() {
+        let db = Database::open_in_memory().unwrap();
+        let account = insert_account(&db, &sample_account()).unwrap();
+        upsert_folder(&db, account.id, "INBOX", "Inbox", FolderType::Inbox).unwrap();
+        let arch = upsert_folder(&db, account.id, "Archive", "Archive", FolderType::Archive).unwrap();
+        assert_eq!(find_by_type(&db, account.id, FolderType::Archive).unwrap().map(|f| f.id), Some(arch.id));
+        assert!(find_by_type(&db, account.id, FolderType::Trash).unwrap().is_none());
     }
 }
