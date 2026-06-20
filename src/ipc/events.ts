@@ -58,12 +58,23 @@ export function useSyncEvents() {
       void commands.refreshUnreadBadge(useUiStore.getState().badgeEnabled);
     });
 
+    const sendFailedPromise = events.sendFailed.listen(async (event) => {
+      queryClient.invalidateQueries({ queryKey: ["sendErrors"] });
+      if (await isPermissionGranted()) {
+        sendNotification({
+          title: "Couldn't send message",
+          body: event.payload.error,
+        });
+      }
+    });
+
     return () => {
       progressPromise.then((unlisten) => unlisten());
       messagesPromise.then((unlisten) => unlisten());
       mailboxPromise.then((unlisten) => unlisten());
       authChangedPromise.then((unlisten) => unlisten());
       snoozeWokePromise.then((unlisten) => unlisten());
+      sendFailedPromise.then((unlisten) => unlisten());
     };
   }, [queryClient]);
 }

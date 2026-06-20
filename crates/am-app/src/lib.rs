@@ -31,6 +31,9 @@ pub fn build_specta_builder() -> Builder<tauri::Wry> {
             commands::list_threads,
             commands::list_thread_messages,
             commands::enqueue_send,
+            commands::list_send_errors,
+            commands::retry_send,
+            commands::dismiss_send_error,
             commands::start_reply,
             commands::save_draft,
             commands::get_draft,
@@ -70,5 +73,6 @@ pub fn build_specta_builder() -> Builder<tauri::Wry> {
             events::MailboxChanged,
             events::AccountAuthChanged,
             events::SnoozeWoke,
+            events::SendFailed,
         ])
 }

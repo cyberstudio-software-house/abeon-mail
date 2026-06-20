@@ -2,7 +2,7 @@ use am_sync::{SyncEvent, SyncEventSink};
 use tauri::AppHandle;
 use tauri_specta::Event;
 
-use crate::events::{AccountAuthChanged, MailboxChanged, NewMessages, SnoozeWoke, SyncProgress};
+use crate::events::{AccountAuthChanged, MailboxChanged, NewMessages, SendFailed, SnoozeWoke, SyncProgress};
 
 pub struct AppEventSink {
     pub app: AppHandle,
@@ -25,6 +25,9 @@ impl SyncEventSink for AppEventSink {
             }
             SyncEvent::SnoozeWoke { count } => {
                 let _ = SnoozeWoke { count }.emit(&self.app);
+            }
+            SyncEvent::SendFailed { account_id, error } => {
+                let _ = SendFailed { account_id, error }.emit(&self.app);
             }
         }
     }

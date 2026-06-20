@@ -30,6 +30,7 @@ vi.mock("./bindings", () => ({
     mailboxChanged: { listen: vi.fn().mockResolvedValue(() => {}) },
     accountAuthChanged: { listen: vi.fn().mockResolvedValue(() => {}) },
     snoozeWoke: { listen: vi.fn().mockResolvedValue(() => {}) },
+    sendFailed: { listen: vi.fn().mockResolvedValue(() => {}) },
   },
 }));
 

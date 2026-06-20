@@ -209,7 +209,8 @@ async fn enqueue_and_drain_sends_and_appends_to_sent() {
     assert_eq!(queue_before.len(), 1, "expected 1 queued op before drain");
 
     let creds = am_sync::auth::KeychainCredentialSource::new();
-    drain_outbox(&db, account.id, creds.as_ref(), now_secs())
+    let sink = am_sync::events::NoopSink;
+    drain_outbox(&db, account.id, creds.as_ref(), &sink, now_secs())
         .await
         .expect("drain_outbox failed");
 

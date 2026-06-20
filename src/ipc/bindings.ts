@@ -35,6 +35,9 @@ export const commands = {
 	listThreads: (folderId: number, limit: number, offset: number) => typedError<ThreadSummary[], string>(__TAURI_INVOKE("list_threads", { folderId, limit, offset })),
 	listThreadMessages: (threadId: number) => typedError<MessageHeader[], string>(__TAURI_INVOKE("list_thread_messages", { threadId })),
 	enqueueSend: (draftId: number) => typedError<null, string>(__TAURI_INVOKE("enqueue_send", { draftId })),
+	listSendErrors: () => typedError<SendError[], string>(__TAURI_INVOKE("list_send_errors")),
+	retrySend: (id: number) => typedError<null, string>(__TAURI_INVOKE("retry_send", { id })),
+	dismissSendError: (id: number) => typedError<null, string>(__TAURI_INVOKE("dismiss_send_error", { id })),
 	startReply: (messageId: number, mode: string) => typedError<OutgoingMessage, string>(__TAURI_INVOKE("start_reply", { messageId, mode })),
 	saveDraft: (accountId: number, draftId: number | null, message: OutgoingMessage) => typedError<number, string>(__TAURI_INVOKE("save_draft", { accountId, draftId, message })),
 	getDraft: (draftId: number) => typedError<OutgoingMessage, string>(__TAURI_INVOKE("get_draft", { draftId })),
@@ -77,6 +80,7 @@ export const events = {
 	accountAuthChanged: makeEvent<AccountAuthChanged>("account-auth-changed"),
 	mailboxChanged: makeEvent<MailboxChanged>("mailbox-changed"),
 	newMessages: makeEvent<NewMessages>("new-messages"),
+	sendFailed: makeEvent<SendFailed>("send-failed"),
 	snoozeWoke: makeEvent<SnoozeWoke>("snooze-woke"),
 	syncProgress: makeEvent<SyncProgress>("sync-progress"),
 };
@@ -239,6 +243,21 @@ export type RuleInput = {
 export type SanitizedHtml = {
 	html: string,
 	blocked_remote_content: boolean,
+};
+
+export type SendError = {
+	id: number,
+	account_id: number,
+	subject: string,
+	recipient: string,
+	error: string,
+	attempts: number,
+	permanent: boolean,
+};
+
+export type SendFailed = {
+	account_id: number,
+	error: string,
 };
 
 export type Signature = {

@@ -652,7 +652,7 @@ pub async fn drain_queue(db: &Database, account_id: i64, creds: &dyn CredentialS
                 if op.attempts + 1 >= MAX_QUEUE_ATTEMPTS {
                     queue_repo::mark_done(db, op.id)?;
                 } else {
-                    queue_repo::mark_retry(db, op.id, backoff)?;
+                    queue_repo::mark_retry(db, op.id, backoff, None)?;
                 }
                 continue;
             }
@@ -664,7 +664,7 @@ pub async fn drain_queue(db: &Database, account_id: i64, creds: &dyn CredentialS
             Err(_) if op.attempts + 1 >= MAX_QUEUE_ATTEMPTS => queue_repo::mark_done(db, op.id)?,
             Err(_) => {
                 let backoff = now + 2i64.pow((op.attempts + 1).min(5) as u32) * 30;
-                queue_repo::mark_retry(db, op.id, backoff)?;
+                queue_repo::mark_retry(db, op.id, backoff, None)?;
             }
         }
     }

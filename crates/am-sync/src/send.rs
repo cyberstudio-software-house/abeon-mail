@@ -4,7 +4,32 @@ use am_protocols::smtp::{send_raw, SmtpConfig};
 use am_storage::{accounts_repo, drafts_repo, folders_repo, queue_repo, Database};
 
 use crate::auth::CredentialSource;
+use crate::events::{SyncEvent, SyncEventSink};
 use crate::service::{imap_config_pub, load_endpoints_pub, now_secs, SyncError};
+
+fn handle_send_failure(
+    db: &Database,
+    sink: &dyn SyncEventSink,
+    account_id: i64,
+    op_id: i64,
+    attempts: i64,
+    error: &str,
+    now: i64,
+) -> Result<(), SyncError> {
+    if attempts == 0 {
+        sink.emit(SyncEvent::SendFailed {
+            account_id,
+            error: error.to_string(),
+        });
+    }
+    if attempts + 1 >= MAX_SEND_ATTEMPTS {
+        queue_repo::mark_failed(db, op_id, error)?;
+    } else {
+        let backoff = now + 2i64.pow((attempts + 1).min(5) as u32) * 30;
+        queue_repo::mark_retry(db, op_id, backoff, Some(error))?;
+    }
+    Ok(())
+}
 
 const MAX_SEND_ATTEMPTS: i64 = 6;
 const MAX_DRAFT_SYNC_ATTEMPTS: i64 = 6;
@@ -23,6 +48,29 @@ pub fn enqueue_draft_sync(db: &Database, draft_id: i64) -> Result<(), SyncError>
     Ok(())
 }
 
+pub fn list_send_errors(db: &Database, account_id: i64) -> Result<Vec<am_core::outgoing::SendError>, SyncError> {
+    let rows = queue_repo::list_send_errors(db, account_id)?;
+    let mut out = Vec::with_capacity(rows.len());
+    for row in rows {
+        let parsed: serde_json::Value = serde_json::from_str(&row.payload).unwrap_or_default();
+        let draft_id = parsed["draft_id"].as_i64().unwrap_or(0);
+        let (subject, recipient) = match drafts_repo::get_draft(db, draft_id) {
+            Ok((_, msg)) => (msg.subject, msg.to.first().cloned().unwrap_or_default()),
+            Err(_) => (String::new(), String::new()),
+        };
+        out.push(am_core::outgoing::SendError {
+            id: row.id,
+            account_id: row.account_id,
+            subject,
+            recipient,
+            error: row.last_error,
+            attempts: row.attempts,
+            permanent: row.state == "failed",
+        });
+    }
+    Ok(out)
+}
+
 fn smtp_config(endpoints: &am_auth::endpoints::Endpoints, username: &str) -> SmtpConfig {
     SmtpConfig {
         host: endpoints.smtp_host.clone(),
@@ -32,7 +80,7 @@ fn smtp_config(endpoints: &am_auth::endpoints::Endpoints, username: &str) -> Smt
     }
 }
 
-pub async fn drain_outbox(db: &Database, account_id: i64, creds: &dyn CredentialSource, now: i64) -> Result<(), SyncError> {
+pub async fn drain_outbox(db: &Database, account_id: i64, creds: &dyn CredentialSource, sink: &dyn SyncEventSink, now: i64) -> Result<(), SyncError> {
     let due = queue_repo::list_due(db, account_id, now)?;
     let send_ops: Vec<_> = due
         .into_iter()
@@ -98,16 +146,123 @@ pub async fn drain_outbox(db: &Database, account_id: i64, creds: &dyn Credential
                 drafts_repo::delete_draft(db, draft_id)?;
                 queue_repo::mark_done(db, op.id)?;
             }
-            Err(_) if op.attempts + 1 >= MAX_SEND_ATTEMPTS => {
-                queue_repo::mark_done(db, op.id)?;
-            }
-            Err(_) => {
-                let backoff = now_secs() + 2i64.pow((op.attempts + 1).min(5) as u32) * 30;
-                queue_repo::mark_retry(db, op.id, backoff)?;
+            Err(e) => {
+                let error = e.to_string();
+                eprintln!("send_message failed (account {account_id}, draft {draft_id}): {error}");
+                handle_send_failure(db, sink, account_id, op.id, op.attempts, &error, now_secs())?;
             }
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::events::{RecordingSink, SyncEvent};
+    use am_core::account::{NewAccount, ProviderType};
+
+    fn seed_account(db: &Database) -> i64 {
+        accounts_repo::insert_account(
+            db,
+            &NewAccount {
+                email: "s@e.com".into(),
+                display_name: "S".into(),
+                provider_type: ProviderType::ImapPassword,
+                color: None,
+            },
+        )
+        .unwrap()
+        .id
+    }
+
+    #[test]
+    fn first_send_failure_emits_event_and_schedules_retry() {
+        let db = Database::open_in_memory().unwrap();
+        let account_id = seed_account(&db);
+        let op_id = queue_repo::enqueue(&db, account_id, "send_message", "{\"draft_id\":1}").unwrap();
+        let sink = RecordingSink::new();
+
+        handle_send_failure(&db, &sink, account_id, op_id, 0, "connection failed: 465", 1000).unwrap();
+
+        let events = sink.events.lock().unwrap();
+        assert_eq!(events.len(), 1);
+        assert!(matches!(
+            &events[0],
+            SyncEvent::SendFailed { account_id: a, error } if *a == account_id && error == "connection failed: 465"
+        ));
+        let errors = queue_repo::list_send_errors(&db, account_id).unwrap();
+        assert_eq!(errors.len(), 1);
+        assert_eq!(errors[0].state, "pending");
+        assert_eq!(errors[0].last_error, "connection failed: 465");
+    }
+
+    #[test]
+    fn subsequent_failure_does_not_reemit_but_records_error() {
+        let db = Database::open_in_memory().unwrap();
+        let account_id = seed_account(&db);
+        let op_id = queue_repo::enqueue(&db, account_id, "send_message", "{\"draft_id\":1}").unwrap();
+        let sink = RecordingSink::new();
+
+        handle_send_failure(&db, &sink, account_id, op_id, 2, "still failing", 1000).unwrap();
+
+        assert!(sink.events.lock().unwrap().is_empty());
+        let errors = queue_repo::list_send_errors(&db, account_id).unwrap();
+        assert_eq!(errors.len(), 1);
+        assert_eq!(errors[0].state, "pending");
+    }
+
+    #[test]
+    fn final_failure_marks_failed() {
+        let db = Database::open_in_memory().unwrap();
+        let account_id = seed_account(&db);
+        let op_id = queue_repo::enqueue(&db, account_id, "send_message", "{\"draft_id\":1}").unwrap();
+        let sink = RecordingSink::new();
+
+        handle_send_failure(&db, &sink, account_id, op_id, MAX_SEND_ATTEMPTS - 1, "gave up", 1000).unwrap();
+
+        assert!(queue_repo::list_due(&db, account_id, 1_000_000).unwrap().is_empty());
+        let errors = queue_repo::list_send_errors(&db, account_id).unwrap();
+        assert_eq!(errors.len(), 1);
+        assert_eq!(errors[0].state, "failed");
+    }
+
+    #[test]
+    fn list_send_errors_enriches_with_draft_subject_and_recipient() {
+        use am_core::outgoing::OutgoingMessage;
+        let db = Database::open_in_memory().unwrap();
+        let account_id = seed_account(&db);
+        let msg = OutgoingMessage {
+            from_address: "me@e.com".into(),
+            from_name: None,
+            to: vec!["a@x.com".into()],
+            cc: vec![],
+            bcc: vec![],
+            subject: "Hello".into(),
+            text_body: "body".into(),
+            html_body: None,
+            in_reply_to: None,
+            references: vec![],
+            attachments: vec![],
+        };
+        let draft_id = drafts_repo::save_draft(&db, account_id, None, &msg).unwrap();
+        let op_id = queue_repo::enqueue(
+            &db,
+            account_id,
+            "send_message",
+            &format!("{{\"draft_id\":{draft_id}}}"),
+        )
+        .unwrap();
+        queue_repo::mark_failed(&db, op_id, "connection failed: 465").unwrap();
+
+        let errors = list_send_errors(&db, account_id).unwrap();
+        assert_eq!(errors.len(), 1);
+        assert_eq!(errors[0].id, op_id);
+        assert_eq!(errors[0].subject, "Hello");
+        assert_eq!(errors[0].recipient, "a@x.com");
+        assert_eq!(errors[0].error, "connection failed: 465");
+        assert!(errors[0].permanent);
+    }
 }
 
 pub async fn drain_draft_sync(db: &Database, account_id: i64, creds: &dyn CredentialSource, now: i64) -> Result<(), SyncError> {
@@ -212,7 +367,7 @@ pub async fn drain_draft_sync(db: &Database, account_id: i64, creds: &dyn Creden
             }
             Err(_) => {
                 let backoff = now_secs() + 2i64.pow((op.attempts + 1).min(5) as u32) * 30;
-                queue_repo::mark_retry(db, op.id, backoff)?;
+                queue_repo::mark_retry(db, op.id, backoff, None)?;
             }
         }
     }

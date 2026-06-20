@@ -10,13 +10,13 @@ use am_core::{
     label::Label,
     message::{MessageBody, MessageFlag, MessageHeader},
     notification::NotificationContent,
-    outgoing::{OutgoingAttachment, OutgoingMessage},
+    outgoing::{OutgoingAttachment, OutgoingMessage, SendError},
     rule::{Rule, RuleInput},
     signature::Signature,
     smart::{SmartFolderKind, SmartMessageRow},
     thread::ThreadSummary,
 };
-use am_storage::{accounts_repo, drafts_repo, folders_repo, labels_repo, messages_repo, notifications_repo, settings_repo, signatures_repo, smart_repo};
+use am_storage::{accounts_repo, drafts_repo, folders_repo, labels_repo, messages_repo, notifications_repo, queue_repo, settings_repo, signatures_repo, smart_repo};
 use tauri_plugin_dialog::DialogExt;
 
 use crate::state::AppState;
@@ -492,6 +492,31 @@ pub fn mark_message_seen(
 #[specta::specta]
 pub fn enqueue_send(state: tauri::State<'_, AppState>, draft_id: i64) -> Result<(), String> {
     am_sync::send::enqueue_send(&state.db, draft_id).map_err(|_| "Failed to enqueue send".to_string())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn list_send_errors(state: tauri::State<'_, AppState>) -> Result<Vec<SendError>, String> {
+    let accounts = accounts_repo::list_accounts(&state.db).map_err(|e| e.to_string())?;
+    let mut out = Vec::new();
+    for account in accounts {
+        let mut errors = am_sync::send::list_send_errors(&state.db, account.id)
+            .map_err(|_| "Failed to list send errors".to_string())?;
+        out.append(&mut errors);
+    }
+    Ok(out)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn retry_send(state: tauri::State<'_, AppState>, id: i64) -> Result<(), String> {
+    queue_repo::reset_for_retry(&state.db, id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn dismiss_send_error(state: tauri::State<'_, AppState>, id: i64) -> Result<(), String> {
+    queue_repo::mark_done(&state.db, id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]

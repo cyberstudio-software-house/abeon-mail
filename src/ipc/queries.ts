@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { commands } from "./bindings";
-import type { Account, Endpoints, Label, MessageFlag, OutgoingMessage, Rule, RuleInput, Signature, SmartFolderKind, SmartMessageRow } from "./bindings";
+import type { Account, Endpoints, Label, MessageFlag, OutgoingMessage, Rule, RuleInput, SendError, Signature, SmartFolderKind, SmartMessageRow } from "./bindings";
 import { useUiStore } from "../app/store";
 
 type ResultOk<T> = { status: "ok"; data: T };
@@ -203,6 +203,33 @@ export function useEnqueueSend() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["folders"] });
       queryClient.invalidateQueries({ queryKey: ["threads"] });
+    },
+  });
+}
+
+export function useSendErrors() {
+  return useQuery<SendError[]>({
+    queryKey: ["sendErrors"],
+    queryFn: () => commands.listSendErrors().then(unwrap),
+  });
+}
+
+export function useRetrySend() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => commands.retrySend(id).then(unwrap),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["sendErrors"] });
+    },
+  });
+}
+
+export function useDismissSendError() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => commands.dismissSendError(id).then(unwrap),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["sendErrors"] });
     },
   });
 }

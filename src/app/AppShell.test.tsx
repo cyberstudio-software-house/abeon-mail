@@ -36,6 +36,9 @@ vi.mock("../ipc/queries", () => ({
   useSnooze: () => ({ mutate: vi.fn() }),
   useUnsnooze: () => ({ mutate: vi.fn() }),
   useSetSeen: () => ({ mutate: vi.fn() }),
+  useSendErrors: () => ({ data: [], isLoading: false, isError: false, error: null }),
+  useRetrySend: () => ({ mutate: vi.fn() }),
+  useDismissSendError: () => ({ mutate: vi.fn() }),
 }));
 
 vi.mock("../ipc/bindings", () => ({

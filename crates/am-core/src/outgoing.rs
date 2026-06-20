@@ -9,6 +9,17 @@ pub struct OutgoingAttachment {
 }
 
 #[derive(Serialize, Deserialize, specta::Type, Clone, Debug, PartialEq)]
+pub struct SendError {
+    pub id: i64,
+    pub account_id: i64,
+    pub subject: String,
+    pub recipient: String,
+    pub error: String,
+    pub attempts: i64,
+    pub permanent: bool,
+}
+
+#[derive(Serialize, Deserialize, specta::Type, Clone, Debug, PartialEq)]
 pub struct OutgoingMessage {
     pub from_address: String,
     pub from_name: Option<String>,
