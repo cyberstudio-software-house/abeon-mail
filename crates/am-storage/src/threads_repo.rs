@@ -56,7 +56,8 @@ pub fn create(db: &Database, account_id: i64, subject_root: &str, last_date: i64
 pub fn list_for_folder(db: &Database, folder_id: i64, limit: i64, offset: i64, now: i64) -> Result<Vec<ThreadSummary>, StorageError> {
     let conn = db.conn();
     let mut stmt = conn.prepare(
-        "SELECT t.id, t.account_id, t.subject_root, t.last_date, t.message_count, t.unread_count,
+        "SELECT t.id, t.account_id, t.subject_root, t.last_date, t.message_count,
+                (SELECT count(*) FROM messages WHERE thread_id = t.id AND seen = 0 AND draft = 0 AND deleted = 0),
                 MAX(m.has_attachments), MAX(m.flagged),
                 group_concat(DISTINCT COALESCE(m.from_name, m.from_address)),
                 (SELECT snippet FROM messages WHERE thread_id = t.id ORDER BY date DESC LIMIT 1),
@@ -242,6 +243,32 @@ mod tests {
         assert_eq!(summaries[0].unread_count, 1);
         assert_eq!(summaries[0].snippet, "second");
         assert!(summaries[0].flagged);
+    }
+
+    #[test]
+    fn list_for_folder_unread_count_is_dynamic_not_stale_stored() {
+        let db = Database::open_in_memory().unwrap();
+        let account = crate::accounts_repo::insert_account(&db, &am_core::account::NewAccount {
+            email: "st@e.com".into(), display_name: "S".into(),
+            provider_type: am_core::account::ProviderType::ImapPassword, color: None,
+        }).unwrap();
+        let folder = crate::folders_repo::upsert_folder(&db, account.id, "INBOX", "Inbox", am_core::folder::FolderType::Inbox).unwrap();
+        crate::messages_repo::insert_headers(&db, folder.id, &[
+            am_core::message::NewMessageHeader { uid: 1, message_id_hdr: Some("<a@x>".into()), in_reply_to: None, references_hdr: None,
+                from_address: "x@e.com".into(), from_name: Some("X".into()), subject: "Hi".into(), date: 100,
+                seen: true, flagged: false, has_attachments: false, size: 0, snippet: "only".into() },
+        ]).unwrap();
+        let tid = create(&db, account.id, "hi", 100).unwrap();
+        for h in crate::messages_repo::list_by_folder(&db, folder.id, 10, 0, i64::MAX).unwrap() {
+            crate::messages_repo::assign_thread(&db, h.id, tid).unwrap();
+        }
+        {
+            let conn = db.conn();
+            conn.execute("UPDATE threads SET unread_count = 5 WHERE id = ?1", params![tid]).unwrap();
+        }
+        let summaries = list_for_folder(&db, folder.id, 10, 0, i64::MAX).unwrap();
+        assert_eq!(summaries.len(), 1);
+        assert_eq!(summaries[0].unread_count, 0);
     }
 
     #[test]
