@@ -27,18 +27,18 @@ pub fn find_by_message_ids(db: &Database, account_id: i64, ids: &[String]) -> Re
     }
 }
 
-pub fn find_by_subject_root(db: &Database, account_id: i64, subject_root: &str) -> Result<Option<i64>, StorageError> {
+pub fn find_by_subject_root(db: &Database, account_id: i64, subject_root: &str) -> Result<Option<(i64, i64)>, StorageError> {
     if subject_root.is_empty() {
         return Ok(None);
     }
     let conn = db.conn();
     let result = conn.query_row(
-        "SELECT id FROM threads WHERE account_id = ?1 AND subject_root = ?2 ORDER BY last_date DESC LIMIT 1",
+        "SELECT id, last_date FROM threads WHERE account_id = ?1 AND subject_root = ?2 ORDER BY last_date DESC LIMIT 1",
         params![account_id, subject_root],
-        |row| row.get::<_, i64>(0),
+        |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)),
     );
     match result {
-        Ok(id) => Ok(Some(id)),
+        Ok(pair) => Ok(Some(pair)),
         Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
         Err(e) => Err(StorageError::Sqlite(e)),
     }
@@ -158,7 +158,7 @@ mod tests {
         let (account_id, _) = setup(&db);
         let thread_id = create(&db, account_id, "hello world", 1000).unwrap();
         let found = find_by_subject_root(&db, account_id, "hello world").unwrap();
-        assert_eq!(found, Some(thread_id));
+        assert_eq!(found, Some((thread_id, 1000)));
     }
 
     #[test]

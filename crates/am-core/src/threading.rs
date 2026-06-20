@@ -38,6 +38,22 @@ pub fn parse_reference_ids(in_reply_to: Option<&str>, references_hdr: Option<&st
     out
 }
 
+pub const SUBJECT_MERGE_WINDOW_SECS: i64 = 30 * 24 * 60 * 60;
+
+pub fn is_reply_or_forward(subject: &str) -> bool {
+    normalize_subject(subject) != subject.trim().to_ascii_lowercase()
+}
+
+pub fn allow_subject_merge(
+    incoming_subject: &str,
+    incoming_date: i64,
+    candidate_last_date: i64,
+    window_secs: i64,
+) -> bool {
+    is_reply_or_forward(incoming_subject)
+        && (incoming_date - candidate_last_date).abs() <= window_secs
+}
+
 #[cfg(test)]
 mod tests {
     use super::{normalize_subject, parse_reference_ids};
@@ -78,5 +94,35 @@ mod tests {
     #[test]
     fn reference_ids_empty() {
         assert!(parse_reference_ids(None, None).is_empty());
+    }
+
+    use super::{is_reply_or_forward, allow_subject_merge, SUBJECT_MERGE_WINDOW_SECS};
+
+    #[test]
+    fn fresh_subject_is_not_a_reply() {
+        assert!(!is_reply_or_forward("Test"));
+        assert!(!is_reply_or_forward("  Quarterly Report "));
+    }
+
+    #[test]
+    fn reply_and_forward_prefixes_are_detected() {
+        assert!(is_reply_or_forward("Re: Test"));
+        assert!(is_reply_or_forward("FW: AW: Update"));
+    }
+
+    #[test]
+    fn fresh_subject_does_not_merge_into_existing_thread() {
+        assert!(!allow_subject_merge("Test", 1000, 900, SUBJECT_MERGE_WINDOW_SECS));
+    }
+
+    #[test]
+    fn reply_merges_within_window() {
+        assert!(allow_subject_merge("Re: Test", 1000, 900, SUBJECT_MERGE_WINDOW_SECS));
+    }
+
+    #[test]
+    fn reply_outside_window_does_not_merge() {
+        let day = 24 * 60 * 60;
+        assert!(!allow_subject_merge("Re: Test", 100 * day, 0, SUBJECT_MERGE_WINDOW_SECS));
     }
 }

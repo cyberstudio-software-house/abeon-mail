@@ -3,7 +3,7 @@ use am_core::account::{Account, NewAccount, ProviderType};
 use am_core::folder::FolderType;
 use am_core::message::{MessageBody, MessageFlag, NewMessageHeader, SyncProgress};
 use am_protocols::imap::{FetchedHeader, ImapAuth, ImapConfig, ImapSession, RemoteFolder};
-use am_core::threading::{normalize_subject, parse_reference_ids};
+use am_core::threading::{allow_subject_merge, normalize_subject, parse_reference_ids, SUBJECT_MERGE_WINDOW_SECS};
 use am_storage::{accounts_repo, folders_repo, labels_repo, messages_repo, queue_repo, rules_repo, snooze_repo, threads_repo, Database, StorageError};
 use crate::auth::CredentialSource;
 use crate::events::{SyncEvent, SyncEventSink};
@@ -245,8 +245,12 @@ pub fn assign_threads(db: &Database, account_id: i64) -> Result<(), SyncError> {
 
         let thread_id = if let Some(existing) = threads_repo::find_by_message_ids(db, account_id, &ids)? {
             existing
-        } else if let Some(existing) = threads_repo::find_by_subject_root(db, account_id, &subject_root)? {
-            existing
+        } else if let Some((candidate, last_date)) = threads_repo::find_by_subject_root(db, account_id, &subject_root)? {
+            if allow_subject_merge(&row.subject, row.date, last_date, SUBJECT_MERGE_WINDOW_SECS) {
+                candidate
+            } else {
+                threads_repo::create(db, account_id, &subject_root, row.date)?
+            }
         } else {
             threads_repo::create(db, account_id, &subject_root, row.date)?
         };
@@ -750,6 +754,32 @@ mod rules_engine_tests {
 
         let after = threads_repo::list_for_folder(&db, folder, 50, 0, i64::MAX).unwrap();
         assert_eq!(after[0].unread_count, 0);
+    }
+
+    #[test]
+    fn unrelated_same_subject_messages_are_not_merged() {
+        let db = Database::open_in_memory().unwrap();
+        let (acc, folder) = seed(&db);
+        messages_repo::insert_headers(&db, folder, &[
+            header(1, "a@b.com", "Test"),
+            header(2, "c@d.com", "Test"),
+        ]).unwrap();
+        assign_threads(&db, acc).unwrap();
+        let threads = threads_repo::list_for_folder(&db, folder, 50, 0, i64::MAX).unwrap();
+        assert_eq!(threads.len(), 2);
+    }
+
+    #[test]
+    fn reply_without_references_merges_into_subject_thread() {
+        let db = Database::open_in_memory().unwrap();
+        let (acc, folder) = seed(&db);
+        messages_repo::insert_headers(&db, folder, &[
+            header(1, "a@b.com", "Project"),
+            header(2, "b@a.com", "Re: Project"),
+        ]).unwrap();
+        assign_threads(&db, acc).unwrap();
+        let threads = threads_repo::list_for_folder(&db, folder, 50, 0, i64::MAX).unwrap();
+        assert_eq!(threads.len(), 1);
     }
 
     #[test]
