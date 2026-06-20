@@ -578,6 +578,9 @@ pub fn enqueue_flag(db: &Database, message_id: i64, flag: MessageFlag, value: bo
 
     messages_repo::set_flag(db, message_id, flag, value)?;
     folders_repo::recount_unread(db, loc.folder_id)?;
+    if let Some(thread_id) = loc.thread_id {
+        threads_repo::recompute(db, thread_id)?;
+    }
 
     let payload = serde_json::json!({
         "folder_id": loc.folder_id,
@@ -730,6 +733,23 @@ mod rules_engine_tests {
         let snoozed = snooze_repo::list_snoozed(&db, 0, 10, 0).unwrap();
         assert_eq!(snoozed.len(), 1);
         assert_eq!(snoozed[0].snooze_wake_at, Some(10_000 + 2 * 3600));
+    }
+
+    #[test]
+    fn enqueue_flag_recomputes_thread_unread_count() {
+        let db = Database::open_in_memory().unwrap();
+        let (acc, folder) = seed(&db);
+        messages_repo::insert_headers(&db, folder, &[header(1, "a@b.com", "hi")]).unwrap();
+        assign_threads(&db, acc).unwrap();
+        let ids = messages_repo::ids_by_uids(&db, folder, &[1]).unwrap();
+
+        let before = threads_repo::list_for_folder(&db, folder, 50, 0, i64::MAX).unwrap();
+        assert_eq!(before[0].unread_count, 1);
+
+        enqueue_flag(&db, ids[0], MessageFlag::Seen, true).unwrap();
+
+        let after = threads_repo::list_for_folder(&db, folder, 50, 0, i64::MAX).unwrap();
+        assert_eq!(after[0].unread_count, 0);
     }
 
     #[test]

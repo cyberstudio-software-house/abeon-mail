@@ -8,6 +8,7 @@ pub struct MessageLocator {
     pub account_id: i64,
     pub folder_id: i64,
     pub uid: i64,
+    pub thread_id: Option<i64>,
 }
 
 fn flag_column(flag: MessageFlag) -> &'static str {
@@ -78,12 +79,13 @@ pub fn delete_by_folder(db: &Database, folder_id: i64) -> Result<usize, StorageE
 pub fn locate(db: &Database, message_id: i64) -> Result<MessageLocator, StorageError> {
     let conn = db.conn();
     conn.query_row(
-        "SELECT account_id, folder_id, uid FROM messages WHERE id = ?1",
+        "SELECT account_id, folder_id, uid, thread_id FROM messages WHERE id = ?1",
         params![message_id],
         |row| Ok(MessageLocator {
             account_id: row.get(0)?,
             folder_id: row.get(1)?,
             uid: row.get(2)?,
+            thread_id: row.get(3)?,
         }),
     )
     .map_err(|e| match e {
