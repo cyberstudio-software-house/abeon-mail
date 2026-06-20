@@ -123,13 +123,21 @@ export function useSetFlag() {
   });
 }
 
-export function useMarkSeen() {
+export function useSetSeen() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (messageId: number) => commands.markMessageSeen(messageId).then(unwrap),
+    mutationFn: async ({ ids, value }: { ids: number[]; value: boolean }) => {
+      if (!value) useUiStore.getState().bumpMarkUnreadEpoch();
+      for (const id of ids) {
+        await commands.setMessageFlags(id, "seen", value).then(unwrap);
+      }
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["messages"] });
       queryClient.invalidateQueries({ queryKey: ["folders"] });
+      queryClient.invalidateQueries({ queryKey: ["threads"] });
+      queryClient.invalidateQueries({ queryKey: ["thread-messages"] });
+      queryClient.invalidateQueries({ queryKey: ["smart"] });
       void commands.refreshUnreadBadge(useUiStore.getState().badgeEnabled);
     },
   });

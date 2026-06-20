@@ -35,6 +35,7 @@ vi.mock("../ipc/queries", () => ({
   useLabelsForMessages: () => ({ data: [], isLoading: false, isError: false, error: null }),
   useSnooze: () => ({ mutate: vi.fn() }),
   useUnsnooze: () => ({ mutate: vi.fn() }),
+  useSetSeen: () => ({ mutate: vi.fn() }),
 }));
 
 vi.mock("../ipc/bindings", () => ({

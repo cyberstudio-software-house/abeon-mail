@@ -24,6 +24,26 @@ describe("parseGeneralSettings", () => {
   });
 
   it("exposes defaults", () => {
-    expect(DEFAULT_GENERAL).toEqual({ defaultAccountId: "", timeFormat: "system" });
+    expect(DEFAULT_GENERAL).toEqual({
+      defaultAccountId: "",
+      timeFormat: "system",
+      markReadMode: "immediate",
+      markReadDelaySeconds: 2,
+    });
+  });
+
+  it("whitelists markReadMode and rejects junk", () => {
+    expect(parseGeneralSettings([[GENERAL_KEYS.markReadMode, "immediate"]]).markReadMode).toBe("immediate");
+    expect(parseGeneralSettings([[GENERAL_KEYS.markReadMode, "delay"]]).markReadMode).toBe("delay");
+    expect(parseGeneralSettings([[GENERAL_KEYS.markReadMode, "never"]]).markReadMode).toBe("never");
+    expect(parseGeneralSettings([[GENERAL_KEYS.markReadMode, "nope"]]).markReadMode).toBeUndefined();
+  });
+
+  it("accepts an in-range integer markReadDelaySeconds and rejects junk", () => {
+    expect(parseGeneralSettings([[GENERAL_KEYS.markReadDelaySeconds, "5"]]).markReadDelaySeconds).toBe(5);
+    expect(parseGeneralSettings([[GENERAL_KEYS.markReadDelaySeconds, "0"]]).markReadDelaySeconds).toBeUndefined();
+    expect(parseGeneralSettings([[GENERAL_KEYS.markReadDelaySeconds, "61"]]).markReadDelaySeconds).toBeUndefined();
+    expect(parseGeneralSettings([[GENERAL_KEYS.markReadDelaySeconds, "2.5"]]).markReadDelaySeconds).toBeUndefined();
+    expect(parseGeneralSettings([[GENERAL_KEYS.markReadDelaySeconds, "abc"]]).markReadDelaySeconds).toBeUndefined();
   });
 });

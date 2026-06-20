@@ -1,7 +1,7 @@
 import { useRef, useMemo, useEffect } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { PencilLine, ChevronDown } from "lucide-react";
-import { useThreads, useSmartFolder, useSearch, useLabelsForMessages, useMessagesByLabel, useLabels, useUnsnooze } from "../../ipc/queries";
+import { useThreads, useSmartFolder, useSearch, useLabelsForMessages, useMessagesByLabel, useLabels, useUnsnooze, useSetSeen } from "../../ipc/queries";
 import { formatListDate, formatWakeTime } from "../../shared/datetime/datetime";
 import { useDebouncedValue } from "../../shared/hooks/useDebouncedValue";
 import { useUiStore, type Density } from "../../app/store";
@@ -233,6 +233,7 @@ export function MessageListPane() {
   const debouncedQuery = useDebouncedValue(searchQuery, 200);
 
   const unsnooze = useUnsnooze();
+  const setSeen = useSetSeen();
 
   const { data: threads, isLoading: threadsLoading } = useThreads(selectedFolderId);
   const { data: smartRows, isLoading: smartLoading } = useSmartFolder(selectedSmartFolder);
@@ -350,6 +351,26 @@ export function MessageListPane() {
             onClick={() => openLabelPicker(selectedMessageIds)}
           >
             Label
+          </button>
+          <button
+            type="button"
+            disabled={selectedMessageIds.length === 0}
+            onClick={() => {
+              setSeen.mutate({ ids: selectedMessageIds, value: true });
+              clearSelection();
+            }}
+          >
+            Mark read
+          </button>
+          <button
+            type="button"
+            disabled={selectedMessageIds.length === 0}
+            onClick={() => {
+              setSeen.mutate({ ids: selectedMessageIds, value: false });
+              clearSelection();
+            }}
+          >
+            Mark unread
           </button>
           {isSnoozedView ? (
             <button

@@ -5,6 +5,7 @@ exports.default = Icon;
 exports.Search = Icon;
 exports.Layers = Icon;
 exports.MailOpen = Icon;
+exports.Mail = Icon;
 exports.Flag = Icon;
 exports.Clock = Icon;
 exports.Settings = Icon;

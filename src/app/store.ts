@@ -12,6 +12,7 @@ import {
   DEFAULT_GENERAL,
   type GeneralFields,
   type TimeFormat,
+  type MarkReadMode,
 } from "../shared/general/general";
 import {
   DEFAULT_SNOOZE_CONFIG,
@@ -20,6 +21,7 @@ import {
 
 export type { Density };
 export type { TimeFormat };
+export type { MarkReadMode };
 
 type ComposerState = {
   open: boolean;
@@ -43,7 +45,10 @@ export type UiState = {
   badgeEnabled: boolean;
   defaultAccountId: string;
   timeFormat: TimeFormat;
+  markReadMode: MarkReadMode;
+  markReadDelaySeconds: number;
   generalHydrated: boolean;
+  markUnreadEpoch: number;
   snoozeMorningHour: number;
   snoozeLaterTodayHours: number;
   snoozeWeekendDay: number;
@@ -83,6 +88,8 @@ export type UiState = {
   hydrateNotifications: (partial: Partial<{ notificationsEnabled: boolean; badgeEnabled: boolean }>) => void;
   setDefaultAccountId: (value: string) => void;
   setTimeFormat: (value: TimeFormat) => void;
+  setMarkReadMode: (value: MarkReadMode) => void;
+  setMarkReadDelaySeconds: (value: number) => void;
   hydrateGeneral: (partial: Partial<GeneralFields>) => void;
   setSnoozeMorningHour: (value: number) => void;
   setSnoozeLaterTodayHours: (value: number) => void;
@@ -116,6 +123,7 @@ export type UiState = {
   closeLabelPicker: () => void;
   openSnoozePicker: (ids: number[]) => void;
   closeSnoozePicker: () => void;
+  bumpMarkUnreadEpoch: () => void;
 };
 
 export const useUiStore = create<UiState>((set) => ({
@@ -134,7 +142,10 @@ export const useUiStore = create<UiState>((set) => ({
   badgeEnabled: DEFAULT_NOTIFICATIONS.badgeEnabled,
   defaultAccountId: DEFAULT_GENERAL.defaultAccountId,
   timeFormat: DEFAULT_GENERAL.timeFormat,
+  markReadMode: DEFAULT_GENERAL.markReadMode,
+  markReadDelaySeconds: DEFAULT_GENERAL.markReadDelaySeconds,
   generalHydrated: false,
+  markUnreadEpoch: 0,
   snoozeMorningHour: DEFAULT_SNOOZE_CONFIG.morningHour,
   snoozeLaterTodayHours: DEFAULT_SNOOZE_CONFIG.laterTodayHours,
   snoozeWeekendDay: DEFAULT_SNOOZE_CONFIG.weekendDay,
@@ -185,6 +196,8 @@ export const useUiStore = create<UiState>((set) => ({
   hydrateNotifications: (partial) => set(partial),
   setDefaultAccountId: (defaultAccountId) => set({ defaultAccountId }),
   setTimeFormat: (timeFormat) => set({ timeFormat }),
+  setMarkReadMode: (markReadMode) => set({ markReadMode }),
+  setMarkReadDelaySeconds: (markReadDelaySeconds) => set({ markReadDelaySeconds }),
   hydrateGeneral: (partial) => set({ ...partial, generalHydrated: true }),
   setSnoozeMorningHour: (snoozeMorningHour) => set({ snoozeMorningHour }),
   setSnoozeLaterTodayHours: (snoozeLaterTodayHours) => set({ snoozeLaterTodayHours }),
@@ -256,4 +269,5 @@ export const useUiStore = create<UiState>((set) => ({
   closeLabelPicker: () => set({ labelPickerOpen: false, labelPickerTargetIds: [] }),
   openSnoozePicker: (ids) => set({ snoozePickerOpen: true, snoozePickerTargetIds: ids }),
   closeSnoozePicker: () => set({ snoozePickerOpen: false, snoozePickerTargetIds: [] }),
+  bumpMarkUnreadEpoch: () => set((s) => ({ markUnreadEpoch: s.markUnreadEpoch + 1 })),
 }));
