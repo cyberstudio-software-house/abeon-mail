@@ -1,12 +1,13 @@
-import { useEffect, useState } from "react";
-import { Reply, ReplyAll, Forward, Star, Archive, Clock, Trash2, MoreHorizontal, SendHorizontal, Tag } from "lucide-react";
-import { useThreadMessages, useStartReply, useSetFlag, useLabelsForMessages } from "../../ipc/queries";
+import { useEffect, useRef, useState } from "react";
+import { Reply, ReplyAll, Forward, Star, Archive, Clock, Trash2, MoreHorizontal, SendHorizontal, Tag, Mail, MailOpen } from "lucide-react";
+import { useThreadMessages, useStartReply, useSetFlag, useLabelsForMessages, useSetSeen } from "../../ipc/queries";
 import { useUiStore } from "../../app/store";
 import { Avatar } from "../../shared/appearance/Avatar";
 import { MessageBodyView } from "./MessageBodyView";
 import { AttachmentsBar } from "./AttachmentsBar";
 import { LabelChips } from "../labels/LabelChips";
 import { formatMessageTime } from "../../shared/datetime/datetime";
+import { seenIdsForBulk } from "./seen";
 import "./reader.css";
 
 export function ConversationView({ threadId }: { threadId: number }) {
@@ -15,6 +16,10 @@ export function ConversationView({ threadId }: { threadId: number }) {
   const openLabelPicker = useUiStore((s) => s.openLabelPicker);
   const openSnoozePicker = useUiStore((s) => s.openSnoozePicker);
   const timeFormat = useUiStore((s) => s.timeFormat);
+  const markReadMode = useUiStore((s) => s.markReadMode);
+  const markReadDelaySeconds = useUiStore((s) => s.markReadDelaySeconds);
+  const generalHydrated = useUiStore((s) => s.generalHydrated);
+  const setSeen = useSetSeen();
   const startReplyMutation = useStartReply();
   const setFlag = useSetFlag();
   const setReplyTargetId = useUiStore((s) => s.setReplyTargetId);
@@ -32,11 +37,46 @@ export function ConversationView({ threadId }: { threadId: number }) {
     return () => setReplyTargetId(null);
   }, [lastId, setReplyTargetId]);
 
+  const autoMarkDoneRef = useRef(false);
+  const markTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    autoMarkDoneRef.current = false;
+    if (markTimerRef.current) {
+      clearTimeout(markTimerRef.current);
+      markTimerRef.current = null;
+    }
+  }, [threadId]);
+
+  useEffect(() => {
+    return () => {
+      if (markTimerRef.current) clearTimeout(markTimerRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (autoMarkDoneRef.current) return;
+    if (!generalHydrated) return;
+    if (isLoading || messages == null) return;
+    autoMarkDoneRef.current = true;
+    if (markReadMode === "never") return;
+    const ids = seenIdsForBulk(messages, true);
+    if (ids.length === 0) return;
+    if (markReadMode === "immediate") {
+      setSeen.mutate({ ids, value: true });
+    } else {
+      markTimerRef.current = setTimeout(() => {
+        setSeen.mutate({ ids, value: true });
+      }, markReadDelaySeconds * 1000);
+    }
+  }, [threadId, generalHydrated, isLoading, messages, markReadMode, markReadDelaySeconds, setSeen]);
+
   if (isLoading) return <p className="loading-state">Loading…</p>;
   if (!messages || messages.length === 0) return <p className="empty-state">No messages</p>;
 
   const last = messages[messages.length - 1];
   const senderName = last.from_name || last.from_address;
+  const anyUnread = messages.some((m) => !m.seen);
   const effectiveActiveId = activeId ?? lastId;
 
   async function handleReply(mode: "reply" | "reply_all" | "forward") {
@@ -57,6 +97,14 @@ export function ConversationView({ threadId }: { threadId: number }) {
           onClick={() => openSnoozePicker(messages.map((m) => m.id))}
         >
           <Clock size={18} />
+        </button>
+        <button
+          type="button"
+          className="reader__icon"
+          aria-label={anyUnread ? "Mark as read" : "Mark as unread"}
+          onClick={() => setSeen.mutate({ ids: seenIdsForBulk(messages, anyUnread), value: anyUnread })}
+        >
+          {anyUnread ? <MailOpen size={18} /> : <Mail size={18} />}
         </button>
         <button type="button" className="reader__icon" aria-label="Delete" aria-disabled="true">
           <Trash2 size={18} />
@@ -135,7 +183,7 @@ export function ConversationView({ threadId }: { threadId: number }) {
                     </div>
                     <span className="reader__sender-time">{time}</span>
                   </div>
-                  <MessageBodyView messageId={m.id} shouldMarkSeen={m.id === last.id} />
+                  <MessageBodyView messageId={m.id} />
                   <AttachmentsBar messageId={m.id} />
                 </div>
               );

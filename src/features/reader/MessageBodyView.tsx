@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useRenderedMessage, useMessageBody, useMarkSeen } from "../../ipc/queries";
+import { useRenderedMessage, useMessageBody } from "../../ipc/queries";
 import { SafeHtmlFrame } from "./SafeHtmlFrame";
 
 function RemoteContentBanner({ onLoad }: { onLoad: () => void }) {
@@ -13,21 +13,14 @@ function RemoteContentBanner({ onLoad }: { onLoad: () => void }) {
   );
 }
 
-export function MessageBodyView({ messageId, shouldMarkSeen }: { messageId: number; shouldMarkSeen: boolean }) {
+export function MessageBodyView({ messageId }: { messageId: number }) {
   const [forceLoadRemote, setForceLoadRemote] = useState(false);
   const { data: rendered, isLoading: renderLoading } = useRenderedMessage(messageId, forceLoadRemote);
   const { data: body, isLoading: bodyLoading } = useMessageBody(messageId);
-  const markSeen = useMarkSeen();
 
   useEffect(() => {
     setForceLoadRemote(false);
   }, [messageId]);
-
-  useEffect(() => {
-    if (shouldMarkSeen) {
-      markSeen.mutate(messageId);
-    }
-  }, [messageId, shouldMarkSeen]);
 
   if (renderLoading && rendered == null) {
     return <p className="loading-state">Loading…</p>;

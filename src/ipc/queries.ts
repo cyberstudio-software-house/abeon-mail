@@ -123,18 +123,6 @@ export function useSetFlag() {
   });
 }
 
-export function useMarkSeen() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (messageId: number) => commands.markMessageSeen(messageId).then(unwrap),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["messages"] });
-      queryClient.invalidateQueries({ queryKey: ["folders"] });
-      void commands.refreshUnreadBadge(useUiStore.getState().badgeEnabled);
-    },
-  });
-}
-
 export function useSetSeen() {
   const queryClient = useQueryClient();
   return useMutation({

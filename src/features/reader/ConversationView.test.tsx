@@ -44,7 +44,6 @@ vi.mock("../../ipc/bindings", () => ({
       data: { html: null, blocked_remote_content: false, remote_loaded: false },
     }),
     listAttachments: vi.fn().mockResolvedValue({ status: "ok", data: [] }),
-    markMessageSeen: vi.fn().mockResolvedValue({ status: "ok", data: null }),
     startReply: vi.fn().mockResolvedValue({
       status: "ok",
       data: {
@@ -62,6 +61,7 @@ vi.mock("../../ipc/bindings", () => ({
       },
     }),
     setMessageFlags: vi.fn().mockResolvedValue({ status: "ok", data: null }),
+    refreshUnreadBadge: vi.fn().mockResolvedValue({ status: "ok", data: null }),
     labelsForMessages: vi.fn().mockResolvedValue({
       status: "ok",
       data: [[2, { id: 1, name: "Work", color: "#4f46e5" }]],
@@ -92,7 +92,12 @@ function Wrapper({ children }: { children: React.ReactNode }) {
 
 describe("ConversationView", () => {
   beforeEach(() => {
-    useUiStore.setState({ composer: { open: false, draftId: null, prefill: null } });
+    useUiStore.setState({
+      composer: { open: false, draftId: null, prefill: null },
+      generalHydrated: true,
+      markReadMode: "immediate",
+      markReadDelaySeconds: 2,
+    });
   });
 
   afterEach(() => {
@@ -114,24 +119,61 @@ describe("ConversationView", () => {
     expect(screen.getAllByText("body").length).toBeGreaterThan(0);
   });
 
-  it("calls markMessageSeen for the newest message after thread loads", async () => {
+  it("immediate mode marks the unread message as read after the thread loads", async () => {
     const { commands } = await import("../../ipc/bindings");
+    useUiStore.setState({ generalHydrated: true, markReadMode: "immediate" });
     render(<ConversationView threadId={1} />, { wrapper: Wrapper });
 
     await waitFor(() => {
-      expect(commands.markMessageSeen).toHaveBeenCalledWith(2);
+      expect(commands.setMessageFlags).toHaveBeenCalledWith(2, "seen", true);
+    });
+    expect(commands.setMessageFlags).not.toHaveBeenCalledWith(1, "seen", true);
+  });
+
+  it("never mode does not auto-mark any message", async () => {
+    const { commands } = await import("../../ipc/bindings");
+    useUiStore.setState({ generalHydrated: true, markReadMode: "never" });
+    render(<ConversationView threadId={1} />, { wrapper: Wrapper });
+
+    await screen.findAllByText("B");
+    expect(commands.setMessageFlags).not.toHaveBeenCalled();
+  });
+
+  it("toolbar Mark as read button marks the unread message read", async () => {
+    const { commands } = await import("../../ipc/bindings");
+    useUiStore.setState({ generalHydrated: true, markReadMode: "never" });
+    render(<ConversationView threadId={1} />, { wrapper: Wrapper });
+
+    const btn = await screen.findByRole("button", { name: "Mark as read" });
+    fireEvent.click(btn);
+
+    await waitFor(() => {
+      expect(commands.setMessageFlags).toHaveBeenCalledWith(2, "seen", true);
     });
   });
 
-  it("does not call markMessageSeen for non-latest message id 1", async () => {
+  it("delay mode marks the unread message only after the configured delay", async () => {
     const { commands } = await import("../../ipc/bindings");
-    render(<ConversationView threadId={1} />, { wrapper: Wrapper });
-
-    await waitFor(() => {
-      expect(commands.markMessageSeen).toHaveBeenCalledWith(2);
-    });
-
-    expect(commands.markMessageSeen).not.toHaveBeenCalledWith(1);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    qc.setQueryData(
+      ["thread-messages", 1],
+      [
+        { id: 1, account_id: 1, folder_id: 1, subject: "Hi", from_address: "a@x", from_name: "A", date: 1, seen: true, flagged: false, has_attachments: false, snippet: "" },
+        { id: 2, account_id: 1, folder_id: 1, subject: "Re: Hi", from_address: "b@y", from_name: "B", date: 2, seen: false, flagged: true, has_attachments: false, snippet: "" },
+      ]
+    );
+    useUiStore.setState({ generalHydrated: true, markReadMode: "delay", markReadDelaySeconds: 2 });
+    vi.useFakeTimers();
+    render(
+      <QueryClientProvider client={qc}>
+        <ConversationView threadId={1} />
+      </QueryClientProvider>
+    );
+    await vi.advanceTimersByTimeAsync(0);
+    expect(commands.setMessageFlags).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(commands.setMessageFlags).toHaveBeenCalledWith(2, "seen", true);
+    vi.useRealTimers();
   });
 
   it("clicking Reply calls startReply with message id and mode reply and opens composer", async () => {

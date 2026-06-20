@@ -12,7 +12,6 @@ vi.mock("../../ipc/bindings", () => ({
       status: "ok",
       data: { html: "<p>safe</p>", blocked_remote_content: false, remote_loaded: false },
     }),
-    markMessageSeen: vi.fn().mockResolvedValue({ status: "ok", data: null }),
   },
   events: {},
 }));
@@ -38,7 +37,7 @@ describe("MessageBodyView — HTML body path", () => {
   });
 
   it("renders a sandboxed iframe via SafeHtmlFrame when text_html is present", async () => {
-    render(<MessageBodyView messageId={42} shouldMarkSeen={true} />, { wrapper: Wrapper });
+    render(<MessageBodyView messageId={42} />, { wrapper: Wrapper });
 
     const iframe = await waitFor(() => {
       const el = screen.getByTitle("message-content");
@@ -49,14 +48,5 @@ describe("MessageBodyView — HTML body path", () => {
     expect(iframe.getAttribute("sandbox")).toBe("");
     expect(iframe.getAttribute("sandbox")).not.toContain("allow-scripts");
     expect(iframe.getAttribute("sandbox")).not.toContain("allow-same-origin");
-  });
-
-  it("does not call markMessageSeen when shouldMarkSeen is false", async () => {
-    const { commands } = await import("../../ipc/bindings");
-    render(<MessageBodyView messageId={42} shouldMarkSeen={false} />, { wrapper: Wrapper });
-
-    await screen.findByTitle("message-content");
-
-    expect(commands.markMessageSeen).not.toHaveBeenCalled();
   });
 });
