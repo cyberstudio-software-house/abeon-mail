@@ -28,6 +28,18 @@ pub fn set_flag(db: &Database, message_id: i64, flag: MessageFlag, value: bool) 
     Ok(())
 }
 
+pub fn set_deleted(db: &Database, message_id: i64, value: bool) -> Result<(), StorageError> {
+    let conn = db.conn();
+    let changed = conn.execute(
+        "UPDATE messages SET deleted = ?2 WHERE id = ?1",
+        params![message_id, value as i64],
+    )?;
+    if changed == 0 {
+        return Err(StorageError::NotFound);
+    }
+    Ok(())
+}
+
 pub fn set_flags_by_uid(db: &Database, folder_id: i64, uid: i64, seen: bool, flagged: bool) -> Result<(), StorageError> {
     let conn = db.conn();
     conn.execute(
@@ -192,10 +204,10 @@ pub fn list_by_thread(db: &Database, thread_id: i64) -> Result<Vec<MessageHeader
     let mut stmt = conn.prepare(
         "SELECT id, account_id, folder_id, subject, from_address, from_name, date, seen, flagged, has_attachments, snippet
          FROM messages
-         WHERE thread_id = ?1 AND draft = 0
+         WHERE thread_id = ?1 AND draft = 0 AND deleted = 0
            AND id IN (
              SELECT MIN(id) FROM messages
-             WHERE thread_id = ?1 AND draft = 0
+             WHERE thread_id = ?1 AND draft = 0 AND deleted = 0
              GROUP BY COALESCE(message_id_hdr, 'id:' || id)
            )
          ORDER BY date ASC",
@@ -216,7 +228,7 @@ pub fn list_by_folder(
     let conn = db.conn();
     let mut stmt = conn.prepare(
         "SELECT id, account_id, folder_id, subject, from_address, from_name, date, seen, flagged, has_attachments, snippet
-         FROM messages WHERE folder_id = ?1 AND draft = 0
+         FROM messages WHERE folder_id = ?1 AND draft = 0 AND deleted = 0
            AND (snooze_wake_at IS NULL OR snooze_wake_at <= ?4)
          ORDER BY date DESC LIMIT ?2 OFFSET ?3",
     )?;
@@ -492,6 +504,7 @@ mod tests {
     use crate::folders_repo::upsert_folder;
     use am_core::account::{NewAccount, ProviderType};
     use am_core::folder::FolderType;
+    use am_core::message::NewMessageHeader;
     use am_core::outgoing::OutgoingMessage;
     use crate::db::Database;
 
@@ -897,5 +910,32 @@ mod tests {
         drafts_repo::save_draft(&db, account_id, None, &sample_outgoing()).unwrap();
         let unthreaded = list_unthreaded(&db, account_id).unwrap();
         assert!(unthreaded.is_empty());
+    }
+
+    #[test]
+    fn set_deleted_hides_from_folder_and_thread_lists() {
+        let db = Database::open_in_memory().unwrap();
+        let account = crate::accounts_repo::insert_account(&db, &NewAccount {
+            email: "d@e.com".into(), display_name: "D".into(),
+            provider_type: ProviderType::ImapPassword, color: None,
+        }).unwrap();
+        let folder = crate::folders_repo::upsert_folder(&db, account.id, "INBOX", "Inbox", FolderType::Inbox).unwrap();
+        let h = |uid: i64, msgid: &str| NewMessageHeader {
+            uid, message_id_hdr: Some(msgid.into()), in_reply_to: None, references_hdr: None,
+            from_address: "s@e.com".into(), from_name: None, subject: "S".into(), date: uid,
+            seen: false, flagged: false, has_attachments: false, size: 1, snippet: "x".into(),
+        };
+        insert_headers(&db, folder.id, &[h(1, "<a@e>"), h(2, "<b@e>")]).unwrap();
+        let ids: Vec<i64> = list_by_folder(&db, folder.id, 50, 0, i64::MAX).unwrap().iter().map(|m| m.id).collect();
+        assert_eq!(ids.len(), 2);
+        let tid = crate::threads_repo::create(&db, account.id, "S", 2).unwrap();
+        for id in &ids { assign_thread(&db, *id, tid).unwrap(); }
+
+        set_deleted(&db, ids[0], true).unwrap();
+
+        assert_eq!(list_by_folder(&db, folder.id, 50, 0, i64::MAX).unwrap().len(), 1);
+        assert_eq!(list_by_thread(&db, tid).unwrap().len(), 1);
+        set_deleted(&db, ids[0], false).unwrap();
+        assert_eq!(list_by_folder(&db, folder.id, 50, 0, i64::MAX).unwrap().len(), 2);
     }
 }

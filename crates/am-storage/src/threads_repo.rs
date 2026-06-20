@@ -67,7 +67,7 @@ pub fn list_for_folder(db: &Database, folder_id: i64, limit: i64, offset: i64, n
          FROM threads t
          JOIN messages m ON m.thread_id = t.id
          WHERE t.id IN (SELECT DISTINCT thread_id FROM messages
-                        WHERE folder_id = ?1 AND thread_id IS NOT NULL AND draft = 0
+                        WHERE folder_id = ?1 AND thread_id IS NOT NULL AND draft = 0 AND deleted = 0
                           AND (snooze_wake_at IS NULL OR snooze_wake_at <= ?4))
            AND m.draft = 0
          GROUP BY t.id
@@ -327,6 +327,21 @@ mod tests {
 
         let woke = list_for_folder(&db, folder.id, 10, 0, 9001).unwrap();
         assert_eq!(woke.len(), 1, "thread reappears once wake time elapsed");
+    }
+
+    #[test]
+    fn list_for_folder_excludes_fully_deleted_thread() {
+        let db = Database::open_in_memory().unwrap();
+        let account = crate::accounts_repo::insert_account(&db, &sample_account()).unwrap();
+        let folder = crate::folders_repo::upsert_folder(&db, account.id, "INBOX", "Inbox", FolderType::Inbox).unwrap();
+        crate::messages_repo::insert_headers(&db, folder.id, &[make_header(1, 100, "<x@e>")]).unwrap();
+        let headers = crate::messages_repo::list_by_folder(&db, folder.id, 10, 0, i64::MAX).unwrap();
+        let tid = create(&db, account.id, "hi", 100).unwrap();
+        for h in &headers { crate::messages_repo::assign_thread(&db, h.id, tid).unwrap(); }
+        assert_eq!(list_for_folder(&db, folder.id, 10, 0, i64::MAX).unwrap().len(), 1);
+
+        crate::messages_repo::set_deleted(&db, headers[0].id, true).unwrap();
+        assert_eq!(list_for_folder(&db, folder.id, 10, 0, i64::MAX).unwrap().len(), 0);
     }
 
     #[test]
