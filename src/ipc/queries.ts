@@ -436,6 +436,44 @@ export function useUnsnooze() {
   });
 }
 
+function invalidateAfterMove(queryClient: ReturnType<typeof useQueryClient>) {
+  queryClient.invalidateQueries({ queryKey: ["threads"] });
+  queryClient.invalidateQueries({ queryKey: ["thread-messages"] });
+  queryClient.invalidateQueries({ queryKey: ["messages"] });
+  queryClient.invalidateQueries({ queryKey: ["smart"] });
+  queryClient.invalidateQueries({ queryKey: ["labels-for-messages"] });
+  queryClient.invalidateQueries({ queryKey: ["messages-by-label"] });
+  queryClient.invalidateQueries({ queryKey: ["folders"] });
+  void commands.refreshUnreadBadge(useUiStore.getState().badgeEnabled);
+}
+
+export function useArchive() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ messageIds }: { messageIds: number[] }) =>
+      commands.archiveMessages(messageIds).then(unwrap),
+    onSuccess: () => invalidateAfterMove(queryClient),
+  });
+}
+
+export function useDelete() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ messageIds }: { messageIds: number[] }) =>
+      commands.deleteMessages(messageIds).then(unwrap),
+    onSuccess: () => invalidateAfterMove(queryClient),
+  });
+}
+
+export function useUndoMove() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ messageIds }: { messageIds: number[] }) =>
+      commands.undoMove(messageIds).then(unwrap),
+    onSuccess: () => invalidateAfterMove(queryClient),
+  });
+}
+
 export function useSignatures(accountId: number | null) {
   return useQuery<Signature[]>({
     queryKey: ["signatures", accountId],
