@@ -1,0 +1,22 @@
+.undo-bar {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 16px;
+  border-radius: 8px;
+  background: #1f2330;
+  color: #fff;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.3);
+  z-index: 1000;
+}
+.undo-bar__action {
+  background: none;
+  border: none;
+  color: var(--accent, #6f86ff);
+  font-weight: 600;
+  cursor: pointer;
+}

@@ -21,6 +21,7 @@ vi.mock("../../ipc/queries", () => ({
   useStartReply: () => ({ mutateAsync: vi.fn() }),
   useSetFlag: () => ({ mutate: vi.fn() }),
   useSetSeen: () => ({ mutate: setSeenMutate }),
+  useUndoMove: () => ({ mutate: vi.fn() }),
 }));
 
 import { ShortcutsProvider } from "./ShortcutsProvider";

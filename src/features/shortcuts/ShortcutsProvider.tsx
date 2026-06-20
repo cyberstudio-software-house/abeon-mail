@@ -11,6 +11,7 @@ import { CommandPalette } from "./CommandPalette";
 import { CheatSheet } from "./CheatSheet";
 import { LabelPicker } from "../labels/LabelPicker";
 import { SnoozePicker } from "../snooze/SnoozePicker";
+import { UndoBar } from "./UndoBar";
 
 export type ShortcutsContextValue = {
   profile: Profile;
@@ -198,6 +199,7 @@ export function ShortcutsProvider({ children }: { children: ReactNode }) {
       <CheatSheet />
       <LabelPicker />
       <SnoozePicker />
+      <UndoBar />
     </ShortcutsContext.Provider>
   );
 }
