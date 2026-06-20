@@ -30,16 +30,22 @@ pub fn decode(input: &str) -> String {
 }
 
 fn parse_encoded_word(s: &str) -> Option<(String, usize)> {
-    let end = s.find("?=")? + 2;
-    let token = &s[..end];
-    let inner = &token[2..token.len() - 2];
-    let mut parts = inner.splitn(3, '?');
-    let charset = parts.next()?;
-    let encoding = parts.next()?;
-    let payload = parts.next()?;
+    let after_prefix = &s[2..];
+    let charset_end = after_prefix.find('?')?;
+    let charset = &after_prefix[..charset_end];
+
+    let after_charset = &after_prefix[charset_end + 1..];
+    let encoding_end = after_charset.find('?')?;
+    let encoding = &after_charset[..encoding_end];
+
+    let after_encoding = &after_charset[encoding_end + 1..];
+    let payload_end = after_encoding.find("?=")?;
+    let payload = &after_encoding[..payload_end];
     if payload.contains('?') {
         return None;
     }
+
+    let end = 2 + charset_end + 1 + encoding_end + 1 + payload_end + 2;
 
     let bytes = match encoding.to_ascii_uppercase().as_str() {
         "B" => base64::engine::general_purpose::STANDARD
@@ -122,6 +128,14 @@ mod tests {
     #[test]
     fn mixed_plain_and_encoded() {
         assert_eq!(decode("Re: =?utf-8?Q?test?= done"), "Re: test done");
+    }
+
+    #[test]
+    fn quoted_printable_payload_starting_with_equals() {
+        assert_eq!(
+            decode("=?UTF-8?Q?=c5=81ukasz_Pra=c5=bcmowski?="),
+            "Łukasz Prażmowski"
+        );
     }
 
     #[test]
