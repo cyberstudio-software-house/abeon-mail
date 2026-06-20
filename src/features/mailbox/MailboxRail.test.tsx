@@ -6,6 +6,9 @@ vi.mock("../../ipc/queries", () => ({
   useAccounts: vi.fn(),
   useFolders: vi.fn(),
   useLabels: () => ({ data: [{ id: 1, name: "Work", color: "#4f46e5" }] }),
+  useAllAccountFolders: () => new Map(),
+  usePinnedMap: () => ({ data: new Map() }),
+  useTogglePinnedFolder: () => ({ mutate: vi.fn() }),
 }));
 
 vi.mock("../../app/store", async (importOriginal) => {

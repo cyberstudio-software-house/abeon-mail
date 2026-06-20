@@ -14,10 +14,17 @@ import {
   Archive,
   ShieldAlert,
   Trash2,
-  Folder,
+  Folder as FolderIconLucide,
   Plus,
 } from "lucide-react";
-import { useAccounts, useFolders, useLabels } from "../../ipc/queries";
+import {
+  useAccounts,
+  useFolders,
+  useLabels,
+  useAllAccountFolders,
+  usePinnedMap,
+  useTogglePinnedFolder,
+} from "../../ipc/queries";
 import { useUiStore } from "../../app/store";
 import { Avatar } from "../../shared/appearance/Avatar";
 import { Wordmark } from "../../shared/brand/Wordmark";
@@ -28,7 +35,9 @@ import {
   decodeImapUtf7,
 } from "./folder-tree";
 import type { FolderNode } from "./folder-tree";
-import type { Account, SmartFolderKind } from "../../ipc/bindings";
+import { selectInboxes, selectPinnedByAccount, isFolderPinned } from "./pinned";
+import { RailContextMenu } from "./RailContextMenu";
+import type { Account, Folder, SmartFolderKind } from "../../ipc/bindings";
 import "./MailboxRail.css";
 
 const SMART_FOLDERS: { label: string; kind: SmartFolderKind; Icon: React.ElementType }[] = [
@@ -46,7 +55,7 @@ function FolderIcon({ folderType }: { folderType?: string }) {
     folderType === "archive" ? Archive :
     folderType === "spam" ? ShieldAlert :
     folderType === "trash" ? Trash2 :
-    Folder;
+    FolderIconLucide;
   return <Icon size={15} className="rail__item-icon" />;
 }
 
@@ -57,6 +66,7 @@ function FolderTreeNodes({
   toggle,
   selectedFolderId,
   onFolderClick,
+  onFolderContextMenu,
 }: {
   nodes: FolderNode[];
   depth: number;
@@ -64,6 +74,7 @@ function FolderTreeNodes({
   toggle: (path: string) => void;
   selectedFolderId: number | null;
   onFolderClick: (folderId: number, accountId: number) => void;
+  onFolderContextMenu: (event: React.MouseEvent, folder: Folder) => void;
 }) {
   return (
     <>
@@ -81,6 +92,9 @@ function FolderTreeNodes({
                 if (hasChildren) toggle(node.fullPath);
                 if (node.folder) onFolderClick(node.folder.id, node.folder.account_id);
               }}
+              onContextMenu={
+                node.folder ? (event) => onFolderContextMenu(event, node.folder!) : undefined
+              }
             >
               {hasChildren ? (
                 isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />
@@ -101,6 +115,7 @@ function FolderTreeNodes({
                 toggle={toggle}
                 selectedFolderId={selectedFolderId}
                 onFolderClick={onFolderClick}
+                onFolderContextMenu={onFolderContextMenu}
               />
             )}
           </div>
@@ -165,6 +180,18 @@ export function MailboxRail() {
   const { data: labels = [] } = useLabels();
   const { data: accounts = [], isLoading: accountsLoading } = useAccounts();
   const { data: folders = [] } = useFolders(selectedAccountId);
+  const foldersByAccount = useAllAccountFolders(accounts);
+  const pinnedMap = usePinnedMap().data ?? new Map<number, number[]>();
+  const togglePin = useTogglePinnedFolder();
+  const inboxEntries = selectInboxes(accounts, foldersByAccount);
+  const pinnedGroups = selectPinnedByAccount(accounts, foldersByAccount, pinnedMap);
+  const [menu, setMenu] = useState<{
+    x: number;
+    y: number;
+    folderId: number;
+    accountId: number;
+    isPinned: boolean;
+  } | null>(null);
 
   const { priority: priorityFolders, rest: restFolders } = partitionPriorityFolders(folders);
   const priorityNodes: FolderNode[] = priorityFolders.map((f) => ({
@@ -220,6 +247,18 @@ export function MailboxRail() {
     setSelectedFolderId(folderId);
   }
 
+  function handleFolderContextMenu(event: React.MouseEvent, folder: Folder) {
+    if (folder.folder_type === "inbox") return;
+    event.preventDefault();
+    setMenu({
+      x: event.clientX,
+      y: event.clientY,
+      folderId: folder.id,
+      accountId: folder.account_id,
+      isPinned: isFolderPinned(pinnedMap, folder.account_id, folder.id),
+    });
+  }
+
   const headerAccount = accounts.find((a) => a.id === selectedAccountId) ?? accounts[0];
 
   return (
@@ -268,6 +307,44 @@ export function MailboxRail() {
       </div>
 
       <nav className="rail__scroll">
+        {!accountsLoading && inboxEntries.length > 0 && (
+          <>
+            <div className="rail__section">Inbox</div>
+            {inboxEntries.map(({ account, inbox }) => (
+              <div
+                key={account.id}
+                className={`rail__item${selectedFolderId === inbox.id ? " rail__item--active" : ""}`}
+                onClick={() => handleFolderClick(inbox.id, account.id)}
+              >
+                <Avatar
+                  seed={account.email}
+                  label={account.display_name || account.email}
+                  size={18}
+                />
+                <span className="rail__item-label">{account.display_name || account.email}</span>
+                {inbox.unread_count > 0 && <span className="rail__count">{inbox.unread_count}</span>}
+              </div>
+            ))}
+          </>
+        )}
+        {pinnedGroups.map(({ account, folders: pinnedFolders }) => (
+          <div key={`pinned-${account.id}`}>
+            <div className="rail__subsection">{account.display_name || account.email}</div>
+            {pinnedFolders.map((folder) => (
+              <div
+                key={folder.id}
+                className={`rail__item${selectedFolderId === folder.id ? " rail__item--active" : ""}`}
+                onClick={() => handleFolderClick(folder.id, account.id)}
+                onContextMenu={(event) => handleFolderContextMenu(event, folder)}
+              >
+                <span className="rail__chevron-spacer" />
+                <FolderIcon folderType={folder.folder_type} />
+                <span className="rail__item-label">{decodeImapUtf7(folder.name)}</span>
+                {folder.unread_count > 0 && <span className="rail__count">{folder.unread_count}</span>}
+              </div>
+            ))}
+          </div>
+        ))}
         <div className="rail__section">Smart Folders</div>
         {SMART_FOLDERS.map(({ label, kind, Icon }) => (
           <div
@@ -302,6 +379,7 @@ export function MailboxRail() {
                       toggle={toggle}
                       selectedFolderId={selectedFolderId}
                       onFolderClick={handleFolderClick}
+                      onFolderContextMenu={handleFolderContextMenu}
                     />
                     <FolderTreeNodes
                       nodes={restTree}
@@ -310,6 +388,7 @@ export function MailboxRail() {
                       toggle={toggle}
                       selectedFolderId={selectedFolderId}
                       onFolderClick={handleFolderClick}
+                      onFolderContextMenu={handleFolderContextMenu}
                     />
                   </>
                 )}
@@ -367,6 +446,19 @@ export function MailboxRail() {
           <Settings size={16} />
         </button>
       </footer>
+      {menu && (
+        <RailContextMenu
+          x={menu.x}
+          y={menu.y}
+          onClose={() => setMenu(null)}
+          items={[
+            {
+              label: menu.isPinned ? "Odepnij" : "Przypnij",
+              onClick: () => togglePin.mutate({ accountId: menu.accountId, folderId: menu.folderId }),
+            },
+          ]}
+        />
+      )}
     </aside>
   );
 }

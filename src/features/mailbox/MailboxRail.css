@@ -223,3 +223,12 @@
 .rail__context-menu-item:hover {
   background: var(--rail-hover);
 }
+.rail__subsection {
+  padding: 6px 8px 3px 12px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--section-label);
+  opacity: 0.8;
+}
