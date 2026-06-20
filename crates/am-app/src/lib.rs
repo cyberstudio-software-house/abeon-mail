@@ -33,6 +33,7 @@ pub fn build_specta_builder() -> Builder<tauri::Wry> {
             commands::mark_message_seen,
             commands::list_threads,
             commands::list_thread_messages,
+            commands::thread_for_message,
             commands::enqueue_send,
             commands::list_send_errors,
             commands::retry_send,

@@ -53,6 +53,24 @@ describe("selectedSmartFolder mutual exclusion", () => {
     expect(useUiStore.getState().selectedSmartFolder).toBeNull();
   });
 
+  it("setSelectedSmartFolder clears a stale selected message", () => {
+    useUiStore.setState({ selectedMessageId: 42 });
+    useUiStore.getState().setSelectedSmartFolder("unread");
+    expect(useUiStore.getState().selectedMessageId).toBeNull();
+  });
+
+  it("setSelectedFolderId clears a stale selected message", () => {
+    useUiStore.setState({ selectedMessageId: 42 });
+    useUiStore.getState().setSelectedFolderId(7);
+    expect(useUiStore.getState().selectedMessageId).toBeNull();
+  });
+
+  it("setSelectedAccountId clears a stale selected message", () => {
+    useUiStore.setState({ selectedMessageId: 42 });
+    useUiStore.getState().setSelectedAccountId(2);
+    expect(useUiStore.getState().selectedMessageId).toBeNull();
+  });
+
   it("setSelectedAccountId clears selectedSmartFolder", () => {
     useUiStore.setState({ selectedSmartFolder: "flagged" });
     useUiStore.getState().setSelectedAccountId(2);
@@ -217,6 +235,12 @@ describe("labels store slice", () => {
     expect(s.selectedSmartFolder).toBeNull();
     expect(s.selectionActive).toBe(false);
     expect(s.selectedMessageIds.length).toBe(0);
+  });
+
+  it("setSelectedLabelId clears a stale selected message", () => {
+    useUiStore.setState({ selectedMessageId: 42 });
+    useUiStore.getState().setSelectedLabelId(7);
+    expect(useUiStore.getState().selectedMessageId).toBeNull();
   });
 
   it("selecting another view clears selectedLabelId", () => {

@@ -30,6 +30,14 @@ export function useThreadMessages(threadId: number | null) {
   });
 }
 
+export function useThreadForMessage(messageId: number | null) {
+  return useQuery({
+    queryKey: ["thread-for-message", messageId],
+    queryFn: () => commands.threadForMessage(messageId!).then(unwrap),
+    enabled: messageId != null,
+  });
+}
+
 export function useAccounts() {
   return useQuery({
     queryKey: ["accounts"],

@@ -176,9 +176,9 @@ export const useUiStore = create<UiState>((set) => ({
   showUndoToast: (kind, messageIds) => set({ undoToast: { kind, messageIds } }),
   clearUndoToast: () => set({ undoToast: null }),
   setSelectedAccountId: (id) =>
-    set({ selectedAccountId: id, selectedSmartFolder: null, selectedLabelId: null, searchQuery: "", searchActive: false }),
+    set({ selectedAccountId: id, selectedSmartFolder: null, selectedLabelId: null, selectedMessageId: null, searchQuery: "", searchActive: false }),
   setSelectedFolderId: (id) =>
-    set({ selectedFolderId: id, selectedSmartFolder: null, selectedLabelId: null, searchQuery: "", searchActive: false }),
+    set({ selectedFolderId: id, selectedSmartFolder: null, selectedLabelId: null, selectedMessageId: null, searchQuery: "", searchActive: false }),
   setSelectedMessageId: (id) => set({ selectedMessageId: id }),
   setSelectedThreadId: (id) => set({ selectedThreadId: id }),
   setSelectedSmartFolder: (kind) =>
@@ -188,6 +188,7 @@ export const useUiStore = create<UiState>((set) => ({
       selectedAccountId: null,
       selectedFolderId: null,
       selectedThreadId: null,
+      selectedMessageId: null,
       searchQuery: "",
       searchActive: false,
     }),
@@ -253,6 +254,7 @@ export const useUiStore = create<UiState>((set) => ({
       selectedAccountId: null,
       selectedFolderId: null,
       selectedThreadId: null,
+      selectedMessageId: null,
       searchQuery: "",
       searchActive: false,
       selectionActive: false,

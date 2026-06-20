@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { render, screen, cleanup } from "@testing-library/react";
+import { render, screen, cleanup, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 vi.mock("../../ipc/bindings", () => ({
@@ -7,6 +7,7 @@ vi.mock("../../ipc/bindings", () => ({
     listThreadMessages: vi.fn().mockResolvedValue({ status: "ok", data: [] }),
     getMessageBody: vi.fn().mockResolvedValue({ status: "ok", data: { message_id: 1, text_plain: null, text_html: null } }),
     markMessageSeen: vi.fn().mockResolvedValue({ status: "ok", data: null }),
+    threadForMessage: vi.fn().mockResolvedValue({ status: "ok", data: 42 }),
   },
   events: {},
 }));
@@ -16,16 +17,18 @@ vi.mock("../../app/store", () => ({
 }));
 
 import { useUiStore } from "../../app/store";
+import { commands } from "../../ipc/bindings";
 import { ReaderPane } from "./ReaderPane";
 
 const mockUseUiStore = vi.mocked(useUiStore);
 
-function setupStore(selectedThreadId: number | null) {
+function setupStore(selectedThreadId: number | null, selectedMessageId: number | null = null) {
   mockUseUiStore.mockImplementation((selector: (s: any) => unknown) => {
     const state = {
       selectedAccountId: null,
       selectedFolderId: null,
       selectedThreadId,
+      selectedMessageId,
       density: "comfortable",
       setSelectedAccountId: vi.fn(),
       setSelectedFolderId: vi.fn(),
@@ -70,5 +73,17 @@ describe("ReaderPane", () => {
     render(<ReaderPane />, { wrapper: Wrapper });
 
     expect(screen.getByLabelText("reader")).toBeTruthy();
+  });
+
+  it("resolves the thread and opens the conversation when only a message is selected", async () => {
+    setupStore(null, 5);
+
+    render(<ReaderPane />, { wrapper: Wrapper });
+
+    await waitFor(() => {
+      expect(commands.threadForMessage).toHaveBeenCalledWith(5);
+      expect(commands.listThreadMessages).toHaveBeenCalledWith(42);
+    });
+    expect(screen.queryByText(/select a conversation/i)).toBeNull();
   });
 });

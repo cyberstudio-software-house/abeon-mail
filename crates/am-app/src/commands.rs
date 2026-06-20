@@ -517,6 +517,17 @@ pub fn list_thread_messages(
 
 #[tauri::command]
 #[specta::specta]
+pub fn thread_for_message(
+    state: tauri::State<'_, AppState>,
+    message_id: i64,
+) -> Result<i64, String> {
+    messages_repo::locate(&state.db, message_id)
+        .map_err(|e| e.to_string())
+        .and_then(|loc| loc.thread_id.ok_or_else(|| "message has no thread".to_string()))
+}
+
+#[tauri::command]
+#[specta::specta]
 pub fn mark_message_seen(
     state: tauri::State<'_, AppState>,
     message_id: i64,
