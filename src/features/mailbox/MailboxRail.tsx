@@ -20,6 +20,7 @@ import {
 import { useAccounts, useFolders, useLabels } from "../../ipc/queries";
 import { useUiStore } from "../../app/store";
 import { Avatar } from "../../shared/appearance/Avatar";
+import { Wordmark } from "../../shared/brand/Wordmark";
 import {
   buildFolderTree,
   partitionPriorityFolders,
@@ -224,8 +225,10 @@ export function MailboxRail() {
   return (
     <aside className="rail">
       <header className="rail__header">
-        <div className="rail__logo">A</div>
-        <span className="rail__title">AbeonMail</span>
+        <div className="rail__brand">
+          <img className="rail__logo" src="/brand/logo-icon.svg" alt="" width={32} height={32} />
+          <Wordmark className="rail__wordmark" />
+        </div>
         {headerAccount && (
           <Avatar
             seed={headerAccount.email}

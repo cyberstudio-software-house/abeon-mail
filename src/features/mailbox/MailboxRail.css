@@ -13,23 +13,29 @@
   padding: 18px 16px 12px;
   flex-shrink: 0;
 }
+.rail__brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-right: auto;
+  min-width: 0;
+}
 .rail__logo {
   width: 32px;
   height: 32px;
   border-radius: 9px;
-  background: var(--accent);
-  color: #fff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 800;
-  font-size: 16px;
+  background: #fff;
+  border: 1px solid var(--rail-border);
+  padding: 3px;
+  box-sizing: border-box;
+  object-fit: contain;
+  flex-shrink: 0;
 }
-.rail__title {
-  flex: 1;
-  font-weight: 800;
-  font-size: 15px;
-  letter-spacing: -0.01em;
+.rail__wordmark {
+  display: block;
+  width: auto;
+  height: 19px;
+  flex-shrink: 0;
   color: var(--text-on-rail);
 }
 .rail__search {
