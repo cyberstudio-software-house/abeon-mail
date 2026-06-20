@@ -23,9 +23,6 @@
 .rail__logo {
   width: 32px;
   height: 32px;
-  border-radius: 9px;
-  background: #fff;
-  border: 1px solid var(--rail-border);
   padding: 3px;
   box-sizing: border-box;
   object-fit: contain;
