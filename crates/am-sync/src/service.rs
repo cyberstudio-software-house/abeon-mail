@@ -10,6 +10,35 @@ use crate::events::{SyncEvent, SyncEventSink};
 
 const MAX_QUEUE_ATTEMPTS: i64 = 6;
 
+pub const UNDO_GRACE_SECS: i64 = 8;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MoveTarget {
+    Archive,
+    Trash,
+}
+
+impl MoveTarget {
+    pub fn folder_type(&self) -> FolderType {
+        match self {
+            MoveTarget::Archive => FolderType::Archive,
+            MoveTarget::Trash => FolderType::Trash,
+        }
+    }
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            MoveTarget::Archive => "archive",
+            MoveTarget::Trash => "trash",
+        }
+    }
+    pub fn default_folder_name(&self) -> &'static str {
+        match self {
+            MoveTarget::Archive => "Archive",
+            MoveTarget::Trash => "Trash",
+        }
+    }
+}
+
 const INITIAL_SYNC_LIMIT: u32 = 200;
 const INBOX_PATH: &str = "INBOX";
 
@@ -598,6 +627,62 @@ pub fn enqueue_flag(db: &Database, message_id: i64, flag: MessageFlag, value: bo
     Ok(())
 }
 
+pub fn enqueue_move(db: &Database, message_id: i64, target: MoveTarget, now: i64) -> Result<(), SyncError> {
+    let loc = messages_repo::locate(db, message_id)?;
+    let markers = folders_repo::get_sync_markers(db, loc.folder_id)?;
+    let uidvalidity = markers.uidvalidity.unwrap_or(0);
+
+    messages_repo::set_deleted(db, message_id, true)?;
+    folders_repo::recount_unread(db, loc.folder_id)?;
+    if let Some(thread_id) = loc.thread_id {
+        threads_repo::recompute(db, thread_id)?;
+    }
+
+    let payload = serde_json::json!({
+        "message_id": message_id,
+        "folder_id": loc.folder_id,
+        "uid": loc.uid,
+        "uidvalidity": uidvalidity,
+        "target_type": target.as_str(),
+    })
+    .to_string();
+    queue_repo::enqueue_at(db, loc.account_id, "move_message", &payload, now + UNDO_GRACE_SECS)?;
+    Ok(())
+}
+
+pub fn undo_move(db: &Database, message_ids: &[i64]) -> Result<(), SyncError> {
+    let mut accounts: Vec<i64> = Vec::new();
+    for &mid in message_ids {
+        if let Ok(loc) = messages_repo::locate(db, mid) {
+            if !accounts.contains(&loc.account_id) {
+                accounts.push(loc.account_id);
+            }
+        }
+    }
+    for account_id in accounts {
+        let ops = queue_repo::list_pending_by_type(db, account_id, "move_message")?;
+        for op in ops {
+            let parsed: serde_json::Value = match serde_json::from_str(&op.payload) {
+                Ok(v) => v,
+                Err(_) => continue,
+            };
+            let mid = parsed["message_id"].as_i64().unwrap_or(-1);
+            if !message_ids.contains(&mid) {
+                continue;
+            }
+            queue_repo::mark_done(db, op.id)?;
+            messages_repo::set_deleted(db, mid, false)?;
+            if let Ok(loc) = messages_repo::locate(db, mid) {
+                folders_repo::recount_unread(db, loc.folder_id)?;
+                if let Some(thread_id) = loc.thread_id {
+                    threads_repo::recompute(db, thread_id)?;
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
 pub async fn drain_queue(db: &Database, account_id: i64, creds: &dyn CredentialSource, now: i64) -> Result<(), SyncError> {
     let due = queue_repo::list_due(db, account_id, now)?;
     if due.is_empty() {
@@ -671,6 +756,58 @@ pub async fn drain_queue(db: &Database, account_id: i64, creds: &dyn CredentialS
 
     let _ = session.logout().await;
     Ok(())
+}
+
+#[cfg(test)]
+mod move_tests {
+    use super::*;
+    use am_core::account::{NewAccount, ProviderType};
+    use am_core::folder::FolderType;
+    use am_core::message::NewMessageHeader;
+    use am_storage::{accounts_repo, folders_repo, messages_repo, queue_repo, Database};
+
+    fn header(uid: i64) -> NewMessageHeader {
+        NewMessageHeader {
+            uid, message_id_hdr: Some(format!("<m{uid}@e>")), in_reply_to: None, references_hdr: None,
+            from_address: "s@e.com".into(), from_name: None, subject: "S".into(), date: uid,
+            seen: false, flagged: false, has_attachments: false, size: 1, snippet: "x".into(),
+        }
+    }
+
+    fn setup() -> (Database, i64, i64) {
+        let db = Database::open_in_memory().unwrap();
+        let account = accounts_repo::insert_account(&db, &NewAccount {
+            email: "m@e.com".into(), display_name: "M".into(),
+            provider_type: ProviderType::ImapPassword, color: None,
+        }).unwrap();
+        let inbox = folders_repo::upsert_folder(&db, account.id, "INBOX", "Inbox", FolderType::Inbox).unwrap();
+        folders_repo::set_sync_markers(&db, inbox.id, 100, 2, None, 0).unwrap();
+        messages_repo::insert_headers(&db, inbox.id, &[header(1)]).unwrap();
+        let mid = messages_repo::list_by_folder(&db, inbox.id, 10, 0, i64::MAX).unwrap()[0].id;
+        (db, account.id, mid)
+    }
+
+    #[test]
+    fn enqueue_move_hides_and_schedules_delayed_op() {
+        let (db, account_id, mid) = setup();
+        enqueue_move(&db, mid, MoveTarget::Archive, 1000).unwrap();
+        let inbox = folders_repo::find_by_type(&db, account_id, FolderType::Inbox).unwrap().unwrap();
+        assert!(messages_repo::list_by_folder(&db, inbox.id, 10, 0, i64::MAX).unwrap().is_empty());
+        assert!(queue_repo::list_due(&db, account_id, 1000).unwrap().is_empty());
+        let due = queue_repo::list_due(&db, account_id, 1000 + UNDO_GRACE_SECS).unwrap();
+        assert_eq!(due.len(), 1);
+        assert_eq!(due[0].op_type, "move_message");
+    }
+
+    #[test]
+    fn undo_move_unhides_and_cancels_pending_op() {
+        let (db, account_id, mid) = setup();
+        enqueue_move(&db, mid, MoveTarget::Archive, 1000).unwrap();
+        undo_move(&db, &[mid]).unwrap();
+        let inbox = folders_repo::find_by_type(&db, account_id, FolderType::Inbox).unwrap().unwrap();
+        assert_eq!(messages_repo::list_by_folder(&db, inbox.id, 10, 0, i64::MAX).unwrap().len(), 1);
+        assert!(queue_repo::list_pending_by_type(&db, account_id, "move_message").unwrap().is_empty());
+    }
 }
 
 #[cfg(test)]
