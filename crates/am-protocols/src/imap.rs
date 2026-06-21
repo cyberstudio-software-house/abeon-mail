@@ -243,6 +243,34 @@ impl ImapSession {
         Ok(body.to_vec())
     }
 
+    pub async fn fetch_bodies(&mut self, uids: &[i64]) -> Result<Vec<(i64, Vec<u8>)>, ProtocolError> {
+        if uids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let set = uids
+            .iter()
+            .map(|u| u.to_string())
+            .collect::<Vec<_>>()
+            .join(",");
+        let fetches: Vec<Fetch> = match &mut self.session {
+            SessionStream::Plain(s) => {
+                let stream = s.uid_fetch(&set, "BODY.PEEK[]").await?;
+                stream.try_collect().await?
+            }
+            SessionStream::Tls(s) => {
+                let stream = s.uid_fetch(&set, "BODY.PEEK[]").await?;
+                stream.try_collect().await?
+            }
+        };
+        let mut out = Vec::new();
+        for f in &fetches {
+            if let (Some(uid), Some(body)) = (f.uid, f.body()) {
+                out.push((uid as i64, body.to_vec()));
+            }
+        }
+        Ok(out)
+    }
+
     pub async fn logout(mut self) -> Result<(), ProtocolError> {
         match &mut self.session {
             SessionStream::Plain(s) => s.logout().await?,
