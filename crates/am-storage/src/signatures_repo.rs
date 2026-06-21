@@ -6,7 +6,7 @@ use crate::db::{Database, StorageError};
 pub fn list_signatures(db: &Database, account_id: i64) -> Result<Vec<Signature>, StorageError> {
     let conn = db.conn();
     let mut stmt = conn.prepare(
-        "SELECT id, name, html, is_default FROM signatures WHERE account_id=?1 ORDER BY id ASC",
+        "SELECT id, name, html, is_default, is_html FROM signatures WHERE account_id=?1 ORDER BY id ASC",
     )?;
     let rows = stmt.query_map(params![account_id], |r| {
         Ok(Signature {
@@ -14,6 +14,7 @@ pub fn list_signatures(db: &Database, account_id: i64) -> Result<Vec<Signature>,
             name: r.get(1)?,
             html: r.get(2)?,
             is_default: r.get::<_, i64>(3)? != 0,
+            is_html: r.get::<_, i64>(4)? != 0,
         })
     })?;
     let mut out = Vec::new();
@@ -29,6 +30,7 @@ pub fn create_signature(
     name: &str,
     html: &str,
     make_default: bool,
+    is_html: bool,
 ) -> Result<Signature, StorageError> {
     let conn = db.conn();
     let tx = conn.unchecked_transaction()?;
@@ -45,8 +47,8 @@ pub fn create_signature(
         )?;
     }
     tx.execute(
-        "INSERT INTO signatures (account_id, name, html, is_default) VALUES (?1, ?2, ?3, ?4)",
-        params![account_id, name, html, is_default as i64],
+        "INSERT INTO signatures (account_id, name, html, is_default, is_html) VALUES (?1, ?2, ?3, ?4, ?5)",
+        params![account_id, name, html, is_default as i64, is_html as i64],
     )?;
     let id = tx.last_insert_rowid();
     tx.commit()?;
@@ -55,6 +57,7 @@ pub fn create_signature(
         name: name.to_string(),
         html: html.to_string(),
         is_default,
+        is_html,
     })
 }
 
@@ -63,11 +66,12 @@ pub fn update_signature(
     id: i64,
     name: &str,
     html: &str,
+    is_html: bool,
 ) -> Result<(), StorageError> {
     let conn = db.conn();
     conn.execute(
-        "UPDATE signatures SET name = ?2, html = ?3 WHERE id = ?1",
-        params![id, name, html],
+        "UPDATE signatures SET name = ?2, html = ?3, is_html = ?4 WHERE id = ?1",
+        params![id, name, html, is_html as i64],
     )?;
     Ok(())
 }
@@ -173,7 +177,7 @@ mod tests {
     fn create_first_signature_becomes_default() {
         let db = Database::open_in_memory().unwrap();
         let account_id = acct(&db);
-        let sig = create_signature(&db, account_id, "Work", "<p>BR</p>", false).unwrap();
+        let sig = create_signature(&db, account_id, "Work", "<p>BR</p>", false, false).unwrap();
         assert!(sig.is_default);
         assert_eq!(sig.name, "Work");
         let listed = list_signatures(&db, account_id).unwrap();
@@ -185,8 +189,8 @@ mod tests {
     fn create_with_make_default_unsets_previous_default() {
         let db = Database::open_in_memory().unwrap();
         let account_id = acct(&db);
-        let first = create_signature(&db, account_id, "Work", "<p>1</p>", false).unwrap();
-        let second = create_signature(&db, account_id, "Casual", "<p>2</p>", true).unwrap();
+        let first = create_signature(&db, account_id, "Work", "<p>1</p>", false, false).unwrap();
+        let second = create_signature(&db, account_id, "Casual", "<p>2</p>", true, false).unwrap();
         let listed = list_signatures(&db, account_id).unwrap();
         let by_id = |id: i64| listed.iter().find(|s| s.id == id).unwrap().is_default;
         assert!(!by_id(first.id));
@@ -197,8 +201,8 @@ mod tests {
     fn create_non_default_keeps_existing_default() {
         let db = Database::open_in_memory().unwrap();
         let account_id = acct(&db);
-        let first = create_signature(&db, account_id, "Work", "<p>1</p>", false).unwrap();
-        let second = create_signature(&db, account_id, "Casual", "<p>2</p>", false).unwrap();
+        let first = create_signature(&db, account_id, "Work", "<p>1</p>", false, false).unwrap();
+        let second = create_signature(&db, account_id, "Casual", "<p>2</p>", false, false).unwrap();
         assert!(first.is_default);
         assert!(!second.is_default);
     }
@@ -207,8 +211,8 @@ mod tests {
     fn update_signature_changes_name_and_html() {
         let db = Database::open_in_memory().unwrap();
         let account_id = acct(&db);
-        let sig = create_signature(&db, account_id, "Work", "<p>old</p>", false).unwrap();
-        update_signature(&db, sig.id, "Job", "<p>new</p>").unwrap();
+        let sig = create_signature(&db, account_id, "Work", "<p>old</p>", false, false).unwrap();
+        update_signature(&db, sig.id, "Job", "<p>new</p>", false).unwrap();
         let listed = list_signatures(&db, account_id).unwrap();
         assert_eq!(listed[0].name, "Job");
         assert_eq!(listed[0].html, "<p>new</p>");
@@ -218,8 +222,8 @@ mod tests {
     fn set_default_switches_between_signatures() {
         let db = Database::open_in_memory().unwrap();
         let account_id = acct(&db);
-        let first = create_signature(&db, account_id, "Work", "<p>1</p>", false).unwrap();
-        let second = create_signature(&db, account_id, "Casual", "<p>2</p>", false).unwrap();
+        let first = create_signature(&db, account_id, "Work", "<p>1</p>", false, false).unwrap();
+        let second = create_signature(&db, account_id, "Casual", "<p>2</p>", false, false).unwrap();
         set_default_signature(&db, account_id, second.id).unwrap();
         let listed = list_signatures(&db, account_id).unwrap();
         let by_id = |id: i64| listed.iter().find(|s| s.id == id).unwrap().is_default;
@@ -231,8 +235,8 @@ mod tests {
     fn delete_default_promotes_min_id() {
         let db = Database::open_in_memory().unwrap();
         let account_id = acct(&db);
-        let first = create_signature(&db, account_id, "Work", "<p>1</p>", false).unwrap();
-        let second = create_signature(&db, account_id, "Casual", "<p>2</p>", true).unwrap();
+        let first = create_signature(&db, account_id, "Work", "<p>1</p>", false, false).unwrap();
+        let second = create_signature(&db, account_id, "Casual", "<p>2</p>", true, false).unwrap();
         delete_signature(&db, second.id).unwrap();
         let listed = list_signatures(&db, account_id).unwrap();
         assert_eq!(listed.len(), 1);
@@ -244,8 +248,8 @@ mod tests {
     fn delete_non_default_keeps_default() {
         let db = Database::open_in_memory().unwrap();
         let account_id = acct(&db);
-        let first = create_signature(&db, account_id, "Work", "<p>1</p>", false).unwrap();
-        let second = create_signature(&db, account_id, "Casual", "<p>2</p>", false).unwrap();
+        let first = create_signature(&db, account_id, "Work", "<p>1</p>", false, false).unwrap();
+        let second = create_signature(&db, account_id, "Casual", "<p>2</p>", false, false).unwrap();
         delete_signature(&db, second.id).unwrap();
         let listed = list_signatures(&db, account_id).unwrap();
         assert_eq!(listed.len(), 1);
@@ -268,10 +272,50 @@ mod tests {
         )
         .unwrap()
         .id;
-        create_signature(&db, a, "A-sig", "<p>a</p>", true).unwrap();
-        create_signature(&db, b, "B-sig", "<p>b</p>", true).unwrap();
+        create_signature(&db, a, "A-sig", "<p>a</p>", true, false).unwrap();
+        create_signature(&db, b, "B-sig", "<p>b</p>", true, false).unwrap();
         assert_eq!(list_signatures(&db, a).unwrap().len(), 1);
         assert_eq!(list_signatures(&db, b).unwrap().len(), 1);
         assert_eq!(list_signatures(&db, a).unwrap()[0].name, "A-sig");
+    }
+
+    #[test]
+    fn create_signature_defaults_is_html_false_via_insert() {
+        let db = Database::open_in_memory().unwrap();
+        let account_id = acct(&db);
+        let sig = create_signature(&db, account_id, "Plain", "<p>BR</p>", false, false).unwrap();
+        assert!(!sig.is_html);
+        let listed = list_signatures(&db, account_id).unwrap();
+        assert!(!listed[0].is_html);
+    }
+
+    #[test]
+    fn create_html_signature_persists_is_html() {
+        let db = Database::open_in_memory().unwrap();
+        let account_id = acct(&db);
+        let sig = create_signature(
+            &db,
+            account_id,
+            "HtmlSig",
+            "<table><tr><td>Hi</td></tr></table>",
+            false,
+            true,
+        )
+        .unwrap();
+        assert!(sig.is_html);
+        let listed = list_signatures(&db, account_id).unwrap();
+        assert!(listed[0].is_html);
+        assert_eq!(listed[0].html, "<table><tr><td>Hi</td></tr></table>");
+    }
+
+    #[test]
+    fn update_signature_can_set_is_html() {
+        let db = Database::open_in_memory().unwrap();
+        let account_id = acct(&db);
+        let sig = create_signature(&db, account_id, "Work", "<p>old</p>", false, false).unwrap();
+        update_signature(&db, sig.id, "Work", "<div style=\"color:red\">x</div>", true).unwrap();
+        let listed = list_signatures(&db, account_id).unwrap();
+        assert!(listed[0].is_html);
+        assert_eq!(listed[0].html, "<div style=\"color:red\">x</div>");
     }
 }

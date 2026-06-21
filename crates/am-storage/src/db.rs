@@ -172,4 +172,18 @@ mod tests {
             .unwrap();
         assert_eq!(idx, 1);
     }
+
+    #[test]
+    fn migration_v14_adds_is_html_column() {
+        let db = Database::open_in_memory().unwrap();
+        let conn = db.conn();
+        let count: i64 = conn
+            .query_row(
+                "SELECT count(*) FROM pragma_table_info('signatures') WHERE name='is_html'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1);
+    }
 }

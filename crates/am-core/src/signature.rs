@@ -6,4 +6,5 @@ pub struct Signature {
     pub name: String,
     pub html: String,
     pub is_default: bool,
+    pub is_html: bool,
 }

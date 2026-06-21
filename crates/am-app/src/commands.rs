@@ -725,8 +725,9 @@ pub fn create_signature(
     name: String,
     html: String,
     make_default: bool,
+    is_html: bool,
 ) -> Result<Signature, String> {
-    signatures_repo::create_signature(&state.db, account_id, &name, &html, make_default)
+    signatures_repo::create_signature(&state.db, account_id, &name, &html, make_default, is_html)
         .map_err(|_| "Failed to create signature".to_string())
 }
 
@@ -737,8 +738,9 @@ pub fn update_signature(
     id: i64,
     name: String,
     html: String,
+    is_html: bool,
 ) -> Result<(), String> {
-    signatures_repo::update_signature(&state.db, id, &name, &html)
+    signatures_repo::update_signature(&state.db, id, &name, &html, is_html)
         .map_err(|_| "Failed to update signature".to_string())
 }
 
