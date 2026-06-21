@@ -299,3 +299,23 @@
   color: var(--color-danger, #dc2626);
   border-color: var(--color-danger, #dc2626);
 }
+
+.composer-signature-preview {
+  margin: 8px 16px;
+}
+
+.composer-signature-preview__label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted, #888);
+  margin-bottom: 4px;
+}
+
+.composer-signature-preview .signature-preview-frame {
+  width: 100%;
+  min-height: 120px;
+  border: 1px solid var(--border, #d0d0d0);
+  border-radius: 6px;
+  background: #ffffff;
+}

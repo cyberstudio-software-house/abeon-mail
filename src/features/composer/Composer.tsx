@@ -7,6 +7,7 @@ import type { OutgoingAttachment, Signature } from "../../ipc/bindings";
 import { useAccounts, useSaveDraft, useEnqueueSend } from "../../ipc/queries";
 import { useUiStore } from "../../app/store";
 import { RecipientField } from "./RecipientField";
+import { SafeHtmlFrame } from "../reader/SafeHtmlFrame";
 import "./composer.css";
 
 const AUTOSAVE_DELAY_MS = 1500;
@@ -26,6 +27,12 @@ function rewriteInlineSrcs(html: string, srcToContentId: Map<string, string>): s
     }
     return match;
   });
+}
+
+function htmlToText(html: string): string {
+  const el = document.createElement("div");
+  el.innerHTML = html;
+  return el.textContent ?? "";
 }
 
 export function Composer() {
@@ -69,6 +76,7 @@ export function Composer() {
 
   const [signatures, setSignatures] = useState<Signature[]>([]);
   const signatureInsertedRef = useRef(false);
+  const [activeHtmlSignature, setActiveHtmlSignature] = useState<Signature | null>(null);
 
   useEffect(() => {
     if (accountId == null) return;
@@ -84,14 +92,15 @@ export function Composer() {
   useEffect(() => {
     if (signatureInsertedRef.current) return;
     if (!editor) return;
-    if (composer.draftId != null) {
-      signatureInsertedRef.current = true;
-      return;
-    }
     if (signatures.length === 0) return;
     signatureInsertedRef.current = true;
     const sig = signatures.find((s) => s.is_default);
     if (!sig) return;
+    if (sig.is_html) {
+      setActiveHtmlSignature(sig);
+      return;
+    }
+    if (composer.draftId != null) return;
     const quote = prefill?.html_body ?? "";
     editor.commands.setContent(`<p></p>${sig.html}${quote}`);
     editor.commands.focus("start");
@@ -103,23 +112,31 @@ export function Composer() {
     scheduleAutosave();
   }
 
-  const buildMessage = useCallback(() => {
-    const rawHtml = editor?.getHTML() ?? null;
-    const html_body = rawHtml ? rewriteInlineSrcs(rawHtml, inlineSrcMapRef.current) : null;
-    return {
-      from_address: accounts.find((a) => a.id === accountId)?.email ?? "",
-      from_name: accounts.find((a) => a.id === accountId)?.display_name ?? null,
-      to,
-      cc,
-      bcc,
-      subject,
-      text_body: editor?.getText() ?? "",
-      html_body,
-      in_reply_to: prefill?.in_reply_to ?? null,
-      references: prefill?.references ?? [],
-      attachments,
-    };
-  }, [accounts, accountId, to, cc, bcc, subject, editor, attachments, prefill]);
+  const buildMessage = useCallback(
+    (forSend: boolean) => {
+      const rawHtml = editor?.getHTML() ?? null;
+      let html_body = rawHtml ? rewriteInlineSrcs(rawHtml, inlineSrcMapRef.current) : null;
+      let text_body = editor?.getText() ?? "";
+      if (forSend && activeHtmlSignature) {
+        html_body = `${html_body ?? ""}${activeHtmlSignature.html}`;
+        text_body = `${text_body}\n\n${htmlToText(activeHtmlSignature.html)}`;
+      }
+      return {
+        from_address: accounts.find((a) => a.id === accountId)?.email ?? "",
+        from_name: accounts.find((a) => a.id === accountId)?.display_name ?? null,
+        to,
+        cc,
+        bcc,
+        subject,
+        text_body,
+        html_body,
+        in_reply_to: prefill?.in_reply_to ?? null,
+        references: prefill?.references ?? [],
+        attachments,
+      };
+    },
+    [accounts, accountId, to, cc, bcc, subject, editor, attachments, prefill, activeHtmlSignature],
+  );
 
   const scheduleAutosave = useCallback(() => {
     if (autosaveTimerRef.current) {
@@ -127,7 +144,7 @@ export function Composer() {
     }
     autosaveTimerRef.current = setTimeout(async () => {
       if (accountId == null) return;
-      const message = buildMessage();
+      const message = buildMessage(false);
       const savedId = await saveDraftMutation.mutateAsync({
         accountId,
         draftId: draftIdRef.current,
@@ -151,7 +168,7 @@ export function Composer() {
     setIsSending(true);
     setSendError(null);
     try {
-      const message = buildMessage();
+      const message = buildMessage(true);
       const savedId = await saveDraftMutation.mutateAsync({
         accountId,
         draftId: draftIdRef.current,
@@ -169,7 +186,7 @@ export function Composer() {
 
   async function handleSaveDraft() {
     if (accountId == null) return;
-    const message = buildMessage();
+    const message = buildMessage(false);
     const savedId = await saveDraftMutation.mutateAsync({
       accountId,
       draftId: draftIdRef.current,
@@ -359,6 +376,17 @@ export function Composer() {
           <EditorContent editor={editor} />
         </div>
 
+        {activeHtmlSignature && (
+          <div className="composer-signature-preview">
+            <div className="composer-signature-preview__label">Signature preview</div>
+            <SafeHtmlFrame
+              html={activeHtmlSignature.html}
+              title="signature-preview"
+              className="signature-preview-frame"
+            />
+          </div>
+        )}
+
         <div className="composer-attachments">
           <button type="button" className="attach-btn" onClick={handlePickAttachment}>
             Attach file
@@ -408,7 +436,13 @@ export function Composer() {
               value=""
               onChange={(e) => {
                 const sig = signatures.find((s) => String(s.id) === e.target.value);
-                if (sig) insertSignature(sig.html);
+                if (sig) {
+                  if (sig.is_html) {
+                    setActiveHtmlSignature(sig);
+                  } else {
+                    insertSignature(sig.html);
+                  }
+                }
                 e.currentTarget.value = "";
               }}
             >

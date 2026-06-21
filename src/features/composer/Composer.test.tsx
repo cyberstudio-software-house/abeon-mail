@@ -344,4 +344,66 @@ describe("Composer", () => {
       ])
     );
   });
+
+  it("does NOT inject an HTML signature into the editor, but appends it to html_body only on Send", async () => {
+    const { commands } = await import("../../ipc/bindings");
+    (commands.listSignatures as ReturnType<typeof vi.fn>).mockResolvedValue({
+      status: "ok",
+      data: [{ id: 9, name: "Fancy", html: "<table>HTML-SIG</table>", is_default: true, is_html: true }],
+    });
+
+    render(<Composer />, { wrapper: Wrapper });
+    await screen.findByRole("dialog");
+
+    await waitFor(() => {
+      expect(commands.listSignatures).toHaveBeenCalled();
+    });
+    const injected = mockSetContent.mock.calls.find((c) => String(c[0]).includes("HTML-SIG"));
+    expect(injected).toBeUndefined();
+
+    const sendButton = await screen.findByRole("button", { name: "Send" });
+    fireEvent.click(sendButton);
+
+    await waitFor(() => {
+      expect(commands.saveDraft).toHaveBeenCalled();
+    });
+    const message = (commands.saveDraft as ReturnType<typeof vi.fn>).mock.calls[0][2];
+    expect(message.html_body).toContain("<table>HTML-SIG</table>");
+    expect(message.html_body.indexOf("Hello world")).toBeLessThan(message.html_body.indexOf("HTML-SIG"));
+  });
+
+  it("does NOT append the HTML signature on autosave/draft save", async () => {
+    const { commands } = await import("../../ipc/bindings");
+    (commands.listSignatures as ReturnType<typeof vi.fn>).mockResolvedValue({
+      status: "ok",
+      data: [{ id: 9, name: "Fancy", html: "<table>HTML-SIG</table>", is_default: true, is_html: true }],
+    });
+
+    render(<Composer />, { wrapper: Wrapper });
+    await screen.findByRole("dialog");
+    await waitFor(() => expect(commands.listSignatures).toHaveBeenCalled());
+
+    const saveDraftButton = await screen.findByRole("button", { name: "Save draft" });
+    fireEvent.click(saveDraftButton);
+
+    await waitFor(() => {
+      expect(commands.saveDraft).toHaveBeenCalled();
+    });
+    const message = (commands.saveDraft as ReturnType<typeof vi.fn>).mock.calls[0][2];
+    expect(message.html_body).not.toContain("HTML-SIG");
+  });
+
+  it("renders a sandboxed preview iframe for an active HTML signature", async () => {
+    const { commands } = await import("../../ipc/bindings");
+    (commands.listSignatures as ReturnType<typeof vi.fn>).mockResolvedValue({
+      status: "ok",
+      data: [{ id: 9, name: "Fancy", html: "<table>HTML-SIG</table>", is_default: true, is_html: true }],
+    });
+
+    render(<Composer />, { wrapper: Wrapper });
+    await screen.findByRole("dialog");
+
+    const frame = await screen.findByTitle("signature-preview");
+    expect(frame.getAttribute("sandbox")).toBe("");
+  });
 });
