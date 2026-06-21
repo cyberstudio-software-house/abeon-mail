@@ -29,6 +29,7 @@ function setupStore(selectedThreadId: number | null, selectedMessageId: number |
       selectedFolderId: null,
       selectedThreadId,
       selectedMessageId,
+      selectedRowIds: [],
       density: "comfortable",
       setSelectedAccountId: vi.fn(),
       setSelectedFolderId: vi.fn(),

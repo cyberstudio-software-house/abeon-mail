@@ -67,6 +67,7 @@ vi.mock("../app/store", () => ({
       selectedFolderId: null,
       selectedMessageId: null,
       selectedThreadId: null,
+      selectedRowIds: [],
       selectedSmartFolder: null,
       density: "comfortable",
       theme: "auto",
