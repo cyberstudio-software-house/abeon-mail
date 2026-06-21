@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { Trash2 } from "lucide-react";
+import { SafeHtmlFrame } from "../reader/SafeHtmlFrame";
 import {
   useAccounts,
   useSignatures,
@@ -10,6 +11,8 @@ import {
   useSetDefaultSignature,
   useDeleteSignature,
 } from "../../ipc/queries";
+
+type EditMode = "visual" | "html";
 
 export function SignaturesSection() {
   const { data: accounts = [] } = useAccounts();
@@ -24,34 +27,57 @@ export function SignaturesSection() {
 
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [name, setName] = useState("");
+  const [mode, setMode] = useState<EditMode>("visual");
+  const [htmlSource, setHtmlSource] = useState("");
   const editor = useEditor({ extensions: [StarterKit], content: "" });
 
   useEffect(() => {
     setSelectedId(null);
     setName("");
+    setMode("visual");
+    setHtmlSource("");
     editor?.commands.setContent("<p></p>");
   }, [accountId, editor]);
 
-  function selectSignature(id: number, sigName: string, html: string) {
+  function selectSignature(id: number, sigName: string, html: string, isHtml: boolean) {
     setSelectedId(id);
     setName(sigName);
-    editor?.commands.setContent(html);
+    if (isHtml) {
+      setMode("html");
+      setHtmlSource(html);
+    } else {
+      setMode("visual");
+      editor?.commands.setContent(html);
+    }
   }
 
   function startNew() {
     setSelectedId(null);
     setName("");
+    setMode("visual");
+    setHtmlSource("");
     editor?.commands.setContent("<p></p>");
+  }
+
+  function toggleMode() {
+    if (mode === "visual") {
+      setHtmlSource(editor?.getHTML() ?? "");
+      setMode("html");
+    } else {
+      editor?.commands.setContent(htmlSource || "<p></p>");
+      setMode("visual");
+    }
   }
 
   function save() {
     if (accountId == null) return;
-    const html = editor?.getHTML() ?? "<p></p>";
+    const isHtml = mode === "html";
+    const html = isHtml ? htmlSource : editor?.getHTML() ?? "<p></p>";
     const trimmed = name.trim() || "Signature";
     if (selectedId == null) {
-      createSignature.mutate({ accountId, name: trimmed, html, makeDefault: signatures.length === 0 });
+      createSignature.mutate({ accountId, name: trimmed, html, makeDefault: signatures.length === 0, isHtml });
     } else {
-      updateSignature.mutate({ id: selectedId, name: trimmed, html, accountId });
+      updateSignature.mutate({ id: selectedId, name: trimmed, html, accountId, isHtml });
     }
   }
 
@@ -85,7 +111,7 @@ export function SignaturesSection() {
             <button
               type="button"
               className="signatures-settings__name"
-              onClick={() => selectSignature(sig.id, sig.name, sig.html)}
+              onClick={() => selectSignature(sig.id, sig.name, sig.html, sig.is_html)}
             >
               {sig.name}
             </button>
@@ -120,7 +146,29 @@ export function SignaturesSection() {
           value={name}
           onChange={(e) => setName(e.target.value)}
         />
-        <EditorContent editor={editor} className="signatures-settings__body" />
+        <button
+          type="button"
+          className="settings-btn"
+          aria-pressed={mode === "html"}
+          onClick={toggleMode}
+        >
+          {mode === "html" ? "Visual editor" : "Edit HTML source"}
+        </button>
+        {mode === "html" ? (
+          <>
+            <textarea
+              className="settings-input signatures-settings__html"
+              aria-label="Signature HTML source"
+              value={htmlSource}
+              onChange={(e) => setHtmlSource(e.target.value)}
+            />
+            <div className="signatures-settings__preview">
+              <SafeHtmlFrame html={htmlSource} title="signature-preview" className="signature-preview-frame" />
+            </div>
+          </>
+        ) : (
+          <EditorContent editor={editor} className="signatures-settings__body" />
+        )}
         <div className="signatures-settings__actions">
           <button type="button" className="settings-btn" onClick={startNew}>
             New signature

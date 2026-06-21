@@ -1,10 +1,18 @@
-export function SafeHtmlFrame({ html }: { html: string }) {
+export function SafeHtmlFrame({
+  html,
+  title = "message-content",
+  className = "reader-frame",
+}: {
+  html: string;
+  title?: string;
+  className?: string;
+}) {
   return (
     <iframe
-      title="message-content"
+      title={title}
       sandbox=""
       srcDoc={html}
-      className="reader-frame"
+      className={className}
     />
   );
 }

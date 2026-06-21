@@ -17,8 +17,8 @@ vi.mock("../../ipc/bindings", () => ({
     listSignatures: vi.fn().mockResolvedValue({
       status: "ok",
       data: [
-        { id: 1, name: "Work", html: "<p>BR</p>", is_default: true },
-        { id: 2, name: "Casual", html: "<p>Cheers</p>", is_default: false },
+        { id: 1, name: "Work", html: "<p>BR</p>", is_default: true, is_html: false },
+        { id: 2, name: "Casual", html: "<p>Cheers</p>", is_default: false, is_html: false },
       ],
     }),
     createSignature: vi.fn().mockResolvedValue({ status: "ok", data: { id: 3, name: "New", html: "<p></p>", is_default: false } }),
@@ -46,7 +46,16 @@ function wrap(ui: ReactNode) {
 }
 
 describe("SignaturesSection", () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (commands.listSignatures as ReturnType<typeof vi.fn>).mockResolvedValue({
+      status: "ok",
+      data: [
+        { id: 1, name: "Work", html: "<p>BR</p>", is_default: true, is_html: false },
+        { id: 2, name: "Casual", html: "<p>Cheers</p>", is_default: false, is_html: false },
+      ],
+    });
+  });
   afterEach(() => cleanup());
 
   it("lists signatures for the first account", async () => {
@@ -62,8 +71,41 @@ describe("SignaturesSection", () => {
     fireEvent.change(getByLabelText("Signature name"), { target: { value: "Holiday" } });
     fireEvent.click(getByText("Save signature"));
     await waitFor(() =>
-      expect(commands.createSignature).toHaveBeenCalledWith(7, "Holiday", "<p>edited</p>", false),
+      expect(commands.createSignature).toHaveBeenCalledWith(7, "Holiday", "<p>edited</p>", false, false),
     );
+  });
+
+  it("saves a raw HTML signature with is_html=true", async () => {
+    const { getByText, getByLabelText } = wrap(<SignaturesSection />);
+    await waitFor(() => expect(getByText("Work")).toBeTruthy());
+    fireEvent.click(getByText("New signature"));
+    fireEvent.change(getByLabelText("Signature name"), { target: { value: "HtmlSig" } });
+    fireEvent.click(getByText("Edit HTML source"));
+    fireEvent.change(getByLabelText("Signature HTML source"), {
+      target: { value: "<table><tr><td>Hi</td></tr></table>" },
+    });
+    fireEvent.click(getByText("Save signature"));
+    await waitFor(() =>
+      expect(commands.createSignature).toHaveBeenCalledWith(
+        7,
+        "HtmlSig",
+        "<table><tr><td>Hi</td></tr></table>",
+        false,
+        true,
+      ),
+    );
+  });
+
+  it("opens an existing HTML signature in HTML source mode", async () => {
+    (commands.listSignatures as ReturnType<typeof vi.fn>).mockResolvedValue({
+      status: "ok",
+      data: [{ id: 5, name: "Fancy", html: "<table>FANCY</table>", is_default: true, is_html: true }],
+    });
+    const { getByText, getByLabelText } = wrap(<SignaturesSection />);
+    await waitFor(() => expect(getByText("Fancy")).toBeTruthy());
+    fireEvent.click(getByText("Fancy"));
+    const textarea = getByLabelText("Signature HTML source") as HTMLTextAreaElement;
+    expect(textarea.value).toBe("<table>FANCY</table>");
   });
 
   it("sets a non-default signature as default", async () => {
