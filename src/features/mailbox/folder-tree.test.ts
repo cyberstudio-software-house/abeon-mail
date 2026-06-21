@@ -5,6 +5,7 @@ import {
   partitionPriorityFolders,
   sortFolderNodes,
   decodeImapUtf7,
+  flattenFolderTree,
 } from "./folder-tree";
 import type { Folder, FolderType } from "../../ipc/bindings";
 
@@ -137,5 +138,35 @@ describe("sortFolderNodes", () => {
     expect(tree.map((n) => n.segment)).toEqual(["apple", "Łąka", "zebra"]);
     const apple = tree.find((n) => n.segment === "apple")!;
     expect(apple.children.map((c) => c.segment)).toEqual(["alpha", "Zulu"]);
+  });
+});
+
+describe("flattenFolderTree", () => {
+  it("flattens depth-first with a depth per node", () => {
+    const tree = sortFolderNodes(
+      buildFolderTree([
+        f(1, "Archives", "Archives"),
+        f(2, "Archives.2023", "2023"),
+        f(3, "Junk", "Junk"),
+      ]),
+    );
+    const flat = flattenFolderTree(tree);
+    expect(flat.map((r) => [r.node.segment, r.depth])).toEqual([
+      ["Archives", 0],
+      ["2023", 1],
+      ["Junk", 0],
+    ]);
+  });
+
+  it("includes virtual containers (folder=null) so hierarchy stays visible", () => {
+    const flat = flattenFolderTree(
+      buildFolderTree([
+        f(2, "Klienci.eGniazdko", "eGniazdko"),
+        f(3, "Klienci.mmRental", "mmRental"),
+      ]),
+    );
+    expect(flat[0].node.folder).toBeNull();
+    expect(flat[0].depth).toBe(0);
+    expect(flat.slice(1).every((r) => r.depth === 1)).toBe(true);
   });
 });

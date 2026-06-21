@@ -16,7 +16,7 @@ import {
   useFolders,
 } from "../../ipc/queries";
 import { isFolderPrefetched } from "../mailbox/prefetch";
-import { decodeImapUtf7 } from "../mailbox/folder-tree";
+import { buildFolderTree, sortFolderNodes, flattenFolderTree } from "../mailbox/folder-tree";
 import { Avatar } from "../../shared/appearance/Avatar";
 import { AddAccountWizard } from "../accounts/AddAccountWizard";
 import type { Account, Endpoints, Folder } from "../../ipc/bindings";
@@ -246,19 +246,23 @@ function PrefetchFoldersModal({
           <p className="prefetch-modal__empty">No folders for this account yet.</p>
         ) : (
           <ul className="prefetch-modal__list">
-            {folders.map((folder) => {
-              const name = decodeImapUtf7(folder.name);
+            {flattenFolderTree(sortFolderNodes(buildFolderTree(folders))).map(({ node, depth }) => {
+              const realFolder = node.folder;
               return (
-                <li key={folder.id}>
-                  <label className="prefetch-modal__check">
-                    <input
-                      type="checkbox"
-                      aria-label={`Prefetch ${name}`}
-                      checked={isFolderPrefetched(prefetchMap, accountId, folder.id)}
-                      onChange={() => onToggle(folder.id)}
-                    />
-                    <span>{name}</span>
-                  </label>
+                <li key={node.fullPath} style={{ paddingLeft: depth * 16 }}>
+                  {realFolder ? (
+                    <label className="prefetch-modal__check">
+                      <input
+                        type="checkbox"
+                        aria-label={`Prefetch ${node.segment}`}
+                        checked={isFolderPrefetched(prefetchMap, accountId, realFolder.id)}
+                        onChange={() => onToggle(realFolder.id)}
+                      />
+                      <span>{node.segment}</span>
+                    </label>
+                  ) : (
+                    <span className="prefetch-modal__group">{node.segment}</span>
+                  )}
                 </li>
               );
             })}

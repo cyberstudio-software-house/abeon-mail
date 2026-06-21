@@ -567,6 +567,14 @@
   cursor: pointer;
 }
 
+.prefetch-modal__group {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  padding: 4px 0;
+}
+
 .prefetch-modal__empty {
   padding: var(--space-4);
   font-size: 13px;

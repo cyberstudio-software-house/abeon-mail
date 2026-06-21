@@ -114,3 +114,14 @@ export function sortFolderNodes(nodes: FolderNode[]): FolderNode[] {
   }
   return sorted;
 }
+
+export type FlatFolderNode = { node: FolderNode; depth: number };
+
+export function flattenFolderTree(nodes: FolderNode[], depth = 0): FlatFolderNode[] {
+  const out: FlatFolderNode[] = [];
+  for (const node of nodes) {
+    out.push({ node, depth });
+    out.push(...flattenFolderTree(node.children, depth + 1));
+  }
+  return out;
+}

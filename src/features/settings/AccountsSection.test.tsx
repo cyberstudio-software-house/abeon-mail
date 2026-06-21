@@ -156,4 +156,42 @@ describe("AccountsSection", () => {
       ),
     );
   });
+
+  it("shows subfolders nested under their parent in the modal", async () => {
+    vi.mocked(commands.getSettings).mockResolvedValue({
+      status: "ok",
+      data: [["prefetch.bodies.1", "true"]],
+    });
+    vi.mocked(commands.listFolders).mockResolvedValue({
+      status: "ok",
+      data: [
+        {
+          id: 21,
+          account_id: 1,
+          remote_path: "Projekty",
+          name: "Projekty",
+          folder_type: "custom",
+          unread_count: 0,
+          total_count: 0,
+        },
+        {
+          id: 22,
+          account_id: 1,
+          remote_path: "Projekty.2024",
+          name: "2024",
+          folder_type: "custom",
+          unread_count: 0,
+          total_count: 0,
+        },
+      ],
+    });
+
+    const { findByRole, getByText } = wrap();
+    fireEvent.click(await findByRole("button", { name: /^Folders/ }));
+
+    const parentLi = getByText("Projekty").closest("li");
+    const childLi = getByText("2024").closest("li");
+    expect(parentLi?.style.paddingLeft).toBe("0px");
+    expect(childLi?.style.paddingLeft).toBe("16px");
+  });
 });
