@@ -304,8 +304,8 @@ export const useUiStore = create<UiState>((set) => ({
       const next = has ? s.selectedRowIds.filter((x) => x !== id) : [...s.selectedRowIds, id];
       if (next.length === 1) {
         return s.selectMode === "thread"
-          ? { selectedRowIds: next, selectionAnchorId: id, selectedThreadId: next[0] }
-          : { selectedRowIds: next, selectionAnchorId: id, selectedMessageId: next[0] };
+          ? { selectedRowIds: next, selectionAnchorId: next[0], selectedThreadId: next[0] }
+          : { selectedRowIds: next, selectionAnchorId: next[0], selectedMessageId: next[0] };
       }
       if (next.length === 0) {
         return { selectedRowIds: next, selectionAnchorId: null, selectedThreadId: null, selectedMessageId: null };

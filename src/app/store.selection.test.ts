@@ -36,6 +36,7 @@ describe("selection model", () => {
     const s = useUiStore.getState();
     expect(s.selectedRowIds).toEqual([4]);
     expect(s.selectedThreadId).toBe(4);
+    expect(s.selectionAnchorId).toBe(4);
   });
 
   it("selectRangeTo selects inclusive range from anchor", () => {

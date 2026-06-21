@@ -1053,6 +1053,10 @@ async fn drain_one_move(
         _ => return mark_move_failed(db, op, "unknown move target"),
     };
 
+    if dst.account_id != account_id {
+        return mark_move_failed(db, op, "target folder belongs to a different account");
+    }
+
     match session.move_uid(&src.remote_path, uid, &dst.remote_path).await {
         Ok(()) => {
             let message_id = parsed["message_id"].as_i64().unwrap_or(0);
