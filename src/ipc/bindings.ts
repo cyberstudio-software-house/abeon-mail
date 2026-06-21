@@ -88,6 +88,7 @@ export const events = {
 	accountAuthChanged: makeEvent<AccountAuthChanged>("account-auth-changed"),
 	mailboxChanged: makeEvent<MailboxChanged>("mailbox-changed"),
 	newMessages: makeEvent<NewMessages>("new-messages"),
+	prefetchProgress: makeEvent<PrefetchProgress>("prefetch-progress"),
 	sendFailed: makeEvent<SendFailed>("send-failed"),
 	snoozeWoke: makeEvent<SnoozeWoke>("snooze-woke"),
 	syncProgress: makeEvent<SyncProgress>("sync-progress"),
@@ -206,6 +207,12 @@ export type OutgoingMessage = {
 	in_reply_to: string | null,
 	references: string[],
 	attachments: OutgoingAttachment[],
+};
+
+export type PrefetchProgress = {
+	account_id: number,
+	done: number,
+	total: number,
 };
 
 export type ProviderType = "imap_password" | "google_oauth";

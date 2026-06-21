@@ -37,3 +37,10 @@ pub struct SendFailed {
     pub account_id: i64,
     pub error: String,
 }
+
+#[derive(Serialize, Deserialize, Clone, Debug, specta::Type, tauri_specta::Event)]
+pub struct PrefetchProgress {
+    pub account_id: i64,
+    pub done: i64,
+    pub total: i64,
+}

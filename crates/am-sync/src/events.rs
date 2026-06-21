@@ -6,6 +6,7 @@ pub enum SyncEvent {
     AuthChanged { account_id: i64, requires_reauth: bool },
     SnoozeWoke { count: i64 },
     SendFailed { account_id: i64, error: String },
+    PrefetchProgress { account_id: i64, done: i64, total: i64 },
 }
 
 pub trait SyncEventSink: Send + Sync {
@@ -53,5 +54,11 @@ mod tests {
     fn auth_changed_variant_stores_fields() {
         let ev = SyncEvent::AuthChanged { account_id: 5, requires_reauth: true };
         assert_eq!(ev, SyncEvent::AuthChanged { account_id: 5, requires_reauth: true });
+    }
+
+    #[test]
+    fn prefetch_progress_variant_stores_fields() {
+        let ev = SyncEvent::PrefetchProgress { account_id: 1, done: 5, total: 10 };
+        assert_eq!(ev, SyncEvent::PrefetchProgress { account_id: 1, done: 5, total: 10 });
     }
 }
