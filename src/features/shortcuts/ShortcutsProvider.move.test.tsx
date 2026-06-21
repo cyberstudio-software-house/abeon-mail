@@ -1,4 +1,4 @@
-import { render } from "@testing-library/react";
+import { render, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { ShortcutsProvider } from "./ShortcutsProvider";
@@ -29,7 +29,7 @@ describe("archive/delete shortcuts", () => {
   beforeEach(() => {
     archiveMutate.mockReset();
     deleteMutate.mockReset();
-    useUiStore.setState({ selectionActive: false, selectedMessageIds: [], selectedThreadId: 42, undoToast: null });
+    useUiStore.setState({ selectedRowIds: [], selectedThreadId: 42, undoToast: null });
   });
 
   it("e archives the whole thread in reader and shows undo", () => {
@@ -40,11 +40,11 @@ describe("archive/delete shortcuts", () => {
     expect(useUiStore.getState().selectedThreadId).toBeNull();
   });
 
-  it("# deletes the active selection in list", () => {
-    useUiStore.setState({ selectionActive: true, selectedMessageIds: [7, 8], selectedThreadId: null });
+  it("# deletes the active selection in list", async () => {
+    useUiStore.setState({ selectMode: "message", selectedRowIds: [7, 8], selectedThreadId: null });
     setup();
     window.dispatchEvent(new KeyboardEvent("keydown", { key: "#", bubbles: true }));
-    expect(deleteMutate).toHaveBeenCalledWith({ messageIds: [7, 8] });
+    await waitFor(() => expect(deleteMutate).toHaveBeenCalledWith({ messageIds: [7, 8] }));
     expect(useUiStore.getState().undoToast).toEqual({ kind: "delete", messageIds: [7, 8] });
   });
 });

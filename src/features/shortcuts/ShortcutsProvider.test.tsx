@@ -15,6 +15,7 @@ vi.mock("../../ipc/queries", () => ({
   useStartReply: () => ({ mutateAsync: startReply }),
   useSetFlag: () => ({ mutate: setFlagMutate }),
   useFolders: () => ({ data: [] }),
+  useMoveToFolder: () => ({ mutate: vi.fn() }),
   useLabels: () => ({ data: [] }),
   useLabelsForMessages: () => ({ data: [] }),
   useCreateLabel: () => ({ mutateAsync: vi.fn() }),

@@ -5,6 +5,7 @@ import { ACTIONS, type ActionId } from "./registry";
 import { prettyBinding } from "./bindings";
 import { useUiStore } from "../../app/store";
 import { useFolders } from "../../ipc/queries";
+import { resolveSelectedMessageIds } from "../../shared/selection/resolveMessageIds";
 import "./CommandPalette.css";
 
 const IS_MAC =
@@ -42,8 +43,9 @@ export function CommandPalette() {
     search: () => requestAnimationFrame(() => useUiStore.getState().focusSearch?.()),
     label: () => {
       const s = useUiStore.getState();
-      if (s.selectionActive && s.selectedMessageIds.length > 0) s.openLabelPicker(s.selectedMessageIds);
-      else if (s.replyTargetId != null) s.openLabelPicker([s.replyTargetId]);
+      if (s.selectedRowIds.length >= 1) {
+        void resolveSelectedMessageIds().then((ids) => { if (ids.length) s.openLabelPicker(ids); });
+      } else if (s.replyTargetId != null) s.openLabelPicker([s.replyTargetId]);
     },
   };
 

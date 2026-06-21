@@ -13,6 +13,7 @@ import { LabelPicker } from "../labels/LabelPicker";
 import { SnoozePicker } from "../snooze/SnoozePicker";
 import { FolderPicker } from "../reader/FolderPicker";
 import { UndoBar } from "./UndoBar";
+import { resolveSelectedMessageIds } from "../../shared/selection/resolveMessageIds";
 
 export type ShortcutsContextValue = {
   profile: Profile;
@@ -109,19 +110,26 @@ export function ShortcutsProvider({ children }: { children: ReactNode }) {
   const doMove = useCallback(
     (kind: "archive" | "delete") => {
       const s = useUiStore.getState();
-      let ids: number[] = [];
-      if (s.selectionActive && s.selectedMessageIds.length > 0) {
-        ids = s.selectedMessageIds;
-      } else if (s.selectedThreadId != null) {
-        const messages = queryClient.getQueryData<{ id: number }[]>(["thread-messages", s.selectedThreadId]);
-        ids = (messages ?? []).map((m) => m.id);
+      if (s.selectedRowIds.length >= 1) {
+        void resolveSelectedMessageIds().then((ids) => {
+          if (ids.length === 0) return;
+          if (kind === "archive") archive.mutate({ messageIds: ids });
+          else del.mutate({ messageIds: ids });
+          s.showUndoToast(kind, ids);
+          s.clearSelection();
+          s.setSelectedThreadId(null);
+        });
+        return;
       }
-      if (ids.length === 0) return;
-      if (kind === "archive") archive.mutate({ messageIds: ids });
-      else del.mutate({ messageIds: ids });
-      s.showUndoToast(kind, ids);
-      if (s.selectionActive) s.clearSelection();
-      if (s.selectedThreadId != null) s.setSelectedThreadId(null);
+      if (s.selectedThreadId != null) {
+        const messages = queryClient.getQueryData<{ id: number }[]>(["thread-messages", s.selectedThreadId]);
+        const ids = (messages ?? []).map((m) => m.id);
+        if (ids.length === 0) return;
+        if (kind === "archive") archive.mutate({ messageIds: ids });
+        else del.mutate({ messageIds: ids });
+        s.showUndoToast(kind, ids);
+        s.setSelectedThreadId(null);
+      }
     },
     [archive, del, queryClient]
   );
@@ -161,16 +169,16 @@ export function ShortcutsProvider({ children }: { children: ReactNode }) {
       "close-composer": () => useUiStore.getState().closeComposer(),
       label: () => {
         const s = useUiStore.getState();
-        if (s.selectionActive && s.selectedMessageIds.length > 0) {
-          s.openLabelPicker(s.selectedMessageIds);
+        if (s.selectedRowIds.length >= 1) {
+          void resolveSelectedMessageIds().then((ids) => { if (ids.length) s.openLabelPicker(ids); });
         } else if (s.replyTargetId != null) {
           s.openLabelPicker([s.replyTargetId]);
         }
       },
       snooze: () => {
         const s = useUiStore.getState();
-        if (s.selectionActive && s.selectedMessageIds.length > 0) {
-          s.openSnoozePicker(s.selectedMessageIds);
+        if (s.selectedRowIds.length >= 1) {
+          void resolveSelectedMessageIds().then((ids) => { if (ids.length) s.openSnoozePicker(ids); });
         } else if (s.replyTargetId != null) {
           s.openSnoozePicker([s.replyTargetId]);
         }
