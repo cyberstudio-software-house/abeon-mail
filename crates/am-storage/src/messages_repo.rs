@@ -69,6 +69,27 @@ pub fn count_by_folder(db: &Database, folder_id: i64) -> Result<i64, StorageErro
     )?)
 }
 
+pub fn mark_folder_seen(db: &Database, folder_id: i64) -> Result<usize, StorageError> {
+    let conn = db.conn();
+    Ok(conn.execute(
+        "UPDATE messages SET seen = 1 WHERE folder_id = ?1 AND seen = 0 AND deleted = 0 AND draft = 0",
+        params![folder_id],
+    )?)
+}
+
+pub fn thread_ids_in_folder(db: &Database, folder_id: i64) -> Result<Vec<i64>, StorageError> {
+    let conn = db.conn();
+    let mut stmt = conn.prepare(
+        "SELECT DISTINCT thread_id FROM messages WHERE folder_id = ?1 AND thread_id IS NOT NULL",
+    )?;
+    let rows = stmt.query_map(params![folder_id], |row| row.get::<_, i64>(0))?;
+    let mut out = Vec::new();
+    for r in rows {
+        out.push(r?);
+    }
+    Ok(out)
+}
+
 pub fn delete_by_uids(db: &Database, folder_id: i64, uids: &[i64]) -> Result<usize, StorageError> {
     let conn = db.conn();
     let tx = conn.unchecked_transaction()?;
@@ -937,5 +958,34 @@ mod tests {
         assert_eq!(list_by_thread(&db, tid).unwrap().len(), 1);
         set_deleted(&db, ids[0], false).unwrap();
         assert_eq!(list_by_folder(&db, folder.id, 50, 0, i64::MAX).unwrap().len(), 2);
+    }
+
+    #[test]
+    fn mark_folder_seen_clears_unread_and_reports_count() {
+        let db = Database::open_in_memory().unwrap();
+        let folder = setup(&db);
+        insert_headers(&db, folder, &[make_header(1, 1000), make_header(2, 2000)]).unwrap();
+        assert_eq!(crate::folders_repo::recount_unread(&db, folder).unwrap(), 2);
+
+        let changed = mark_folder_seen(&db, folder).unwrap();
+        assert_eq!(changed, 2);
+        assert_eq!(crate::folders_repo::recount_unread(&db, folder).unwrap(), 0);
+    }
+
+    #[test]
+    fn thread_ids_in_folder_returns_distinct_non_null() {
+        let db = Database::open_in_memory().unwrap();
+        let account = insert_account(&db, &sample_account()).unwrap();
+        let folder = upsert_folder(&db, account.id, "INBOX", "Inbox", FolderType::Inbox).unwrap().id;
+        insert_headers(&db, folder, &[make_header(1, 1000), make_header(2, 2000)]).unwrap();
+        let ids = ids_by_uids(&db, folder, &[1, 2]).unwrap();
+        let thread_id = crate::threads_repo::create(&db, account.id, "S", 1000).unwrap();
+        db.conn().execute(
+            "UPDATE messages SET thread_id = ?1 WHERE id IN (?2, ?3)",
+            params![thread_id, ids[0], ids[1]],
+        ).unwrap();
+
+        let threads = thread_ids_in_folder(&db, folder).unwrap();
+        assert_eq!(threads, vec![thread_id]);
     }
 }
