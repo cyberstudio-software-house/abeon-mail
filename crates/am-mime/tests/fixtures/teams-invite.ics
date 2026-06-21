@@ -1,0 +1,114 @@
+BEGIN:VCALENDAR
+METHOD:REQUEST
+PRODID:Microsoft Exchange Server 2010
+VERSION:2.0
+BEGIN:VTIMEZONE
+TZID:Central European Standard Time
+BEGIN:STANDARD
+DTSTART:16010101T030000
+TZOFFSETFROM:+0200
+TZOFFSETTO:+0100
+RRULE:FREQ=YEARLY;INTERVAL=1;BYDAY=-1SU;BYMONTH=10
+END:STANDARD
+BEGIN:DAYLIGHT
+DTSTART:16010101T020000
+TZOFFSETFROM:+0100
+TZOFFSETTO:+0200
+RRULE:FREQ=YEARLY;INTERVAL=1;BYDAY=-1SU;BYMONTH=3
+END:DAYLIGHT
+END:VTIMEZONE
+BEGIN:VEVENT
+ORGANIZER:mailto:Sebastian.Kowalski@alpla.com
+ATTENDEE;ROLE=REQ-PARTICIPANT;PARTSTAT=NEEDS-ACTION;RSVP=TRUE:mailto:Philip
+ p.Simon@alpla.com
+ATTENDEE;ROLE=REQ-PARTICIPANT;PARTSTAT=NEEDS-ACTION;RSVP=TRUE:mailto:nicola
+ s.simon@alpla.com
+ATTENDEE;ROLE=REQ-PARTICIPANT;PARTSTAT=NEEDS-ACTION;RSVP=TRUE:mailto:szweda
+ @cyberstudio.pl
+DESCRIPTION;LANGUAGE=en-US:Agenda:\n\nAt the next meeting we will discuss t
+ he progress of work\, the tests carried out and identify any bugs.\n\nBR\,
+  Sebastian\n______________________________________________________________
+ __________________\nMicrosoft Teams Need help?<https://aka.ms/JoinTeamsMee
+ ting?omkt=en-US>\nJoin the meeting now<https://teams.microsoft.com/l/meetu
+ p-join/19%3ameeting_MDVjODllNTEtZjc2NS00YWU2LTkxMmUtN2UyMmEwN2UzMDA3%40thr
+ ead.v2/0?context=%7b%22Tid%22%3a%22c7241ada-798c-4944-b510-904f91eee0f3%22
+ %2c%22Oid%22%3a%22eb2a478e-0dbb-48ee-9e9c-6b18fb422d0c%22%7d>\nMeeting ID:
+  340 284 597 533\nPasscode: pi3NF9ef\n________________________________\nDi
+ al in by phone\n+48 22 536 42 02\,\,507406181#<tel:+48225364202\,\,5074061
+ 81> Poland\, Warsaw\nFind a local number<https://dialin.teams.microsoft.co
+ m/f151cbe0-509d-4fb9-bc09-d8e00f725eb4?id=507406181>\nPhone conference ID:
+  507 406 181#\nFor organizers: Meeting options<https://teams.microsoft.com
+ /meetingOptions/?organizerId=eb2a478e-0dbb-48ee-9e9c-6b18fb422d0c&tenantId
+ =c7241ada-798c-4944-b510-904f91eee0f3&threadId=19_meeting_MDVjODllNTEtZjc2
+ NS00YWU2LTkxMmUtN2UyMmEwN2UzMDA3@thread.v2&messageId=0&language=en-US> | R
+ eset dial-in PIN<https://dialin.teams.microsoft.com/usp/pstnconferencing>\
+ n[https://content.alpla.com/global/logo/logo-signature.png]\nwww.alpla.com
+ \n________________________________________________________________________
+ ________\n\n________________________________\n\nThis message is confidenti
+ al and intended solely for the addressee. If you receive this message in e
+ rror\, please immediately inform the sender and delete the message and any
+  attachments. Thank you.\n\nTo the extent permitted by law ALPLA shall in 
+ no way be liable for any damages\, whatever their nature\, arising out of 
+ transmission failures\, viruses\, external influence\, delays and the like
+ . We deliver and order solely on the basis of our General Terms and Condit
+ ions of Sale and Delivery respectively of Purchase set forth in alink.alpl
+ a.com/GTC<https://alink.alpla.com/GTC>\, which both contain a venue clause
+  and an arbitration clause. Contradictory commercial terms and conditions 
+ shall not apply.\n\nDiese Nachricht ist vertraulich und nur für den Adres
+ saten bestimmt. Falls Sie diese Nachricht irrtümlich erhalten haben\, ver
+ ständigen Sie bitte den Absender und löschen Sie diese Nachricht und all
+ e Anhänge. Danke. Soweit gesetzlich zulässig\, schließt ALPLA jede Haft
+ ung für Schäden aus Übertragungsfehlern\, Viren\, fremden Einflüssen\,
+  Verzögerungen und dergleichen aus.\n\nWir liefern und bestellen ausschli
+ eßlich auf Basis unserer Allgemeinen Geschäftsbedingungen für Verkauf b
+ zw. Einkauf\, welche auf alink.alpla.com/GTC<https://alink.alpla.com/GTC> 
+ zu finden sind. Sämtliche Allgemeinen Geschäftsbedingungen enthalten Bes
+ timmungen hinsichtlich Gerichtsstand und Schiedsgericht. Widersprüchliche
+  Geschäftsbedingungen kommen nicht zur Anwendung.\n
+UID:040000008200E00074C5B7101A82E00800000000E01D5CED26FADB01000000000000000
+ 010000000F72EE0AE845079419EBA8B86A58964CC
+RECURRENCE-ID;TZID=Central European Standard Time:20251022T110000
+SUMMARY;LANGUAGE=en-US:Plant Tour 2.0 - project meeting
+DTSTART;TZID=Central European Standard Time:20251024T100000
+DTEND;TZID=Central European Standard Time:20251024T110000
+CLASS:PUBLIC
+PRIORITY:5
+DTSTAMP:20251021T130500Z
+TRANSP:OPAQUE
+STATUS:CONFIRMED
+SEQUENCE:4
+LOCATION;LANGUAGE=en-US:Microsoft Teams Meeting
+X-MICROSOFT-CDO-APPT-SEQUENCE:4
+X-MICROSOFT-CDO-OWNERAPPTID:-1403684887
+X-MICROSOFT-CDO-BUSYSTATUS:TENTATIVE
+X-MICROSOFT-CDO-INTENDEDSTATUS:BUSY
+X-MICROSOFT-CDO-ALLDAYEVENT:FALSE
+X-MICROSOFT-CDO-IMPORTANCE:1
+X-MICROSOFT-CDO-INSTTYPE:3
+X-MICROSOFT-ONLINEMEETINGINFORMATION:{"OnlineMeetingChannelId":null\,"Onlin
+ eMeetingProvider":3}
+X-MICROSOFT-SKYPETEAMSMEETINGURL:https://teams.microsoft.com/l/meetup-join/
+ 19%3ameeting_MDVjODllNTEtZjc2NS00YWU2LTkxMmUtN2UyMmEwN2UzMDA3%40thread.v2/
+ 0?context=%7b%22Tid%22%3a%22c7241ada-798c-4944-b510-904f91eee0f3%22%2c%22O
+ id%22%3a%22eb2a478e-0dbb-48ee-9e9c-6b18fb422d0c%22%7d
+X-MICROSOFT-SCHEDULINGSERVICEUPDATEURL:https://api.scheduler.teams.microsof
+ t.com/teams/c7241ada-798c-4944-b510-904f91eee0f3/eb2a478e-0dbb-48ee-9e9c-6
+ b18fb422d0c/19_meeting_MDVjODllNTEtZjc2NS00YWU2LTkxMmUtN2UyMmEwN2UzMDA3@th
+ read.v2/0
+X-MICROSOFT-SKYPETEAMSPROPERTIES:{"cid":"19:meeting_MDVjODllNTEtZjc2NS00YWU
+ 2LTkxMmUtN2UyMmEwN2UzMDA3@thread.v2"\,"private":true\,"type":0\,"mid":0\,"
+ rid":0\,"uid":null}
+X-MICROSOFT-DONOTFORWARDMEETING:FALSE
+X-MICROSOFT-DISALLOW-COUNTER:FALSE
+X-MICROSOFT-REQUESTEDATTENDANCEMODE:DEFAULT
+X-MICROSOFT-ISRESPONSEREQUESTED:TRUE
+X-MICROSOFT-LOCATIONS:[ { "DisplayName" : "Microsoft Teams Meeting"\, "Loca
+ tionAnnotation" : ""\, "LocationSource" : 0\, "Unresolved" : false\, "Loca
+ tionUri" : "" } ]
+BEGIN:VALARM
+DESCRIPTION:REMINDER
+TRIGGER;RELATED=START:-PT15M
+ACTION:DISPLAY
+END:VALARM
+END:VEVENT
+END:VCALENDAR
