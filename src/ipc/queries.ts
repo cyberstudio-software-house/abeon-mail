@@ -644,3 +644,55 @@ export function useAllAccountFolders(accounts: Account[]): Map<number, Folder[]>
   });
   return map;
 }
+
+export function useMarkFolderRead() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (folderId: number) => commands.markFolderRead(folderId).then(unwrap),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["messages"] });
+      queryClient.invalidateQueries({ queryKey: ["threads"] });
+      queryClient.invalidateQueries({ queryKey: ["folders"] });
+      queryClient.invalidateQueries({ queryKey: ["smart"] });
+      void commands.refreshUnreadBadge(useUiStore.getState().badgeEnabled);
+    },
+  });
+}
+
+export function useRenameFolder() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ folderId, newName }: { folderId: number; newName: string }) =>
+      commands.renameFolder(folderId, newName).then(unwrap),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["folders"] });
+    },
+  });
+}
+
+export function useCreateSubfolder() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ parentId, name }: { parentId: number; name: string }) =>
+      commands.createSubfolder(parentId, name).then(unwrap),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["folders"] });
+    },
+  });
+}
+
+export function useDeleteFolder() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (folderId: number) => commands.deleteFolder(folderId).then(unwrap),
+    onSuccess: (_data, folderId) => {
+      if (useUiStore.getState().selectedFolderId === folderId) {
+        useUiStore.getState().setSelectedFolderId(null);
+      }
+      queryClient.invalidateQueries({ queryKey: ["folders"] });
+      queryClient.invalidateQueries({ queryKey: ["messages"] });
+      queryClient.invalidateQueries({ queryKey: ["threads"] });
+      queryClient.invalidateQueries({ queryKey: ["smart"] });
+    },
+  });
+}
