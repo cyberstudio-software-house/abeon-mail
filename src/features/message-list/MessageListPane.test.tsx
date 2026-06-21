@@ -6,13 +6,7 @@ const mockOpenComposer = vi.fn();
 const mockSetSelectedThreadId = vi.fn();
 const mockSetSelectedMessageId = vi.fn();
 const mockSetSelectedLabelId = vi.fn();
-const mockToggleSelectionMode = vi.fn();
-const mockToggleMessageSelected = vi.fn();
-const mockClearSelection = vi.fn();
-const mockSelectAll = vi.fn();
-const mockOpenLabelPicker = vi.fn();
 const mockCloseLabelPicker = vi.fn();
-const mockOpenSnoozePicker = vi.fn();
 const mockCloseSnoozePicker = vi.fn();
 
 const mockUnsnooze = { mutate: vi.fn() };
@@ -209,8 +203,6 @@ function setupStore(
       searchQuery,
       searchActive,
       focusSearch: null,
-      selectionActive: false,
-      selectedMessageIds: [],
       selectedRowIds: [],
       selectionAnchorId: null,
       rowAccounts: {},
@@ -247,13 +239,10 @@ function setupStore(
       clearSearch: vi.fn(),
       setFocusSearch: vi.fn(),
       setSelectedLabelId: mockSetSelectedLabelId,
-      toggleSelectionMode: mockToggleSelectionMode,
-      toggleMessageSelected: mockToggleMessageSelected,
-      clearSelection: mockClearSelection,
-      selectAll: mockSelectAll,
-      openLabelPicker: mockOpenLabelPicker,
+      clearSelection: vi.fn(),
+      openLabelPicker: vi.fn(),
       closeLabelPicker: mockCloseLabelPicker,
-      openSnoozePicker: mockOpenSnoozePicker,
+      openSnoozePicker: vi.fn(),
       closeSnoozePicker: mockCloseSnoozePicker,
       defaultAccountId: "",
       timeFormat: "system",

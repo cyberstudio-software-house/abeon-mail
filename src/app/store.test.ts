@@ -220,21 +220,19 @@ describe("labels store slice", () => {
       selectedLabelId: null,
       searchQuery: "",
       searchActive: false,
-      selectionActive: false,
-      selectedMessageIds: [],
       labelPickerOpen: false,
       labelPickerTargetIds: [],
     });
   });
 
   it("setSelectedLabelId clears other views and selection", () => {
-    useUiStore.setState({ selectedSmartFolder: "unread", selectionActive: true, selectedMessageIds: [1, 2] });
+    useUiStore.setState({ selectedSmartFolder: "unread", selectedRowIds: [1, 2], selectionAnchorId: 1 });
     useUiStore.getState().setSelectedLabelId(7);
     const s = useUiStore.getState();
     expect(s.selectedLabelId).toBe(7);
     expect(s.selectedSmartFolder).toBeNull();
-    expect(s.selectionActive).toBe(false);
-    expect(s.selectedMessageIds.length).toBe(0);
+    expect(s.selectedRowIds.length).toBe(0);
+    expect(s.selectionAnchorId).toBeNull();
   });
 
   it("setSelectedLabelId clears a stale selected message", () => {
@@ -247,22 +245,6 @@ describe("labels store slice", () => {
     useUiStore.getState().setSelectedLabelId(7);
     useUiStore.getState().setSelectedSmartFolder("flagged");
     expect(useUiStore.getState().selectedLabelId).toBeNull();
-  });
-
-  it("toggleMessageSelected adds and removes ids", () => {
-    useUiStore.getState().toggleMessageSelected(5);
-    expect(useUiStore.getState().selectedMessageIds).toEqual([5]);
-    useUiStore.getState().toggleMessageSelected(5);
-    expect(useUiStore.getState().selectedMessageIds).toEqual([]);
-  });
-
-  it("toggleSelectionMode off clears selection", () => {
-    useUiStore.getState().toggleSelectionMode();
-    useUiStore.getState().toggleMessageSelected(1);
-    expect(useUiStore.getState().selectionActive).toBe(true);
-    useUiStore.getState().toggleSelectionMode();
-    expect(useUiStore.getState().selectionActive).toBe(false);
-    expect(useUiStore.getState().selectedMessageIds).toEqual([]);
   });
 
   it("openLabelPicker stores target ids", () => {

@@ -68,8 +68,6 @@ export type UiState = {
   searchQuery: string;
   searchActive: boolean;
   focusSearch: (() => void) | null;
-  selectionActive: boolean;
-  selectedMessageIds: number[];
   selectedRowIds: number[];
   selectionAnchorId: number | null;
   rowAccounts: Record<number, number>;
@@ -134,10 +132,7 @@ export type UiState = {
   clearSearch: () => void;
   setFocusSearch: (fn: (() => void) | null) => void;
   setSelectedLabelId: (id: number | null) => void;
-  toggleSelectionMode: () => void;
-  toggleMessageSelected: (id: number) => void;
   clearSelection: () => void;
-  selectAll: (ids: number[]) => void;
   openLabelPicker: (ids: number[]) => void;
   closeLabelPicker: () => void;
   openSnoozePicker: (ids: number[]) => void;
@@ -183,8 +178,6 @@ export const useUiStore = create<UiState>((set) => ({
   searchQuery: "",
   searchActive: false,
   focusSearch: null,
-  selectionActive: false,
-  selectedMessageIds: [],
   selectedRowIds: [],
   selectionAnchorId: null,
   rowAccounts: {},
@@ -294,25 +287,11 @@ export const useUiStore = create<UiState>((set) => ({
       selectedMessageId: null,
       searchQuery: "",
       searchActive: false,
-      selectionActive: false,
-      selectedMessageIds: [],
       selectedRowIds: [],
       selectionAnchorId: null,
     }),
-  toggleSelectionMode: () =>
-    set((s) => ({
-      selectionActive: !s.selectionActive,
-      selectedMessageIds: s.selectionActive ? [] : s.selectedMessageIds,
-    })),
-  toggleMessageSelected: (id) =>
-    set((s) => ({
-      selectedMessageIds: s.selectedMessageIds.includes(id)
-        ? s.selectedMessageIds.filter((x) => x !== id)
-        : [...s.selectedMessageIds, id],
-    })),
   clearSelection: () =>
-    set({ selectionActive: false, selectedMessageIds: [], selectedRowIds: [], selectionAnchorId: null }),
-  selectAll: (ids) => set({ selectionActive: true, selectedMessageIds: ids }),
+    set({ selectedRowIds: [], selectionAnchorId: null }),
   selectRow: (id) =>
     set((s) =>
       s.selectMode === "thread"
