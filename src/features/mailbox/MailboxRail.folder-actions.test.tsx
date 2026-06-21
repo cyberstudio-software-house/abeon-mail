@@ -7,6 +7,7 @@ const renameFolder = vi.fn();
 const deleteFolder = vi.fn();
 const createSubfolder = vi.fn();
 const togglePin = vi.fn();
+const toggleFolderPrefetch = vi.fn();
 
 const accounts: Account[] = [
   { id: 1, email: "a1@x.pl", display_name: "Konto A", provider_type: "imap_password", color: null, position: 1, requires_reauth: false },
@@ -26,6 +27,8 @@ vi.mock("../../ipc/queries", () => ({
   useAllAccountFolders: () => foldersByAccount,
   usePinnedMap: () => ({ data: new Map<number, number[]>() }),
   useTogglePinnedFolder: () => ({ mutate: togglePin }),
+  usePrefetchFoldersMap: () => ({ data: new Map<number, number[]>() }),
+  useToggleFolderPrefetch: () => ({ mutate: toggleFolderPrefetch }),
   useMarkFolderRead: () => ({ mutate: markFolderRead }),
   useRenameFolder: () => ({ mutate: renameFolder }),
   useDeleteFolder: () => ({ mutate: deleteFolder }),
@@ -110,5 +113,13 @@ describe("MailboxRail folder actions", () => {
     fireEvent.click(screen.getByRole("menuitem", { name: "Usuń" }));
     fireEvent.click(screen.getByRole("button", { name: "Usuń folder" }));
     expect(deleteFolder).toHaveBeenCalledWith(11, expect.anything());
+  });
+
+  it("offers an offline-prefetch toggle that calls the mutation", () => {
+    setupStore();
+    render(<MailboxRail />);
+    fireEvent.contextMenu(screen.getByText("Klienci"));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Pobieraj treść offline" }));
+    expect(toggleFolderPrefetch).toHaveBeenCalledWith({ accountId: 1, folderId: 11 });
   });
 });

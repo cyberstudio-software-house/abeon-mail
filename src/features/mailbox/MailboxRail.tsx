@@ -24,6 +24,8 @@ import {
   useAllAccountFolders,
   usePinnedMap,
   useTogglePinnedFolder,
+  usePrefetchFoldersMap,
+  useToggleFolderPrefetch,
   useMarkFolderRead,
   useRenameFolder,
   useDeleteFolder,
@@ -40,6 +42,7 @@ import {
 } from "./folder-tree";
 import type { FolderNode } from "./folder-tree";
 import { selectInboxes, selectPinnedByAccount, isFolderPinned } from "./pinned";
+import { isFolderPrefetched } from "./prefetch";
 import { RailContextMenu } from "./RailContextMenu";
 import { TextInputDialog, ConfirmDialog } from "./RailDialogs";
 import { ErrorToast } from "./ErrorToast";
@@ -191,6 +194,8 @@ export function MailboxRail() {
   const foldersByAccount = useAllAccountFolders(accounts);
   const pinnedMap = usePinnedMap().data ?? new Map<number, number[]>();
   const togglePin = useTogglePinnedFolder();
+  const prefetchMap = usePrefetchFoldersMap().data ?? new Map<number, number[]>();
+  const toggleFolderPrefetch = useToggleFolderPrefetch();
   const markFolderRead = useMarkFolderRead();
   const renameFolder = useRenameFolder();
   const deleteFolder = useDeleteFolder();
@@ -277,6 +282,12 @@ export function MailboxRail() {
       items.push({ label: "Zmień nazwę", onClick: () => setDialog({ kind: "rename", folder }) });
       items.push({ label: "Usuń", onClick: () => setDialog({ kind: "delete", folder }) });
     }
+    const prefetched = isFolderPrefetched(prefetchMap, folder.account_id, folder.id);
+    items.push({
+      label: prefetched ? "Nie pobieraj treści offline" : "Pobieraj treść offline",
+      onClick: () =>
+        toggleFolderPrefetch.mutate({ accountId: folder.account_id, folderId: folder.id }),
+    });
     return items;
   }
 
