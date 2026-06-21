@@ -35,4 +35,11 @@ describe("RailDialogs", () => {
     fireEvent.click(screen.getByRole("button", { name: "Usuń" }));
     expect(onConfirm).toHaveBeenCalledTimes(1);
   });
+
+  it("ConfirmDialog cancels on Escape", () => {
+    const onCancel = vi.fn();
+    render(<ConfirmDialog title="Usuń folder" message="Na pewno?" onConfirm={vi.fn()} onCancel={onCancel} />);
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(onCancel).toHaveBeenCalledTimes(1);
+  });
 });
