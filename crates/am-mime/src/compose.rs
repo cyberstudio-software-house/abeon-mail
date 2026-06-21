@@ -105,6 +105,26 @@ pub fn build_message(msg: &OutgoingMessage) -> Vec<u8> {
     builder.body(body).write_to_vec().unwrap_or_default()
 }
 
+pub fn build_invite_reply(reply: &am_core::meeting::InviteReply) -> Vec<u8> {
+    let from = match &reply.from_name {
+        Some(name) => Address::new_address(Some(name.clone()), reply.from_address.clone()),
+        None => Address::new_address(None::<String>, reply.from_address.clone()),
+    };
+    let text_part = MimePart::new("text/plain", BodyPart::Text(reply.text_body.clone().into()));
+    let cal_part = MimePart::new(
+        "text/calendar; method=REPLY; charset=utf-8",
+        BodyPart::Text(reply.ics.clone().into()),
+    );
+    let body = MimePart::new("multipart/alternative", vec![text_part, cal_part]);
+    MessageBuilder::new()
+        .from(from)
+        .to(reply.to.clone())
+        .subject(reply.subject.clone())
+        .body(body)
+        .write_to_vec()
+        .unwrap_or_default()
+}
+
 #[cfg(test)]
 mod tests {
     use super::build_message;
@@ -188,5 +208,23 @@ mod tests {
         assert!(text.contains("img1"));
         let parsed = mail_parser::MessageParser::default().parse(&bytes).unwrap();
         assert!(parsed.body_html(0).is_some());
+    }
+
+    #[test]
+    fn invite_reply_has_calendar_part_and_headers() {
+        use am_core::meeting::InviteReply;
+        let r = InviteReply {
+            from_address: "me@x.com".into(), from_name: Some("Me".into()),
+            to: "org@x.com".into(), subject: "Accepted: Plant Tour".into(),
+            text_body: "Me has accepted.".into(),
+            ics: "BEGIN:VCALENDAR\r\nMETHOD:REPLY\r\nEND:VCALENDAR\r\n".into(),
+        };
+        let bytes = super::build_invite_reply(&r);
+        let text = String::from_utf8_lossy(&bytes).to_lowercase();
+        assert!(text.contains("text/calendar"));
+        assert!(text.contains("method=reply"));
+        let parsed = mail_parser::MessageParser::default().parse(&bytes).unwrap();
+        assert_eq!(parsed.subject().unwrap(), "Accepted: Plant Tour");
+        assert_eq!(parsed.to().unwrap().first().unwrap().address().unwrap(), "org@x.com");
     }
 }
