@@ -2,6 +2,7 @@ pub mod account;
 pub mod error;
 pub mod folder;
 pub mod label;
+pub mod meeting;
 pub mod message;
 pub mod notification;
 pub mod outgoing;
