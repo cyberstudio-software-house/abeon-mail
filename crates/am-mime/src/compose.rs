@@ -112,7 +112,7 @@ pub fn build_invite_reply(reply: &am_core::meeting::InviteReply) -> Vec<u8> {
     };
     let text_part = MimePart::new("text/plain", BodyPart::Text(reply.text_body.clone().into()));
     let cal_part = MimePart::new(
-        "text/calendar; method=REPLY; charset=utf-8",
+        "text/calendar; method=REPLY",
         BodyPart::Text(reply.ics.clone().into()),
     );
     let body = MimePart::new("multipart/alternative", vec![text_part, cal_part]);
@@ -223,6 +223,11 @@ mod tests {
         let text = String::from_utf8_lossy(&bytes).to_lowercase();
         assert!(text.contains("text/calendar"));
         assert!(text.contains("method=reply"));
+        let cal_line = text
+            .lines()
+            .find(|l| l.contains("text/calendar"))
+            .expect("text/calendar content-type line");
+        assert_eq!(cal_line.matches("charset").count(), 1);
         let parsed = mail_parser::MessageParser::default().parse(&bytes).unwrap();
         assert_eq!(parsed.subject().unwrap(), "Accepted: Plant Tour");
         assert_eq!(parsed.to().unwrap().first().unwrap().address().unwrap(), "org@x.com");
