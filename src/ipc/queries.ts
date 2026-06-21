@@ -482,6 +482,15 @@ export function useDelete() {
   });
 }
 
+export function useMoveToFolder() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ messageIds, targetFolderId }: { messageIds: number[]; targetFolderId: number }) =>
+      commands.moveMessages(messageIds, targetFolderId).then(unwrap),
+    onSuccess: () => invalidateAfterMove(queryClient),
+  });
+}
+
 export function useUndoMove() {
   const queryClient = useQueryClient();
   return useMutation({

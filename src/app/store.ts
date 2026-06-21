@@ -80,8 +80,8 @@ export type UiState = {
   labelPickerTargetIds: number[];
   snoozePickerOpen: boolean;
   snoozePickerTargetIds: number[];
-  undoToast: { kind: "archive" | "delete"; messageIds: number[] } | null;
-  showUndoToast: (kind: "archive" | "delete", messageIds: number[]) => void;
+  undoToast: { kind: "archive" | "delete" | "move"; messageIds: number[] } | null;
+  showUndoToast: (kind: "archive" | "delete" | "move", messageIds: number[]) => void;
   clearUndoToast: () => void;
   errorToast: string | null;
   showErrorToast: (message: string) => void;

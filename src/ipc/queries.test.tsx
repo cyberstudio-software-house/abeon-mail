@@ -21,6 +21,8 @@ vi.mock("./bindings", () => ({
     deleteLabel: vi.fn(),
     setMessageLabels: vi.fn(),
     threadForMessage: vi.fn(),
+    moveMessages: vi.fn(),
+    refreshUnreadBadge: vi.fn(),
   },
   events: {
     syncProgress: { listen: vi.fn() },
@@ -38,6 +40,7 @@ import {
   useDeleteLabel,
   useSetMessageLabels,
   useThreadForMessage,
+  useMoveToFolder,
 } from "./queries";
 
 function wrapper({ children }: { children: React.ReactNode }) {
@@ -202,5 +205,20 @@ describe("label hooks", () => {
     expect(vi.mocked(commands.setMessageLabels)).toHaveBeenCalledWith(1, [10, 20], true);
     expect(spy).toHaveBeenCalledWith(expect.objectContaining({ queryKey: ["labels-for-messages"] }));
     expect(spy).toHaveBeenCalledWith(expect.objectContaining({ queryKey: ["messages-by-label"] }));
+  });
+
+  it("useMoveToFolder calls moveMessages and invalidates threads", async () => {
+    vi.mocked(commands.moveMessages).mockResolvedValue({ status: "ok", data: null });
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const invalidate = vi.spyOn(qc, "invalidateQueries");
+    const qcWrapper = ({ children }: { children: React.ReactNode }) => (
+      <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+    );
+    const { result } = renderHook(() => useMoveToFolder(), { wrapper: qcWrapper });
+    result.current.mutate({ messageIds: [10, 20], targetFolderId: 7 });
+    await waitFor(() => expect(commands.moveMessages).toHaveBeenCalledWith([10, 20], 7));
+    await waitFor(() =>
+      expect(invalidate).toHaveBeenCalledWith({ queryKey: ["threads"] })
+    );
   });
 });

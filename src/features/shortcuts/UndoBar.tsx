@@ -18,7 +18,7 @@ export function UndoBar() {
 
   if (!toast) return null;
 
-  const label = toast.kind === "archive" ? "Archived" : "Deleted";
+  const label = toast.kind === "archive" ? "Archived" : toast.kind === "move" ? "Moved" : "Deleted";
 
   function onUndo() {
     if (!toast) return;
