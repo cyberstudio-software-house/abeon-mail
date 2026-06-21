@@ -9,7 +9,13 @@ import {
   useAccountEndpoints,
   useImageAutoload,
   useSetImageAutoload,
+  useAccountPrefetch,
+  useSetAccountPrefetch,
+  usePrefetchFoldersMap,
+  useToggleFolderPrefetch,
+  useFolders,
 } from "../../ipc/queries";
+import { isFolderPrefetched } from "../mailbox/prefetch";
 import { Avatar } from "../../shared/appearance/Avatar";
 import { AddAccountWizard } from "../accounts/AddAccountWizard";
 import type { Account, Endpoints } from "../../ipc/bindings";
@@ -186,6 +192,53 @@ function AccountImageToggle({ accountId, email }: { accountId: number; email: st
   );
 }
 
+function AccountPrefetchControls({ accountId, email }: { accountId: number; email: string }) {
+  const { data: enabled = false } = useAccountPrefetch(accountId);
+  const setEnabled = useSetAccountPrefetch();
+  const { data: folders = [] } = useFolders(accountId);
+  const prefetchMap = usePrefetchFoldersMap().data ?? new Map<number, number[]>();
+  const toggleFolder = useToggleFolderPrefetch();
+
+  return (
+    <div className="appearance-toggle accounts-settings__images">
+      <div className="appearance-toggle__text">
+        <div className="appearance-toggle__label">Download message bodies for offline</div>
+        <div className="appearance-toggle__hint">
+          Bodies for the selected folders download in the background after headers
+        </div>
+      </div>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={enabled}
+        aria-label={`Download message bodies for offline for ${email}`}
+        className={`switch${enabled ? " switch--on" : ""}`}
+        onClick={() => setEnabled.mutate({ accountId, value: !enabled })}
+      >
+        <span className="switch__knob" />
+      </button>
+
+      {enabled && (
+        <ul className="accounts-settings__prefetch-folders">
+          {folders.map((folder) => (
+            <li key={folder.id}>
+              <label className="accounts-settings__check">
+                <input
+                  type="checkbox"
+                  aria-label={`Prefetch ${folder.name}`}
+                  checked={isFolderPrefetched(prefetchMap, accountId, folder.id)}
+                  onChange={() => toggleFolder.mutate({ accountId, folderId: folder.id })}
+                />
+                <span>{folder.name}</span>
+              </label>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 export function AccountsSection() {
   const { data: accounts = [] } = useAccounts();
   const reorderAccounts = useReorderAccounts();
@@ -265,6 +318,7 @@ export function AccountsSection() {
             </div>
 
             <AccountImageToggle accountId={account.id} email={account.email} />
+            <AccountPrefetchControls accountId={account.id} email={account.email} />
 
             {editingId === account.id && (
               <AccountEditForm account={account} onClose={() => setEditingId(null)} />

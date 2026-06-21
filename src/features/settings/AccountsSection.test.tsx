@@ -41,6 +41,7 @@ vi.mock("../../ipc/bindings", () => ({
     beginReauth: vi.fn().mockResolvedValue({ status: "ok", data: null }),
     getSettings: vi.fn().mockResolvedValue({ status: "ok", data: [] }),
     setSetting: vi.fn().mockResolvedValue({ status: "ok", data: null }),
+    listFolders: vi.fn().mockResolvedValue({ status: "ok", data: [] }),
   },
 }));
 
@@ -105,5 +106,13 @@ describe("AccountsSection", () => {
     const { findByText } = wrap();
     fireEvent.click(await findByText("⚠ Reconnect"));
     await waitFor(() => expect(commands.beginReauth).toHaveBeenCalledWith(2));
+  });
+
+  it("renders the offline-prefetch master switch", async () => {
+    const { findAllByRole } = wrap();
+    const switches = await findAllByRole("switch", {
+      name: /Download message bodies for offline/i,
+    });
+    expect(switches.length).toBe(2);
   });
 });
