@@ -376,6 +376,51 @@ pub fn archive_messages(
 
 #[tauri::command]
 #[specta::specta]
+pub fn mark_folder_read(state: tauri::State<'_, AppState>, folder_id: i64) -> Result<(), String> {
+    am_sync::service::enqueue_mark_folder_read(&state.db, folder_id)
+        .map_err(|_| "Failed to mark folder read".to_string())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn rename_folder(
+    state: tauri::State<'_, AppState>,
+    folder_id: i64,
+    new_name: String,
+) -> Result<(), String> {
+    let db = Arc::clone(&state.db);
+    let creds = Arc::clone(&state.creds);
+    am_sync::service::rename_folder(&db, folder_id, &new_name, creds.as_ref())
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn delete_folder(state: tauri::State<'_, AppState>, folder_id: i64) -> Result<(), String> {
+    let db = Arc::clone(&state.db);
+    let creds = Arc::clone(&state.creds);
+    am_sync::service::delete_folder(&db, folder_id, creds.as_ref())
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn create_subfolder(
+    state: tauri::State<'_, AppState>,
+    parent_folder_id: i64,
+    name: String,
+) -> Result<(), String> {
+    let db = Arc::clone(&state.db);
+    let creds = Arc::clone(&state.creds);
+    am_sync::service::create_subfolder(&db, parent_folder_id, &name, creds.as_ref())
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+#[specta::specta]
 pub fn delete_messages(
     state: tauri::State<'_, AppState>,
     message_ids: Vec<i64>,
