@@ -8,6 +8,7 @@ import {
   prefetchFoldersKey,
   togglePrefetchedIds,
   prefetchBodiesKey,
+  parseAccountPrefetch,
 } from "../features/mailbox/prefetch";
 
 type ResultOk<T> = { status: "ok"; data: T };
@@ -664,11 +665,7 @@ export function useAccountPrefetch(accountId: number | null) {
   return useQuery({
     queryKey: ["prefetch-bodies", accountId],
     queryFn: () =>
-      commands.getSettings().then(unwrap).then((all) => {
-        const key = prefetchBodiesKey(accountId as number);
-        const found = all.find(([k]) => k === key);
-        return found ? found[1] === "true" : false;
-      }),
+      commands.getSettings().then(unwrap).then((all) => parseAccountPrefetch(all, accountId as number)),
     enabled: accountId != null,
   });
 }
