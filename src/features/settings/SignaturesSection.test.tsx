@@ -14,13 +14,7 @@ vi.mock("../../ipc/bindings", () => ({
         { id: 8, email: "other@example.com", display_name: "Other", provider_type: "imap_password", color: null, position: 1, requires_reauth: false },
       ],
     }),
-    listSignatures: vi.fn().mockResolvedValue({
-      status: "ok",
-      data: [
-        { id: 1, name: "Work", html: "<p>BR</p>", is_default: true, is_html: false },
-        { id: 2, name: "Casual", html: "<p>Cheers</p>", is_default: false, is_html: false },
-      ],
-    }),
+    listSignatures: vi.fn(),
     createSignature: vi.fn().mockResolvedValue({ status: "ok", data: { id: 3, name: "New", html: "<p></p>", is_default: false } }),
     updateSignature: vi.fn().mockResolvedValue({ status: "ok", data: null }),
     setDefaultSignature: vi.fn().mockResolvedValue({ status: "ok", data: null }),
