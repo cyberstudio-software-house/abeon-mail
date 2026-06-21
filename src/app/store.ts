@@ -70,6 +70,12 @@ export type UiState = {
   focusSearch: (() => void) | null;
   selectionActive: boolean;
   selectedMessageIds: number[];
+  selectedRowIds: number[];
+  selectionAnchorId: number | null;
+  rowAccounts: Record<number, number>;
+  selectRow: (id: number) => void;
+  toggleRow: (id: number) => void;
+  selectRangeTo: (id: number) => void;
   labelPickerOpen: boolean;
   labelPickerTargetIds: number[];
   snoozePickerOpen: boolean;
@@ -108,7 +114,7 @@ export type UiState = {
   closeSettings: () => void;
   openComposer: (draftId: number | null, prefill?: OutgoingMessage | null) => void;
   closeComposer: () => void;
-  setListContext: (ids: number[], mode: "thread" | "message") => void;
+  setListContext: (ids: number[], mode: "thread" | "message", accounts?: Record<number, number>) => void;
   setReplyTargetId: (id: number | null) => void;
   setComposerSend: (fn: (() => void) | null) => void;
   togglePalette: () => void;
@@ -174,6 +180,9 @@ export const useUiStore = create<UiState>((set) => ({
   focusSearch: null,
   selectionActive: false,
   selectedMessageIds: [],
+  selectedRowIds: [],
+  selectionAnchorId: null,
+  rowAccounts: {},
   labelPickerOpen: false,
   labelPickerTargetIds: [],
   snoozePickerOpen: false,
@@ -185,11 +194,13 @@ export const useUiStore = create<UiState>((set) => ({
   showErrorToast: (message) => set({ errorToast: message }),
   clearErrorToast: () => set({ errorToast: null }),
   setSelectedAccountId: (id) =>
-    set({ selectedAccountId: id, selectedSmartFolder: null, selectedLabelId: null, selectedMessageId: null, searchQuery: "", searchActive: false }),
+    set({ selectedAccountId: id, selectedSmartFolder: null, selectedLabelId: null, selectedMessageId: null, searchQuery: "", searchActive: false, selectedRowIds: [], selectionAnchorId: null }),
   setSelectedFolderId: (id) =>
-    set({ selectedFolderId: id, selectedSmartFolder: null, selectedLabelId: null, selectedMessageId: null, searchQuery: "", searchActive: false }),
-  setSelectedMessageId: (id) => set({ selectedMessageId: id }),
-  setSelectedThreadId: (id) => set({ selectedThreadId: id }),
+    set({ selectedFolderId: id, selectedSmartFolder: null, selectedLabelId: null, selectedMessageId: null, searchQuery: "", searchActive: false, selectedRowIds: [], selectionAnchorId: null }),
+  setSelectedMessageId: (id) =>
+    set({ selectedMessageId: id, selectedRowIds: id == null ? [] : [id], selectionAnchorId: id }),
+  setSelectedThreadId: (id) =>
+    set({ selectedThreadId: id, selectedRowIds: id == null ? [] : [id], selectionAnchorId: id }),
   setSelectedSmartFolder: (kind) =>
     set({
       selectedSmartFolder: kind,
@@ -200,6 +211,8 @@ export const useUiStore = create<UiState>((set) => ({
       selectedMessageId: null,
       searchQuery: "",
       searchActive: false,
+      selectedRowIds: [],
+      selectionAnchorId: null,
     }),
   setTheme: (theme) => set({ theme }),
   setAccent: (accent) => set({ accent }),
@@ -234,7 +247,8 @@ export const useUiStore = create<UiState>((set) => ({
     set({ composer: { open: true, draftId, prefill } }),
   closeComposer: () =>
     set({ composer: { open: false, draftId: null, prefill: null } }),
-  setListContext: (ids, mode) => set({ visibleMessageIds: ids, selectMode: mode }),
+  setListContext: (ids, mode, accounts = {}) =>
+    set({ visibleMessageIds: ids, selectMode: mode, rowAccounts: accounts }),
   setReplyTargetId: (id) => set({ replyTargetId: id }),
   setComposerSend: (fn) => set({ composerSend: fn }),
   togglePalette: () => set((s) => ({ paletteOpen: !s.paletteOpen })),
@@ -255,8 +269,8 @@ export const useUiStore = create<UiState>((set) => ({
       shortcutProfile: partial.profile ?? s.shortcutProfile,
       shortcutOverrides: partial.overrides ?? s.shortcutOverrides,
     })),
-  setSearchQuery: (q) => set({ searchQuery: q, searchActive: q.trim().length > 0, selectedLabelId: null }),
-  clearSearch: () => set({ searchQuery: "", searchActive: false }),
+  setSearchQuery: (q) => set({ searchQuery: q, searchActive: q.trim().length > 0, selectedLabelId: null, selectedRowIds: [], selectionAnchorId: null }),
+  clearSearch: () => set({ searchQuery: "", searchActive: false, selectedRowIds: [], selectionAnchorId: null }),
   setFocusSearch: (fn) => set({ focusSearch: fn }),
   setSelectedLabelId: (id) =>
     set({
@@ -270,6 +284,8 @@ export const useUiStore = create<UiState>((set) => ({
       searchActive: false,
       selectionActive: false,
       selectedMessageIds: [],
+      selectedRowIds: [],
+      selectionAnchorId: null,
     }),
   toggleSelectionMode: () =>
     set((s) => ({
@@ -282,8 +298,47 @@ export const useUiStore = create<UiState>((set) => ({
         ? s.selectedMessageIds.filter((x) => x !== id)
         : [...s.selectedMessageIds, id],
     })),
-  clearSelection: () => set({ selectionActive: false, selectedMessageIds: [] }),
+  clearSelection: () =>
+    set({ selectionActive: false, selectedMessageIds: [], selectedRowIds: [], selectionAnchorId: null }),
   selectAll: (ids) => set({ selectionActive: true, selectedMessageIds: ids }),
+  selectRow: (id) =>
+    set((s) =>
+      s.selectMode === "thread"
+        ? { selectedThreadId: id, selectedRowIds: [id], selectionAnchorId: id }
+        : { selectedMessageId: id, selectedRowIds: [id], selectionAnchorId: id }
+    ),
+  toggleRow: (id) =>
+    set((s) => {
+      const has = s.selectedRowIds.includes(id);
+      const next = has ? s.selectedRowIds.filter((x) => x !== id) : [...s.selectedRowIds, id];
+      if (next.length === 1) {
+        return s.selectMode === "thread"
+          ? { selectedRowIds: next, selectionAnchorId: id, selectedThreadId: next[0] }
+          : { selectedRowIds: next, selectionAnchorId: id, selectedMessageId: next[0] };
+      }
+      if (next.length === 0) {
+        return { selectedRowIds: next, selectionAnchorId: null, selectedThreadId: null, selectedMessageId: null };
+      }
+      return { selectedRowIds: next, selectionAnchorId: id };
+    }),
+  selectRangeTo: (id) =>
+    set((s) => {
+      const ids = s.visibleMessageIds;
+      const anchor = s.selectionAnchorId ?? id;
+      const i = ids.indexOf(anchor);
+      const j = ids.indexOf(id);
+      if (i === -1 || j === -1) {
+        return { selectedRowIds: [id], selectionAnchorId: id };
+      }
+      const [lo, hi] = i <= j ? [i, j] : [j, i];
+      const range = ids.slice(lo, hi + 1);
+      if (range.length === 1) {
+        return s.selectMode === "thread"
+          ? { selectedRowIds: range, selectedThreadId: range[0] }
+          : { selectedRowIds: range, selectedMessageId: range[0] };
+      }
+      return { selectedRowIds: range };
+    }),
   openLabelPicker: (ids) => set({ labelPickerOpen: true, labelPickerTargetIds: ids }),
   closeLabelPicker: () => set({ labelPickerOpen: false, labelPickerTargetIds: [] }),
   openSnoozePicker: (ids) => set({ snoozePickerOpen: true, snoozePickerTargetIds: ids }),
