@@ -7,6 +7,7 @@ import { useSyncEvents } from "./events";
 
 const h = vi.hoisted(() => ({
   newMessagesCb: null as ((e: { payload: { account_id: number; folder_id: number; count: number } }) => void) | null,
+  prefetchProgressCb: null as ((e: { payload: { account_id: number; done: number; total: number } }) => void) | null,
   sendNotification: vi.fn(),
   isFocused: vi.fn(),
   isPermissionGranted: vi.fn(),
@@ -30,6 +31,12 @@ vi.mock("./bindings", () => ({
     mailboxChanged: { listen: vi.fn().mockResolvedValue(() => {}) },
     accountAuthChanged: { listen: vi.fn().mockResolvedValue(() => {}) },
     snoozeWoke: { listen: vi.fn().mockResolvedValue(() => {}) },
+    prefetchProgress: {
+      listen: vi.fn((cb) => {
+        h.prefetchProgressCb = cb;
+        return Promise.resolve(() => {});
+      }),
+    },
     sendFailed: { listen: vi.fn().mockResolvedValue(() => {}) },
   },
 }));
@@ -52,6 +59,7 @@ describe("useSyncEvents notifications", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     h.newMessagesCb = null;
+    h.prefetchProgressCb = null;
     h.isFocused.mockResolvedValue(false);
     h.isPermissionGranted.mockResolvedValue(true);
     h.buildNewMailNotification.mockResolvedValue({ status: "ok", data: { title: "Alice", body: "Hi" } });
@@ -86,5 +94,15 @@ describe("useSyncEvents notifications", () => {
     await waitFor(() => expect(h.refreshUnreadBadge).toHaveBeenCalled());
     expect(h.buildNewMailNotification).not.toHaveBeenCalled();
     expect(h.sendNotification).not.toHaveBeenCalled();
+  });
+
+  it("records prefetch progress into the store", async () => {
+    useUiStore.setState({ prefetchProgress: {} });
+    renderHook(() => useSyncEvents(), { wrapper });
+    await waitFor(() => expect(h.prefetchProgressCb).not.toBeNull());
+    h.prefetchProgressCb!({ payload: { account_id: 1, done: 4, total: 10 } });
+    await waitFor(() =>
+      expect(useUiStore.getState().prefetchProgress[1]).toEqual({ done: 4, total: 10 }),
+    );
   });
 });

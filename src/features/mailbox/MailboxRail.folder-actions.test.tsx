@@ -51,6 +51,7 @@ function setupStore() {
       selectedLabelId: null,
       searchQuery: "",
       errorToast: null,
+      prefetchProgress: {},
       setSelectedAccountId: vi.fn(),
       setSelectedFolderId: vi.fn(),
       setSelectedSmartFolder: vi.fn(),

@@ -177,6 +177,8 @@ function setupStore(
       showAvatars: true,
       notificationsEnabled: true,
       badgeEnabled: true,
+      prefetchProgress: {},
+      setPrefetchProgress: vi.fn(),
       composer: { open: false, draftId: null, prefill: null },
       setSelectedAccountId: vi.fn(),
       setSelectedFolderId: vi.fn(),

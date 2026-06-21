@@ -181,6 +181,7 @@ export function MailboxRail() {
   const setSelectedLabelId = useUiStore((s) => s.setSelectedLabelId);
   const openLabelPicker = useUiStore((s) => s.openLabelPicker);
   const openSettings = useUiStore((s) => s.openSettings);
+  const prefetchProgress = useUiStore((s) => s.prefetchProgress);
   const showErrorToast = useUiStore((s) => s.showErrorToast);
   const searchQuery = useUiStore((s) => s.searchQuery);
   const setSearchQuery = useUiStore((s) => s.setSearchQuery);
@@ -476,6 +477,13 @@ export function MailboxRail() {
       </nav>
 
       <footer className="rail__footer">
+        {headerAccount && prefetchProgress[headerAccount.id] &&
+          prefetchProgress[headerAccount.id].done < prefetchProgress[headerAccount.id].total && (
+            <div className="rail__prefetch-status" role="status">
+              Downloading bodies: {prefetchProgress[headerAccount.id].done} /{" "}
+              {prefetchProgress[headerAccount.id].total}
+            </div>
+          )}
         <button
           type="button"
           className="rail__settings"

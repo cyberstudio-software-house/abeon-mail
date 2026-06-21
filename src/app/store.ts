@@ -43,6 +43,8 @@ export type UiState = {
   showAvatars: boolean;
   notificationsEnabled: boolean;
   badgeEnabled: boolean;
+  prefetchProgress: Record<number, { done: number; total: number }>;
+  setPrefetchProgress: (accountId: number, done: number, total: number) => void;
   defaultAccountId: string;
   timeFormat: TimeFormat;
   markReadMode: MarkReadMode;
@@ -146,6 +148,7 @@ export const useUiStore = create<UiState>((set) => ({
   showAvatars: DEFAULT_APPEARANCE.showAvatars,
   notificationsEnabled: DEFAULT_NOTIFICATIONS.notificationsEnabled,
   badgeEnabled: DEFAULT_NOTIFICATIONS.badgeEnabled,
+  prefetchProgress: {},
   defaultAccountId: DEFAULT_GENERAL.defaultAccountId,
   timeFormat: DEFAULT_GENERAL.timeFormat,
   markReadMode: DEFAULT_GENERAL.markReadMode,
@@ -206,6 +209,8 @@ export const useUiStore = create<UiState>((set) => ({
   hydrateAppearance: (partial) => set(partial),
   setNotificationsEnabled: (notificationsEnabled) => set({ notificationsEnabled }),
   setBadgeEnabled: (badgeEnabled) => set({ badgeEnabled }),
+  setPrefetchProgress: (accountId, done, total) =>
+    set((s) => ({ prefetchProgress: { ...s.prefetchProgress, [accountId]: { done, total } } })),
   hydrateNotifications: (partial) => set(partial),
   setDefaultAccountId: (defaultAccountId) => set({ defaultAccountId }),
   setTimeFormat: (timeFormat) => set({ timeFormat }),

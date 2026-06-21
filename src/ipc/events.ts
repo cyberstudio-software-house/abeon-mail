@@ -58,6 +58,12 @@ export function useSyncEvents() {
       void commands.refreshUnreadBadge(useUiStore.getState().badgeEnabled);
     });
 
+    const prefetchPromise = events.prefetchProgress.listen((event) => {
+      const { account_id, done, total } = event.payload;
+      useUiStore.getState().setPrefetchProgress(account_id, done, total);
+      queryClient.invalidateQueries({ queryKey: ["messages"] });
+    });
+
     const sendFailedPromise = events.sendFailed.listen(async (event) => {
       queryClient.invalidateQueries({ queryKey: ["sendErrors"] });
       if (await isPermissionGranted()) {
@@ -74,6 +80,7 @@ export function useSyncEvents() {
       mailboxPromise.then((unlisten) => unlisten());
       authChangedPromise.then((unlisten) => unlisten());
       snoozeWokePromise.then((unlisten) => unlisten());
+      prefetchPromise.then((unlisten) => unlisten());
       sendFailedPromise.then((unlisten) => unlisten());
     };
   }, [queryClient]);
