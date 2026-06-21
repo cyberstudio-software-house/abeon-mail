@@ -40,6 +40,8 @@ impl MoveTarget {
 }
 
 const INITIAL_SYNC_LIMIT: u32 = 200;
+const BACKFILL_BATCH: usize = 200;
+const BODY_BATCH: i64 = 20;
 const INBOX_PATH: &str = "INBOX";
 
 pub fn now_secs() -> i64 {
@@ -557,6 +559,7 @@ pub async fn incremental_sync_folder(
 
     if markers.uidvalidity != Some(state.uidvalidity) {
         messages_repo::delete_by_folder(db, folder_id)?;
+        folders_repo::set_backfill_complete(db, folder_id, false)?;
         let fetched = session.fetch_recent_headers(INITIAL_SYNC_LIMIT).await?;
         session.logout().await?;
         let headers: Vec<NewMessageHeader> = fetched.iter().map(header_from_fetch).collect();
@@ -614,6 +617,83 @@ pub async fn incremental_sync_folder(
     }
     sink.emit(SyncEvent::MailboxChanged { account_id, folder_id });
     Ok(())
+}
+
+pub async fn run_prefetch_batch(
+    db: &Database,
+    account_id: i64,
+    creds: &dyn CredentialSource,
+    sink: &dyn SyncEventSink,
+) -> Result<bool, SyncError> {
+    let enabled = crate::prefetch::is_enabled(
+        am_storage::settings_repo::get_setting(db, &format!("prefetch.bodies.{account_id}"))?,
+    );
+    if !enabled {
+        return Ok(false);
+    }
+    let selected = crate::prefetch::parse_folder_ids(
+        am_storage::settings_repo::get_setting(db, &format!("prefetch.folders.{account_id}"))?,
+    );
+    if selected.is_empty() {
+        return Ok(false);
+    }
+
+    let account = accounts_repo::get_account(db, account_id)?;
+    let endpoints = load_endpoints(db, account_id)?;
+    let auth = creds.auth_for(&account).await?;
+    let config = imap_config(&endpoints, &account.email);
+    let mut session = ImapSession::connect(&config, &auth.to_imap()).await?;
+
+    let mut did_work = false;
+    for folder_id in selected {
+        let folder = match folders_repo::get_folder(db, folder_id) {
+            Ok(f) => f,
+            Err(_) => continue,
+        };
+        if session.select(&folder.remote_path).await.is_err() {
+            continue;
+        }
+
+        if !folders_repo::get_backfill_complete(db, folder_id)? {
+            let server_uids = session.search_all_uids().await?;
+            let local_uids = messages_repo::list_uids(db, folder_id)?;
+            let missing = crate::prefetch::missing_uids(&local_uids, &server_uids);
+            if missing.is_empty() {
+                folders_repo::set_backfill_complete(db, folder_id, true)?;
+            } else {
+                let batch: Vec<i64> = missing.into_iter().take(BACKFILL_BATCH).collect();
+                let fetched = session.fetch_headers_by_uids(&batch).await?;
+                let headers: Vec<NewMessageHeader> = fetched.iter().map(header_from_fetch).collect();
+                messages_repo::insert_headers(db, folder_id, &headers)?;
+                assign_threads(db, account_id)?;
+                did_work = true;
+            }
+        }
+
+        let pending = messages_repo::uids_without_body(db, folder_id, BODY_BATCH)?;
+        if !pending.is_empty() {
+            let uids: Vec<i64> = pending.iter().map(|(_, uid)| *uid).collect();
+            let bodies = session.fetch_bodies(&uids).await?;
+            let by_uid: std::collections::HashMap<i64, Vec<u8>> = bodies.into_iter().collect();
+            for (message_id, uid) in &pending {
+                if let Some(raw) = by_uid.get(uid) {
+                    let _ = persist_body(db, *message_id, raw);
+                }
+            }
+            did_work = true;
+        }
+
+        let total = messages_repo::count_by_folder(db, folder_id)?;
+        let remaining = messages_repo::count_without_body(db, folder_id)?;
+        sink.emit(SyncEvent::PrefetchProgress {
+            account_id,
+            done: total - remaining,
+            total,
+        });
+    }
+
+    let _ = session.logout().await;
+    Ok(did_work)
 }
 
 pub fn apply_rules_to_messages(

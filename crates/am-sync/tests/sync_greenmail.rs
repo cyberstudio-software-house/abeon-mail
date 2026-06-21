@@ -375,3 +375,82 @@ async fn archive_moves_message_out_of_inbox() {
     let archive_after = messages_repo::list_by_folder(&db, archive.id, 50, 0, i64::MAX).unwrap();
     assert_eq!(archive_after.len(), 1);
 }
+
+#[tokio::test]
+async fn prefetch_downloads_bodies_without_marking_seen() {
+    if !docker_available() {
+        eprintln!("docker is not available; skipping greenmail prefetch integration test");
+        return;
+    }
+
+    install_in_mem_builder();
+
+    let image = GenericImage::new("greenmail/standalone", "latest")
+        .with_wait_for(WaitFor::message_on_stdout("Starting GreenMail standalone"))
+        .with_exposed_port(ContainerPort::Tcp(IMAP_PORT))
+        .with_env_var(
+            "GREENMAIL_OPTS",
+            "-Dgreenmail.setup.test.all -Dgreenmail.auth.disabled -Dgreenmail.verbose -Dgreenmail.hostname=0.0.0.0",
+        );
+
+    let container = image.start().await.expect("failed to start greenmail container");
+    let mapped_port = container
+        .get_host_port_ipv4(ContainerPort::Tcp(IMAP_PORT))
+        .await
+        .expect("failed to get mapped imap port");
+
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    seed_inbox_only(mapped_port).await;
+
+    let endpoints = Endpoints {
+        imap_host: "127.0.0.1".to_string(),
+        imap_port: mapped_port,
+        imap_tls: false,
+        smtp_host: "127.0.0.1".to_string(),
+        smtp_port: 0,
+        smtp_tls: false,
+    };
+    let db = Database::open_in_memory().expect("db open failed");
+    let account = service::add_account(&db, AddAccountInput {
+        email: USER.to_string(),
+        display_name: "Sync User".to_string(),
+        password: PASSWORD.to_string(),
+        endpoints,
+    }).await.expect("add_account failed");
+
+    let inbox = folders_repo::find_by_type(&db, account.id, FolderType::Inbox)
+        .unwrap()
+        .expect("inbox folder missing");
+
+    assert_eq!(messages_repo::count_without_body(&db, inbox.id).unwrap(), 3);
+
+    am_storage::settings_repo::set_setting(&db, &format!("prefetch.bodies.{}", account.id), "true").unwrap();
+    am_storage::settings_repo::set_setting(
+        &db,
+        &format!("prefetch.folders.{}", account.id),
+        &format!("[{}]", inbox.id),
+    ).unwrap();
+
+    let creds = am_sync::auth::KeychainCredentialSource::new();
+    let sink = am_sync::events::NoopSink;
+    let worked = service::run_prefetch_batch(&db, account.id, creds.as_ref(), &sink)
+        .await
+        .expect("run_prefetch_batch failed");
+    assert!(worked, "prefetch should have done work");
+
+    assert_eq!(messages_repo::count_without_body(&db, inbox.id).unwrap(), 0);
+    assert!(folders_repo::get_backfill_complete(&db, inbox.id).unwrap());
+    let headers = messages_repo::list_by_folder(&db, inbox.id, 50, 0, i64::MAX).unwrap();
+    for h in &headers {
+        assert!(service::get_or_fetch_body(&db, h.id, creds.as_ref()).await.unwrap().text_plain.is_some());
+    }
+
+    service::incremental_sync_folder(&db, account.id, inbox.id, creds.as_ref(), &sink)
+        .await
+        .expect("incremental sync failed");
+    let after = messages_repo::list_by_folder(&db, inbox.id, 50, 0, i64::MAX).unwrap();
+    assert!(after.iter().all(|h| !h.seen), "prefetch must not mark messages seen");
+
+    am_storage::settings_repo::set_setting(&db, &format!("prefetch.bodies.{}", account.id), "false").unwrap();
+    assert!(!service::run_prefetch_batch(&db, account.id, creds.as_ref(), &sink).await.unwrap());
+}
