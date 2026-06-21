@@ -5,6 +5,7 @@ pub mod drafts_repo;
 pub mod folders_repo;
 pub mod labels_repo;
 pub mod maintenance;
+pub mod meeting_responses_repo;
 pub mod messages_repo;
 pub mod notifications_repo;
 pub mod queue_repo;
