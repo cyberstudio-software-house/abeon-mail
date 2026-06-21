@@ -3,6 +3,12 @@ import { commands } from "./bindings";
 import type { Account, Endpoints, Folder, Label, MessageFlag, OutgoingMessage, Rule, RuleInput, SendError, Signature, SmartFolderKind, SmartMessageRow } from "./bindings";
 import { useUiStore } from "../app/store";
 import { parsePinnedMap, pinKey, togglePinnedIds } from "../features/mailbox/pinned";
+import {
+  parsePrefetchFoldersMap,
+  prefetchFoldersKey,
+  togglePrefetchedIds,
+  prefetchBodiesKey,
+} from "../features/mailbox/prefetch";
 
 type ResultOk<T> = { status: "ok"; data: T };
 type ResultErr = { status: "error"; error: string };
@@ -626,6 +632,53 @@ export function useTogglePinnedFolder() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["pinned-folders"] });
+    },
+  });
+}
+
+export function usePrefetchFoldersMap() {
+  return useQuery({
+    queryKey: ["prefetch-folders"],
+    queryFn: () =>
+      commands.getSettings().then(unwrap).then((all) => parsePrefetchFoldersMap(all)),
+  });
+}
+
+export function useToggleFolderPrefetch() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ accountId, folderId }: { accountId: number; folderId: number }) => {
+      const all = await commands.getSettings().then(unwrap);
+      const current = parsePrefetchFoldersMap(all).get(accountId) ?? [];
+      const next = togglePrefetchedIds(current, folderId);
+      await commands.setSetting(prefetchFoldersKey(accountId), JSON.stringify(next)).then(unwrap);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["prefetch-folders"] });
+    },
+  });
+}
+
+export function useAccountPrefetch(accountId: number | null) {
+  return useQuery({
+    queryKey: ["prefetch-bodies", accountId],
+    queryFn: () =>
+      commands.getSettings().then(unwrap).then((all) => {
+        const key = prefetchBodiesKey(accountId as number);
+        const found = all.find(([k]) => k === key);
+        return found ? found[1] === "true" : false;
+      }),
+    enabled: accountId != null,
+  });
+}
+
+export function useSetAccountPrefetch() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ accountId, value }: { accountId: number; value: boolean }) =>
+      commands.setSetting(prefetchBodiesKey(accountId), value ? "true" : "false").then(unwrap),
+    onSuccess: (_data, { accountId }) => {
+      queryClient.invalidateQueries({ queryKey: ["prefetch-bodies", accountId] });
     },
   });
 }
