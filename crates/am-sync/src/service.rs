@@ -490,6 +490,21 @@ pub async fn get_or_fetch_body(db: &Database, message_id: i64, creds: &dyn Crede
     }
 }
 
+pub(crate) fn persist_body(db: &Database, message_id: i64, raw: &[u8]) -> Result<MessageBody, SyncError> {
+    let parsed = am_mime::parse::parse_message(raw);
+    let body = MessageBody {
+        message_id,
+        text_plain: parsed.text_plain,
+        text_html: parsed.text_html,
+    };
+    messages_repo::store_body(db, message_id, &body)?;
+    messages_repo::backfill_body_meta(db, message_id, &parsed.snippet, !parsed.attachment_names.is_empty())?;
+    am_storage::attachments_repo::replace_for_message(db, message_id, &parsed.attachments)?;
+    messages_repo::store_recipients(db, message_id, &parsed.to, &parsed.cc)?;
+    am_storage::search_repo::reindex_message(db, message_id)?;
+    Ok(body)
+}
+
 async fn fetch_and_store_body(db: &Database, message_id: i64, creds: &dyn CredentialSource) -> Result<MessageBody, SyncError> {
     let (folder_id, uid) = messages_repo::message_uid(db, message_id)?;
     let folder = folders_repo::get_folder(db, folder_id)?;
@@ -503,23 +518,7 @@ async fn fetch_and_store_body(db: &Database, message_id: i64, creds: &dyn Creden
     let raw = session.fetch_body(uid).await?;
     session.logout().await?;
 
-    let parsed = am_mime::parse::parse_message(&raw);
-    let body = MessageBody {
-        message_id,
-        text_plain: parsed.text_plain,
-        text_html: parsed.text_html,
-    };
-    messages_repo::store_body(db, message_id, &body)?;
-    messages_repo::backfill_body_meta(
-        db,
-        message_id,
-        &parsed.snippet,
-        !parsed.attachment_names.is_empty(),
-    )?;
-    am_storage::attachments_repo::replace_for_message(db, message_id, &parsed.attachments)?;
-    messages_repo::store_recipients(db, message_id, &parsed.to, &parsed.cc)?;
-    am_storage::search_repo::reindex_message(db, message_id)?;
-    Ok(body)
+    persist_body(db, message_id, &raw)
 }
 
 pub async fn get_or_fetch_recipients(db: &Database, message_id: i64, creds: &dyn CredentialSource) -> Result<(Vec<String>, Vec<String>), SyncError> {
@@ -1280,6 +1279,32 @@ mod tests {
     fn sync_error_never_contains_password() {
         let err = SyncError::Auth;
         assert_eq!(err.to_string(), "authentication failed");
+    }
+
+    #[test]
+    fn persist_body_stores_text_and_flips_state() {
+        use am_core::account::{NewAccount, ProviderType};
+        use am_core::folder::FolderType;
+        use am_core::message::NewMessageHeader;
+
+        let db = Database::open_in_memory().unwrap();
+        let account = accounts_repo::insert_account(&db, &NewAccount {
+            email: "x@e.com".into(), display_name: "X".into(),
+            provider_type: ProviderType::ImapPassword, color: None,
+        }).unwrap();
+        let folder = folders_repo::upsert_folder(&db, account.id, "INBOX", "Inbox", FolderType::Inbox).unwrap();
+        messages_repo::insert_headers(&db, folder.id, &[NewMessageHeader {
+            uid: 1, message_id_hdr: Some("<m1@e>".into()), in_reply_to: None, references_hdr: None,
+            from_address: "s@e.com".into(), from_name: None, subject: "S".into(), date: 1,
+            seen: false, flagged: false, has_attachments: false, size: 1, snippet: String::new(),
+        }]).unwrap();
+        let id = messages_repo::list_by_folder(&db, folder.id, 10, 0, i64::MAX).unwrap()[0].id;
+
+        let raw = b"From: s@e.com\r\nTo: x@e.com\r\nSubject: S\r\n\r\nHello prefetch body\r\n";
+        let body = persist_body(&db, id, raw).unwrap();
+        assert!(body.text_plain.unwrap_or_default().contains("Hello prefetch body"));
+        assert!(messages_repo::get_body(&db, id).unwrap().is_some());
+        assert_eq!(messages_repo::count_without_body(&db, folder.id).unwrap(), 0);
     }
 }
 
