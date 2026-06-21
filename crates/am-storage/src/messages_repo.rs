@@ -96,6 +96,15 @@ pub fn count_without_body(db: &Database, folder_id: i64) -> Result<i64, StorageE
     )?)
 }
 
+pub fn count_active_by_folder(db: &Database, folder_id: i64) -> Result<i64, StorageError> {
+    let conn = db.conn();
+    Ok(conn.query_row(
+        "SELECT COUNT(*) FROM messages WHERE folder_id = ?1 AND draft = 0 AND deleted = 0",
+        params![folder_id],
+        |row| row.get::<_, i64>(0),
+    )?)
+}
+
 pub fn mark_folder_seen(db: &Database, folder_id: i64) -> Result<usize, StorageError> {
     let conn = db.conn();
     Ok(conn.execute(
@@ -1052,5 +1061,32 @@ mod tests {
         assert_eq!(count_without_body(&db, folder.id).unwrap(), 1);
         assert!(get_body(&db, first_id).unwrap().is_some());
         assert_eq!(uids_without_body(&db, folder.id, 10).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn count_active_by_folder_excludes_deleted() {
+        use am_core::account::{NewAccount, ProviderType};
+        use am_core::folder::FolderType;
+        use am_core::message::NewMessageHeader;
+
+        let db = Database::open_in_memory().unwrap();
+        let account = crate::accounts_repo::insert_account(&db, &NewAccount {
+            email: "a@e.com".into(), display_name: "A".into(),
+            provider_type: ProviderType::ImapPassword, color: None,
+        }).unwrap();
+        let folder = crate::folders_repo::upsert_folder(&db, account.id, "INBOX", "Inbox", FolderType::Inbox).unwrap();
+        let h = |uid: i64| NewMessageHeader {
+            uid, message_id_hdr: Some(format!("<m{uid}@e>")), in_reply_to: None, references_hdr: None,
+            from_address: "s@e.com".into(), from_name: None, subject: "S".into(), date: uid,
+            seen: false, flagged: false, has_attachments: false, size: 1, snippet: String::new(),
+        };
+        insert_headers(&db, folder.id, &[h(1), h(2)]).unwrap();
+        assert_eq!(count_active_by_folder(&db, folder.id).unwrap(), 2);
+        assert_eq!(count_by_folder(&db, folder.id).unwrap(), 2);
+
+        let first_id = uids_without_body(&db, folder.id, 10).unwrap()[0].0;
+        set_deleted(&db, first_id, true).unwrap();
+        assert_eq!(count_active_by_folder(&db, folder.id).unwrap(), 1);
+        assert_eq!(count_by_folder(&db, folder.id).unwrap(), 2);
     }
 }

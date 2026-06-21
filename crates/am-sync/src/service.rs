@@ -683,7 +683,7 @@ pub async fn run_prefetch_batch(
             did_work = true;
         }
 
-        let total = messages_repo::count_by_folder(db, folder_id)?;
+        let total = messages_repo::count_active_by_folder(db, folder_id)?;
         let remaining = messages_repo::count_without_body(db, folder_id)?;
         sink.emit(SyncEvent::PrefetchProgress {
             account_id,
