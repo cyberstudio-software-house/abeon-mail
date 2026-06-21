@@ -5,6 +5,7 @@ import {
   partitionPriorityFolders,
   sortFolderNodes,
   decodeImapUtf7,
+  decodeFolderNames,
   flattenFolderTree,
 } from "./folder-tree";
 import type { Folder, FolderType } from "../../ipc/bindings";
@@ -88,15 +89,29 @@ describe("decodeImapUtf7", () => {
   });
 });
 
-describe("buildFolderTree (mUTF-7 decoding)", () => {
-  it("decodes nested segment names for display while keeping fullPath raw", () => {
+describe("decodeFolderNames", () => {
+  it("decodes both name and remote_path so the whole frontend sees readable names", () => {
+    const out = decodeFolderNames([f(2, "cyberstudio.B&AUIBGQ-dy", "B&AUIBGQ-dy")]);
+    expect(out[0].name).toBe("Błędy");
+    expect(out[0].remote_path).toBe("cyberstudio.Błędy");
+  });
+
+  it("leaves plain ASCII untouched", () => {
+    const out = decodeFolderNames([f(1, "INBOX", "INBOX")]);
+    expect(out[0].name).toBe("INBOX");
+    expect(out[0].remote_path).toBe("INBOX");
+  });
+});
+
+describe("buildFolderTree (names already decoded at the IPC boundary)", () => {
+  it("keeps segment and fullPath verbatim and does not decode mUTF-7 itself", () => {
     const tree = buildFolderTree([
       f(1, "cyberstudio", "cyberstudio"),
-      f(2, "cyberstudio.B&AUIBGQ-dy", "B&AUIBGQ-dy"),
+      f(2, "cyberstudio.Błędy", "Błędy"),
     ]);
     const child = tree[0].children[0];
     expect(child.segment).toBe("Błędy");
-    expect(child.fullPath).toBe("cyberstudio.B&AUIBGQ-dy");
+    expect(child.fullPath).toBe("cyberstudio.Błędy");
   });
 });
 

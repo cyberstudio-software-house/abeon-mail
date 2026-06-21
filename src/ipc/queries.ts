@@ -3,6 +3,7 @@ import { commands } from "./bindings";
 import type { Account, Endpoints, Folder, Label, MessageFlag, OutgoingMessage, Rule, RuleInput, SendError, Signature, SmartFolderKind, SmartMessageRow } from "./bindings";
 import { useUiStore } from "../app/store";
 import { parsePinnedMap, pinKey, togglePinnedIds } from "../features/mailbox/pinned";
+import { decodeFolderNames } from "../features/mailbox/folder-tree";
 import {
   parsePrefetchFoldersMap,
   prefetchFoldersKey,
@@ -57,7 +58,7 @@ export function useAccounts() {
 export function useFolders(accountId: number | null) {
   return useQuery({
     queryKey: ["folders", accountId],
-    queryFn: () => commands.listFolders(accountId!).then(unwrap),
+    queryFn: () => commands.listFolders(accountId!).then(unwrap).then(decodeFolderNames),
     enabled: accountId != null,
   });
 }
@@ -694,7 +695,7 @@ export function useAllAccountFolders(accounts: Account[]): Map<number, Folder[]>
   const results = useQueries({
     queries: accounts.map((account) => ({
       queryKey: ["folders", account.id],
-      queryFn: () => commands.listFolders(account.id).then(unwrap),
+      queryFn: () => commands.listFolders(account.id).then(unwrap).then(decodeFolderNames),
     })),
   });
   const map = new Map<number, Folder[]>();

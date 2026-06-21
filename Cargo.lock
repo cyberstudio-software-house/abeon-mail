@@ -13,6 +13,7 @@ name = "abeonmail"
 version = "0.1.0"
 dependencies = [
  "am-app",
+ "am-mime",
  "am-storage",
  "am-sync",
  "dotenvy",

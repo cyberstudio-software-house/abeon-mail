@@ -31,6 +31,7 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 specta-typescript = { workspace = true }
 am-app = { path = "../crates/am-app" }
+am-mime = { path = "../crates/am-mime" }
 am-storage = { path = "../crates/am-storage" }
 am-sync = { path = "../crates/am-sync" }
 dotenvy = "0.15"

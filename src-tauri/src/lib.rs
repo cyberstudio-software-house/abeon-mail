@@ -22,6 +22,11 @@ pub fn run() {
             let db_path = dir.join("abeonmail.db");
             let db = Database::open(db_path.to_str().expect("non-utf8 db path"))
                 .expect("cannot open database");
+            if let Err(err) =
+                am_storage::maintenance::redecode_legacy_headers(&db, am_mime::rfc2047::decode)
+            {
+                eprintln!("header redecode migration failed: {err}");
+            }
             app.manage(AppState::new(db));
             let state: tauri::State<AppState> = app.state();
             let sink = std::sync::Arc::new(am_app::sink::AppEventSink { app: app.handle().clone() });

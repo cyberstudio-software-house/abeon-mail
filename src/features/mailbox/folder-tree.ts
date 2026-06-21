@@ -45,6 +45,14 @@ export function decodeImapUtf7(input: string): string {
   return result;
 }
 
+export function decodeFolderNames(folders: Folder[]): Folder[] {
+  return folders.map((folder) => ({
+    ...folder,
+    name: decodeImapUtf7(folder.name),
+    remote_path: decodeImapUtf7(folder.remote_path),
+  }));
+}
+
 export function recoverDelimiter(remotePath: string, name: string): string | null {
   if (remotePath.length <= name.length) return null;
   if (!remotePath.endsWith(name)) return null;
@@ -58,7 +66,7 @@ export function buildFolderTree(folders: Folder[]): FolderNode[] {
   function ensureNode(fullPath: string, segment: string, parent: FolderNode | null): FolderNode {
     const existing = byPath.get(fullPath);
     if (existing) return existing;
-    const node: FolderNode = { segment: decodeImapUtf7(segment), fullPath, folder: null, children: [] };
+    const node: FolderNode = { segment, fullPath, folder: null, children: [] };
     byPath.set(fullPath, node);
     if (parent) parent.children.push(node);
     else roots.push(node);

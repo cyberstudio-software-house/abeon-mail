@@ -38,7 +38,6 @@ import {
   buildFolderTree,
   partitionPriorityFolders,
   sortFolderNodes,
-  decodeImapUtf7,
 } from "./folder-tree";
 import type { FolderNode } from "./folder-tree";
 import { selectInboxes, selectPinnedByAccount, isFolderPinned } from "./pinned";
@@ -210,7 +209,7 @@ export function MailboxRail() {
 
   const { priority: priorityFolders, rest: restFolders } = partitionPriorityFolders(folders);
   const priorityNodes: FolderNode[] = priorityFolders.map((f) => ({
-    segment: decodeImapUtf7(f.name),
+    segment: f.name,
     fullPath: f.remote_path,
     folder: f,
     children: [],
@@ -379,7 +378,7 @@ export function MailboxRail() {
               >
                 <span className="rail__chevron-spacer" />
                 <FolderIcon folderType={folder.folder_type} />
-                <span className="rail__item-label">{decodeImapUtf7(folder.name)}</span>
+                <span className="rail__item-label">{folder.name}</span>
                 {folder.unread_count > 0 && <span className="rail__count">{folder.unread_count}</span>}
               </div>
             ))}
@@ -519,7 +518,7 @@ export function MailboxRail() {
       {dialog?.kind === "rename" && (
         <TextInputDialog
           title="Zmień nazwę folderu"
-          initialValue={decodeImapUtf7(dialog.folder.name)}
+          initialValue={dialog.folder.name}
           confirmLabel="Zmień nazwę"
           onCancel={() => setDialog(null)}
           onConfirm={(newName) => {
@@ -534,7 +533,7 @@ export function MailboxRail() {
       {dialog?.kind === "delete" && (
         <ConfirmDialog
           title="Usuń folder"
-          message={`Usunąć folder „${decodeImapUtf7(dialog.folder.name)}" wraz z zawartością? Tej operacji nie można cofnąć.`}
+          message={`Usunąć folder „${dialog.folder.name}" wraz z zawartością? Tej operacji nie można cofnąć.`}
           confirmLabel="Usuń folder"
           onCancel={() => setDialog(null)}
           onConfirm={() => {

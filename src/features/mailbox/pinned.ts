@@ -1,5 +1,4 @@
 import type { Account, Folder } from "../../ipc/bindings";
-import { decodeImapUtf7 } from "./folder-tree";
 
 const PIN_KEY_PREFIX = "folders.pinned.";
 
@@ -68,9 +67,7 @@ export function selectPinnedByAccount(
     const folders = (foldersByAccount.get(account.id) ?? []).filter(
       (f) => idSet.has(f.id) && f.folder_type !== "inbox",
     );
-    folders.sort((a, b) =>
-      decodeImapUtf7(a.name).localeCompare(decodeImapUtf7(b.name), "pl", { sensitivity: "base" }),
-    );
+    folders.sort((a, b) => a.name.localeCompare(b.name, "pl", { sensitivity: "base" }));
     if (folders.length > 0) groups.push({ account, folders });
   }
   return groups;
