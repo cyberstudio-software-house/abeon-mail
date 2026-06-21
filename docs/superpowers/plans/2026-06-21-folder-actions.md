@@ -22,13 +22,14 @@
 ### Task 1: Storage helpers (messages_repo)
 
 **Files:**
-- Modify: `crates/am-storage/src/messages_repo.rs` (add 3 fns + tests in existing `#[cfg(test)] mod tests`)
+- Modify: `crates/am-storage/src/messages_repo.rs` (add 2 fns + tests in existing `#[cfg(test)] mod tests`)
 
 **Interfaces:**
 - Produces:
   - `mark_folder_seen(db: &Database, folder_id: i64) -> Result<usize, StorageError>`
   - `thread_ids_in_folder(db: &Database, folder_id: i64) -> Result<Vec<i64>, StorageError>`
-  - `delete_by_folder(db: &Database, folder_id: i64) -> Result<usize, StorageError>`
+
+**Note:** do NOT add a `delete_by_folder` — it already exists (draft-preserving, used by sync). Task 5's folder delete relies on the `messages.folder_id ... ON DELETE CASCADE` FK (the DB enables `PRAGMA foreign_keys = ON`), so deleting the folder row removes its messages automatically.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -58,22 +59,12 @@ Add to the `#[cfg(test)] mod tests` block in `crates/am-storage/src/messages_rep
         let threads = thread_ids_in_folder(&db, folder).unwrap();
         assert_eq!(threads, vec![7]);
     }
-
-    #[test]
-    fn delete_by_folder_removes_all_rows() {
-        let db = Database::open_in_memory().unwrap();
-        let folder = setup(&db);
-        insert_headers(&db, folder, &[make_header(1, 1000), make_header(2, 2000)]).unwrap();
-        let removed = delete_by_folder(&db, folder).unwrap();
-        assert_eq!(removed, 2);
-        assert_eq!(count_by_folder(&db, folder).unwrap(), 0);
-    }
 ```
 
 - [ ] **Step 2: Run tests to verify they fail**
 
 Run: `cargo test -p am-storage messages_repo 2>&1 | tail -20`
-Expected: FAIL — `cannot find function mark_folder_seen` / `thread_ids_in_folder` / `delete_by_folder`.
+Expected: FAIL — `cannot find function mark_folder_seen` / `thread_ids_in_folder`.
 
 - [ ] **Step 3: Write minimal implementation**
 
@@ -100,17 +91,12 @@ pub fn thread_ids_in_folder(db: &Database, folder_id: i64) -> Result<Vec<i64>, S
     }
     Ok(out)
 }
-
-pub fn delete_by_folder(db: &Database, folder_id: i64) -> Result<usize, StorageError> {
-    let conn = db.conn();
-    Ok(conn.execute("DELETE FROM messages WHERE folder_id = ?1", params![folder_id])?)
-}
 ```
 
 - [ ] **Step 4: Run tests to verify they pass**
 
 Run: `cargo test -p am-storage messages_repo 2>&1 | tail -20`
-Expected: PASS (3 new tests + existing).
+Expected: PASS (2 new tests + existing).
 
 - [ ] **Step 5: Commit**
 
@@ -411,7 +397,7 @@ git commit -m "feat(imap): rename/delete folder, bulk mark-seen, delimiter; drai
 - Modify: `crates/am-sync/src/service.rs` (add 3 async fns)
 
 **Interfaces:**
-- Consumes: `rename_path`, `child_path` (Task 2); `ImapSession::{rename_folder, delete_folder}` + `RemoteFolder.delimiter` (Task 4); `messages_repo::delete_by_folder` (Task 1); existing `discover_folders`, `accounts_repo::get_account`, `load_endpoints`, `imap_config`, `auth.to_imap()`.
+- Consumes: `rename_path`, `child_path` (Task 2); `ImapSession::{rename_folder, delete_folder}` + `RemoteFolder.delimiter` (Task 4); existing `discover_folders`, `folders_repo::{get_folder, delete_folder}`, `accounts_repo::get_account`, `load_endpoints`, `imap_config`, `auth.to_imap()`. (Folder delete relies on the `messages.folder_id` ON DELETE CASCADE FK; `PRAGMA foreign_keys` is ON.)
 - Produces:
   - `pub async fn rename_folder(db: &Database, folder_id: i64, new_name: &str, creds: &dyn CredentialSource) -> Result<(), SyncError>`
   - `pub async fn delete_folder(db: &Database, folder_id: i64, creds: &dyn CredentialSource) -> Result<(), SyncError>`
@@ -459,7 +445,6 @@ pub async fn delete_folder(
     let mut session = ImapSession::connect(&config, &auth.to_imap()).await?;
     session.delete_folder(&folder.remote_path).await?;
     session.logout().await?;
-    messages_repo::delete_by_folder(db, folder_id)?;
     folders_repo::delete_folder(db, folder_id)?;
     discover_folders(db, folder.account_id, creds).await?;
     Ok(())
@@ -1377,6 +1362,6 @@ git commit -m "feat(rail): folder actions in context menu with dialogs and error
 
 ## Self-Review Notes
 
-- **Spec coverage:** mark-as-read (T1 helpers, T3 enqueue, T4 mark_all_seen + drain arm, T6 command, T8 hook, T9 menu); rename (T2 path, T4 imap, T5 service, T6 cmd, T8 hook, T9 dialog); delete (T1 delete_by_folder, T4 imap, T5 service, T6 cmd, T8 hook, T9 confirm); create-subfolder (T2 path, T4 delimiter, T5 service, T6 cmd, T8 hook, T9 dialog). Per-type policy (T9 buildFolderMenuItems). Error toast (T9). Inbox-gets-menu change (T9 removes inbox early-return). All covered.
+- **Spec coverage:** mark-as-read (T1 helpers, T3 enqueue, T4 mark_all_seen + drain arm, T6 command, T8 hook, T9 menu); rename (T2 path, T4 imap, T5 service, T6 cmd, T8 hook, T9 dialog); delete (T4 imap, T5 service via folders FK cascade, T6 cmd, T8 hook, T9 confirm); create-subfolder (T2 path, T4 delimiter, T5 service, T6 cmd, T8 hook, T9 dialog). Per-type policy (T9 buildFolderMenuItems). Error toast (T9). Inbox-gets-menu change (T9 removes inbox early-return). All covered.
 - **Type consistency:** command names markFolderRead/renameFolder/deleteFolder/createSubfolder consistent across T6 bindings, T8 hooks, T9 mocks. Hook arg shapes: rename `{folderId,newName}`, create `{parentId,name}`, delete `folderId`, markRead `folderId` — consistent T8↔T9. `menu` state carries `folder` (T9 f/g). `ContextMenuItem` reused from RailContextMenu (Task 3 of prior feature, already in repo).
 - **Known weak spots (honest):** the live IMAP service fns (T5) and the drain arm IMAP call (T3) are not unit-tested (require a server); verified by `cargo build` + existing suites, with live behavior left to manual/GreenMail e2e. Delete of a folder that has subfolders containing local messages may leave orphaned child rows (discover cleanup only removes empty server-absent folders) — acceptable MVP limitation.
