@@ -196,6 +196,32 @@ pub fn get_sync_markers(db: &Database, folder_id: i64) -> Result<SyncMarkers, St
     })
 }
 
+pub fn set_backfill_complete(db: &Database, folder_id: i64, value: bool) -> Result<(), StorageError> {
+    let conn = db.conn();
+    let changed = conn.execute(
+        "UPDATE folders SET backfill_complete = ?2 WHERE id = ?1",
+        params![folder_id, value as i64],
+    )?;
+    if changed == 0 {
+        return Err(StorageError::NotFound);
+    }
+    Ok(())
+}
+
+pub fn get_backfill_complete(db: &Database, folder_id: i64) -> Result<bool, StorageError> {
+    let conn = db.conn();
+    conn.query_row(
+        "SELECT backfill_complete FROM folders WHERE id = ?1",
+        params![folder_id],
+        |row| row.get::<_, i64>(0),
+    )
+    .map(|v| v != 0)
+    .map_err(|e| match e {
+        rusqlite::Error::QueryReturnedNoRows => StorageError::NotFound,
+        other => StorageError::Sqlite(other),
+    })
+}
+
 pub fn recount_unread(db: &Database, folder_id: i64) -> Result<i64, StorageError> {
     let conn = db.conn();
     let unread: i64 = conn.query_row(
@@ -348,5 +374,17 @@ mod tests {
         let arch = upsert_folder(&db, account.id, "Archive", "Archive", FolderType::Archive).unwrap();
         assert_eq!(find_by_type(&db, account.id, FolderType::Archive).unwrap().map(|f| f.id), Some(arch.id));
         assert!(find_by_type(&db, account.id, FolderType::Trash).unwrap().is_none());
+    }
+
+    #[test]
+    fn backfill_complete_roundtrips_and_defaults_false() {
+        let db = Database::open_in_memory().unwrap();
+        let account = insert_account(&db, &sample_account()).unwrap();
+        let folder = upsert_folder(&db, account.id, "INBOX", "Inbox", FolderType::Inbox).unwrap();
+        assert!(!get_backfill_complete(&db, folder.id).unwrap());
+        set_backfill_complete(&db, folder.id, true).unwrap();
+        assert!(get_backfill_complete(&db, folder.id).unwrap());
+        set_backfill_complete(&db, folder.id, false).unwrap();
+        assert!(!get_backfill_complete(&db, folder.id).unwrap());
     }
 }
