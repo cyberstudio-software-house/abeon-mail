@@ -621,6 +621,54 @@ pub fn parse_invite(bytes: &[u8]) -> Option<MeetingInvite> {
     })
 }
 
+pub(crate) fn epoch_to_ical_utc(epoch: i64) -> String {
+    let days = epoch.div_euclid(86400);
+    let secs = epoch.rem_euclid(86400);
+    let (hh, mm, ss) = ((secs / 3600) as u32, ((secs % 3600) / 60) as u32, (secs % 60) as u32);
+    let z = days + 719468;
+    let era = if z >= 0 { z } else { z - 146096 } / 146097;
+    let doe = z - era * 146097;
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+    let y = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = (doy - (153 * mp + 2) / 5 + 1) as u32;
+    let m = (if mp < 10 { mp + 3 } else { mp - 9 }) as u32;
+    let y = if m <= 2 { y + 1 } else { y };
+    format!("{:04}{:02}{:02}T{:02}{:02}{:02}Z", y, m, d, hh, mm, ss)
+}
+
+pub fn build_reply_ics(
+    invite: &am_core::meeting::MeetingInvite,
+    status: am_core::meeting::RsvpStatus,
+    attendee_email: &str,
+) -> String {
+    let mut s = String::new();
+    s.push_str("BEGIN:VCALENDAR\r\n");
+    s.push_str("PRODID:-//AbeonMail//EN\r\n");
+    s.push_str("VERSION:2.0\r\n");
+    s.push_str("METHOD:REPLY\r\n");
+    s.push_str("BEGIN:VEVENT\r\n");
+    if let Some(uid) = &invite.uid {
+        s.push_str(&format!("UID:{}\r\n", uid));
+    }
+    if let Some(org) = &invite.organizer {
+        s.push_str(&format!("ORGANIZER:mailto:{}\r\n", org));
+    }
+    s.push_str(&format!("ATTENDEE;PARTSTAT={}:mailto:{}\r\n", status.partstat(), attendee_email));
+    s.push_str(&format!("SUMMARY:{}\r\n", invite.title));
+    if let Some(start) = invite.start_epoch {
+        s.push_str(&format!("DTSTART:{}\r\n", epoch_to_ical_utc(start)));
+    }
+    if let Some(end) = invite.end_epoch {
+        s.push_str(&format!("DTEND:{}\r\n", epoch_to_ical_utc(end)));
+    }
+    s.push_str("SEQUENCE:0\r\n");
+    s.push_str("END:VEVENT\r\n");
+    s.push_str("END:VCALENDAR\r\n");
+    s
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -771,5 +819,40 @@ mod parse_tests {
     #[test]
     fn returns_none_without_vevent() {
         assert!(parse_invite(b"BEGIN:VCALENDAR\r\nEND:VCALENDAR\r\n").is_none());
+    }
+}
+
+#[cfg(test)]
+mod reply_tests {
+    use super::*;
+    use am_core::meeting::{MeetingInvite, MeetingMethod, MeetingProvider, RsvpStatus};
+
+    fn invite() -> MeetingInvite {
+        MeetingInvite {
+            title: "Plant Tour".into(), organizer: Some("org@x.com".into()), organizer_name: None,
+            location: None, start_epoch: Some(civil_to_epoch(2025, 10, 24, 8, 0, 0)),
+            end_epoch: Some(civil_to_epoch(2025, 10, 24, 9, 0, 0)), all_day: false,
+            join_url: None, provider: MeetingProvider::Teams, dial_in: None,
+            method: MeetingMethod::Request, cancelled: false, uid: Some("UID-123".into()),
+            attendee_email: None, response: None, can_rsvp: true,
+        }
+    }
+
+    #[test]
+    fn reply_has_method_partstat_uid_attendee() {
+        let ics = build_reply_ics(&invite(), RsvpStatus::Accepted, "me@x.com");
+        assert!(ics.contains("METHOD:REPLY"));
+        assert!(ics.contains("PARTSTAT=ACCEPTED"));
+        assert!(ics.contains("UID:UID-123"));
+        assert!(ics.contains("mailto:me@x.com"));
+        assert!(ics.contains("ORGANIZER:mailto:org@x.com"));
+        assert!(ics.contains("DTSTART:20251024T080000Z"));
+        assert!(ics.ends_with("END:VCALENDAR\r\n"));
+    }
+
+    #[test]
+    fn declined_maps_partstat() {
+        let ics = build_reply_ics(&invite(), RsvpStatus::Declined, "me@x.com");
+        assert!(ics.contains("PARTSTAT=DECLINED"));
     }
 }
