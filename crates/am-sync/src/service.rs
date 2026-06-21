@@ -834,6 +834,30 @@ pub fn enqueue_move(db: &Database, message_id: i64, target: MoveTarget, now: i64
     Ok(())
 }
 
+pub fn enqueue_move_to_folder(db: &Database, message_id: i64, target_folder_id: i64, now: i64) -> Result<(), SyncError> {
+    let loc = messages_repo::locate(db, message_id)?;
+    let markers = folders_repo::get_sync_markers(db, loc.folder_id)?;
+    let uidvalidity = markers.uidvalidity.unwrap_or(0);
+
+    messages_repo::set_deleted(db, message_id, true)?;
+    folders_repo::recount_unread(db, loc.folder_id)?;
+    if let Some(thread_id) = loc.thread_id {
+        threads_repo::recompute(db, thread_id)?;
+    }
+
+    let payload = serde_json::json!({
+        "message_id": message_id,
+        "folder_id": loc.folder_id,
+        "uid": loc.uid,
+        "uidvalidity": uidvalidity,
+        "target_type": "folder",
+        "target_folder_id": target_folder_id,
+    })
+    .to_string();
+    queue_repo::enqueue_at(db, loc.account_id, "move_message", &payload, now + UNDO_GRACE_SECS)?;
+    Ok(())
+}
+
 pub fn undo_move(db: &Database, message_ids: &[i64]) -> Result<(), SyncError> {
     let mut accounts: Vec<i64> = Vec::new();
     for &mid in message_ids {
@@ -993,11 +1017,7 @@ async fn drain_one_move(
     let folder_id = parsed["folder_id"].as_i64().unwrap_or(0);
     let uid = parsed["uid"].as_i64().unwrap_or(0);
     let payload_validity = parsed["uidvalidity"].as_i64().unwrap_or(-1);
-    let target = match parsed["target_type"].as_str() {
-        Some("archive") => MoveTarget::Archive,
-        Some("trash") => MoveTarget::Trash,
-        _ => return mark_move_failed(db, op, "unknown move target"),
-    };
+    let target_type = parsed["target_type"].as_str().unwrap_or("");
 
     let src = match folders_repo::get_folder(db, folder_id) {
         Ok(f) => f,
@@ -1009,15 +1029,28 @@ async fn drain_one_move(
         None => return retry_or_drop(db, op, now),
     }
 
-    let dst = match folders_repo::find_by_type(db, account_id, target.folder_type())? {
-        Some(f) => f,
-        None => {
-            let name = target.default_folder_name();
-            if session.create_folder(name).await.is_err() {
-                return retry_or_drop(db, op, now);
+    let dst = match target_type {
+        "archive" | "trash" => {
+            let target = if target_type == "archive" { MoveTarget::Archive } else { MoveTarget::Trash };
+            match folders_repo::find_by_type(db, account_id, target.folder_type())? {
+                Some(f) => f,
+                None => {
+                    let name = target.default_folder_name();
+                    if session.create_folder(name).await.is_err() {
+                        return retry_or_drop(db, op, now);
+                    }
+                    folders_repo::upsert_folder(db, account_id, name, name, target.folder_type())?
+                }
             }
-            folders_repo::upsert_folder(db, account_id, name, name, target.folder_type())?
         }
+        "folder" => {
+            let target_folder_id = parsed["target_folder_id"].as_i64().unwrap_or(0);
+            match folders_repo::get_folder(db, target_folder_id) {
+                Ok(f) => f,
+                Err(_) => return mark_move_failed(db, op, "unknown target folder"),
+            }
+        }
+        _ => return mark_move_failed(db, op, "unknown move target"),
     };
 
     match session.move_uid(&src.remote_path, uid, &dst.remote_path).await {
@@ -1138,6 +1171,23 @@ mod move_tests {
         let inbox = folders_repo::find_by_type(&db, account_id, FolderType::Inbox).unwrap().unwrap();
         assert_eq!(messages_repo::list_by_folder(&db, inbox.id, 10, 0, i64::MAX).unwrap().len(), 1);
         assert!(queue_repo::list_pending_by_type(&db, account_id, "move_message").unwrap().is_empty());
+    }
+
+    #[test]
+    fn enqueue_move_to_folder_hides_and_writes_target_folder_payload() {
+        let (db, account_id, mid) = setup();
+        let dest = folders_repo::upsert_folder(&db, account_id, "Work", "Work", FolderType::Custom).unwrap();
+        enqueue_move_to_folder(&db, mid, dest.id, 1000).unwrap();
+
+        let inbox = folders_repo::find_by_type(&db, account_id, FolderType::Inbox).unwrap().unwrap();
+        assert!(messages_repo::list_by_folder(&db, inbox.id, 10, 0, i64::MAX).unwrap().is_empty());
+
+        let due = queue_repo::list_due(&db, account_id, 1000 + UNDO_GRACE_SECS).unwrap();
+        assert_eq!(due.len(), 1);
+        assert_eq!(due[0].op_type, "move_message");
+        let payload: serde_json::Value = serde_json::from_str(&due[0].payload).unwrap();
+        assert_eq!(payload["target_type"], "folder");
+        assert_eq!(payload["target_folder_id"], dest.id);
     }
 }
 
