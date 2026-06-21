@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Reply, ReplyAll, Forward, Star, Archive, Clock, Trash2, MoreHorizontal, SendHorizontal, Tag, Mail, MailOpen } from "lucide-react";
-import { useThreadMessages, useStartReply, useSetFlag, useLabelsForMessages, useSetSeen, useArchive, useDelete } from "../../ipc/queries";
+import { useThreadMessages, useStartReply, useSetFlag, useLabelsForMessages, useSetSeen, useArchive, useDelete, useAccounts, useMessageRecipients } from "../../ipc/queries";
+import type { MessageHeader } from "../../ipc/bindings";
 import { useUiStore } from "../../app/store";
 import { Avatar } from "../../shared/appearance/Avatar";
 import { MessageBodyView } from "./MessageBodyView";
@@ -10,12 +11,79 @@ import { formatMessageTime } from "../../shared/datetime/datetime";
 import { seenIdsForBulk } from "./seen";
 import "./reader.css";
 
+function ActiveMessage({ message, accountEmail }: { message: MessageHeader; accountEmail: string | null }) {
+  const timeFormat = useUiStore((s) => s.timeFormat);
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const recipients = useMessageRecipients(detailsOpen ? message.id : null);
+
+  useEffect(() => {
+    setDetailsOpen(false);
+  }, [message.id]);
+
+  const name = message.from_name || message.from_address;
+  const time = formatMessageTime(message.date, timeFormat);
+  const to = recipients.data?.to ?? [];
+  const cc = recipients.data?.cc ?? [];
+
+  return (
+    <div className="reader__active">
+      <div className="reader__sender">
+        <Avatar seed={message.from_address} label={name} size={46} />
+        <button
+          type="button"
+          className="reader__sender-info"
+          aria-expanded={detailsOpen}
+          aria-label={`Sender details for ${name}`}
+          onClick={() => setDetailsOpen((v) => !v)}
+        >
+          <span className="reader__sender-name">{name}</span>
+          {accountEmail && <span className="reader__sender-sub">to {accountEmail}</span>}
+        </button>
+        <span className="reader__sender-time">{time}</span>
+      </div>
+
+      {detailsOpen && (
+        <dl className="reader__details">
+          <div className="reader__details-row">
+            <dt>From</dt>
+            <dd>{message.from_name ? `${message.from_name} <${message.from_address}>` : message.from_address}</dd>
+          </div>
+          {accountEmail && (
+            <div className="reader__details-row">
+              <dt>Account</dt>
+              <dd>{accountEmail}</dd>
+            </div>
+          )}
+          {to.length > 0 && (
+            <div className="reader__details-row">
+              <dt>To</dt>
+              <dd>{to.join(", ")}</dd>
+            </div>
+          )}
+          {cc.length > 0 && (
+            <div className="reader__details-row">
+              <dt>Cc</dt>
+              <dd>{cc.join(", ")}</dd>
+            </div>
+          )}
+        </dl>
+      )}
+
+      <MessageBodyView messageId={message.id} />
+      <AttachmentsBar messageId={message.id} />
+    </div>
+  );
+}
+
 export function ConversationView({ threadId }: { threadId: number }) {
   const { data: messages, isLoading } = useThreadMessages(threadId);
+  const { data: accounts = [] } = useAccounts();
   const openComposer = useUiStore((s) => s.openComposer);
   const openLabelPicker = useUiStore((s) => s.openLabelPicker);
   const openSnoozePicker = useUiStore((s) => s.openSnoozePicker);
+  const openFolderPicker = useUiStore((s) => s.openFolderPicker);
   const timeFormat = useUiStore((s) => s.timeFormat);
+  const threadOrder = useUiStore((s) => s.threadOrder);
   const markReadMode = useUiStore((s) => s.markReadMode);
   const markReadDelaySeconds = useUiStore((s) => s.markReadDelaySeconds);
   const generalHydrated = useUiStore((s) => s.generalHydrated);
@@ -32,6 +100,9 @@ export function ConversationView({ threadId }: { threadId: number }) {
   const lastLabels = (labelPairs.data ?? []).map(([, label]) => label);
 
   const [activeId, setActiveId] = useState<number | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
     setActiveId(null);
   }, [threadId]);
@@ -40,6 +111,22 @@ export function ConversationView({ threadId }: { threadId: number }) {
     setReplyTargetId(lastId);
     return () => setReplyTargetId(null);
   }, [lastId, setReplyTargetId]);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    function onPointerDown(event: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) setMenuOpen(false);
+    }
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") setMenuOpen(false);
+    }
+    window.addEventListener("mousedown", onPointerDown);
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("mousedown", onPointerDown);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [menuOpen]);
 
   const autoMarkDoneRef = useRef(false);
   const markTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -84,6 +171,8 @@ export function ConversationView({ threadId }: { threadId: number }) {
   const senderName = last.from_name || last.from_address;
   const anyUnread = messages.some((m) => !m.seen);
   const effectiveActiveId = activeId ?? lastId;
+  const orderedMessages = threadOrder === "descending" ? [...messages].reverse() : messages;
+  const accountEmail = accounts.find((a) => a.id === last.account_id)?.email ?? null;
 
   function moveThread(kind: "archive" | "delete") {
     const ids = (messages ?? []).map((m) => m.id);
@@ -99,16 +188,32 @@ export function ConversationView({ threadId }: { threadId: number }) {
     openComposer(null, prefill);
   }
 
+  const moreActions: { label: string; onClick: () => void }[] = [
+    {
+      label: "Move to folder…",
+      onClick: () => openFolderPicker(messages.map((m) => m.id), last.account_id),
+    },
+    {
+      label: last.flagged ? "Remove importance" : "Mark as important",
+      onClick: () => setFlag.mutate({ messageId: last.id, flag: "flagged", value: !last.flagged }),
+    },
+    {
+      label: "Mark as unread",
+      onClick: () => setSeen.mutate({ ids: seenIdsForBulk(messages, false), value: false }),
+    },
+  ];
+
   return (
     <div className="reader">
       <div className="reader__toolbar">
-        <button type="button" className="reader__icon" aria-label="Archive" onClick={() => moveThread("archive")}>
+        <button type="button" className="reader__icon" aria-label="Archive" title="Archive" onClick={() => moveThread("archive")}>
           <Archive size={18} />
         </button>
         <button
           type="button"
           className="reader__icon"
           aria-label="Snooze"
+          title="Snooze"
           onClick={() => openSnoozePicker(messages.map((m) => m.id))}
         >
           <Clock size={18} />
@@ -117,35 +222,65 @@ export function ConversationView({ threadId }: { threadId: number }) {
           type="button"
           className="reader__icon"
           aria-label={anyUnread ? "Mark as read" : "Mark as unread"}
+          title={anyUnread ? "Mark as read" : "Mark as unread"}
           onClick={() => setSeen.mutate({ ids: seenIdsForBulk(messages, anyUnread), value: anyUnread })}
         >
           {anyUnread ? <MailOpen size={18} /> : <Mail size={18} />}
         </button>
-        <button type="button" className="reader__icon" aria-label="Delete" onClick={() => moveThread("delete")}>
+        <button type="button" className="reader__icon" aria-label="Delete" title="Delete" onClick={() => moveThread("delete")}>
           <Trash2 size={18} />
         </button>
         <div className="reader__divider" />
-        <button type="button" className="reader__icon" aria-label="Reply" onClick={() => handleReply("reply")}>
+        <button type="button" className="reader__icon" aria-label="Reply" title="Reply" onClick={() => handleReply("reply")}>
           <Reply size={18} />
         </button>
-        <button type="button" className="reader__icon" aria-label="Reply all" onClick={() => handleReply("reply_all")}>
+        <button type="button" className="reader__icon" aria-label="Reply all" title="Reply all" onClick={() => handleReply("reply_all")}>
           <ReplyAll size={18} />
         </button>
-        <button type="button" className="reader__icon" aria-label="Forward" onClick={() => handleReply("forward")}>
+        <button type="button" className="reader__icon" aria-label="Forward" title="Forward" onClick={() => handleReply("forward")}>
           <Forward size={18} />
         </button>
         <button
           type="button"
           className="reader__icon"
           aria-label="Label"
+          title="Label"
           onClick={() => openLabelPicker([last.id])}
         >
           <Tag size={18} />
         </button>
         <div className="reader__spacer" />
-        <button type="button" className="reader__icon" aria-label="More" aria-disabled="true">
-          <MoreHorizontal size={18} />
-        </button>
+        <div className="reader__more" ref={menuRef}>
+          <button
+            type="button"
+            className="reader__icon"
+            aria-label="More actions"
+            title="More actions"
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
+            onClick={() => setMenuOpen((v) => !v)}
+          >
+            <MoreHorizontal size={18} />
+          </button>
+          {menuOpen && (
+            <div className="reader__menu" role="menu">
+              {moreActions.map((action) => (
+                <button
+                  key={action.label}
+                  type="button"
+                  role="menuitem"
+                  className="reader__menu-item"
+                  onClick={() => {
+                    action.onClick();
+                    setMenuOpen(false);
+                  }}
+                >
+                  {action.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="reader__body">
@@ -155,10 +290,12 @@ export function ConversationView({ threadId }: { threadId: number }) {
             <button
               type="button"
               className={`reader__star${last.flagged ? " reader__star--on" : ""}`}
-              aria-label="Flag"
+              aria-label={last.flagged ? "Remove importance" : "Mark as important"}
+              title={last.flagged ? "Remove importance" : "Mark as important"}
+              aria-pressed={last.flagged}
               onClick={() => setFlag.mutate({ messageId: last.id, flag: "flagged", value: !last.flagged })}
             >
-              <Star size={20} />
+              <Star size={20} fill={last.flagged ? "currentColor" : "none"} />
             </button>
           </div>
           {lastLabels.length > 0 && (
@@ -168,7 +305,7 @@ export function ConversationView({ threadId }: { threadId: number }) {
           )}
 
           <div className="reader__thread">
-            {messages.map((m) => {
+            {orderedMessages.map((m) => {
               const name = m.from_name || m.from_address;
               const time = formatMessageTime(m.date, timeFormat);
               if (m.id !== effectiveActiveId) {
@@ -185,23 +322,12 @@ export function ConversationView({ threadId }: { threadId: number }) {
                       <span className="reader__collapsed-name">{name}</span>
                       {m.snippet && <span className="reader__collapsed-snippet">{m.snippet}</span>}
                     </div>
+                    {m.flagged && <Star className="reader__collapsed-flag" size={14} fill="currentColor" />}
                     <span className="reader__sender-time">{time}</span>
                   </button>
                 );
               }
-              return (
-                <div key={m.id} className="reader__active">
-                  <div className="reader__sender">
-                    <Avatar seed={m.from_address} label={name} size={46} />
-                    <div className="reader__sender-info">
-                      <div className="reader__sender-name">{name}</div>
-                    </div>
-                    <span className="reader__sender-time">{time}</span>
-                  </div>
-                  <MessageBodyView messageId={m.id} />
-                  <AttachmentsBar messageId={m.id} />
-                </div>
-              );
+              return <ActiveMessage key={m.id} message={m} accountEmail={accountEmail} />;
             })}
           </div>
         </div>

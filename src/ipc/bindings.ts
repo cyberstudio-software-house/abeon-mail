@@ -31,6 +31,7 @@ export const commands = {
 	getMessageBody: (messageId: number) => typedError<MessageBody, string>(__TAURI_INVOKE("get_message_body", { messageId })),
 	sanitizeMessageHtml: (html: string) => __TAURI_INVOKE<SanitizedHtml>("sanitize_message_html", { html }),
 	renderMessageHtml: (messageId: number, forceLoadRemote: boolean) => typedError<RenderedMessage, string>(__TAURI_INVOKE("render_message_html", { messageId, forceLoadRemote })),
+	messageRecipients: (messageId: number) => typedError<MessageRecipients, string>(__TAURI_INVOKE("message_recipients", { messageId })),
 	listAttachments: (messageId: number) => typedError<Attachment[], string>(__TAURI_INVOKE("list_attachments", { messageId })),
 	saveAttachment: (attachmentId: number) => typedError<boolean, string>(__TAURI_INVOKE("save_attachment", { attachmentId })),
 	openAttachment: (attachmentId: number) => typedError<null, string>(__TAURI_INVOKE("open_attachment", { attachmentId })),
@@ -177,6 +178,11 @@ export type MessageHeader = {
 	flagged: boolean,
 	has_attachments: boolean,
 	snippet: string,
+};
+
+export type MessageRecipients = {
+	to: string[],
+	cc: string[],
 };
 
 export type NewMessages = {

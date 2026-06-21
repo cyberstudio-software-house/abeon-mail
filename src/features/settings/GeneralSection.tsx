@@ -1,5 +1,5 @@
 import { useGeneral } from "../../shared/general/GeneralProvider";
-import { TIME_FORMATS, MARK_READ_MODES } from "../../shared/general/general";
+import { TIME_FORMATS, MARK_READ_MODES, THREAD_ORDERS } from "../../shared/general/general";
 import { useAccounts } from "../../ipc/queries";
 import { UpdatesPanel } from "../updates/UpdatesPanel";
 
@@ -54,6 +54,21 @@ export function GeneralSection() {
             onClick={() => g.setMarkReadMode(m.value)}
           >
             {m.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="appearance-field__label">Conversation order</div>
+      <div className="theme-cards">
+        {THREAD_ORDERS.map((o) => (
+          <button
+            key={o.value}
+            type="button"
+            aria-pressed={g.threadOrder === o.value}
+            className={`theme-card${g.threadOrder === o.value ? " theme-card--active" : ""}`}
+            onClick={() => g.setThreadOrder(o.value)}
+          >
+            {o.label}
           </button>
         ))}
       </div>

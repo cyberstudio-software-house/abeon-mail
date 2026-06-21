@@ -7,17 +7,19 @@ import {
 } from "react";
 import { commands } from "../../ipc/bindings";
 import { useUiStore } from "../../app/store";
-import { GENERAL_KEYS, parseGeneralSettings, type TimeFormat, type MarkReadMode } from "./general";
+import { GENERAL_KEYS, parseGeneralSettings, type TimeFormat, type MarkReadMode, type ThreadOrder } from "./general";
 
 type GeneralContextValue = {
   defaultAccountId: string;
   timeFormat: TimeFormat;
   markReadMode: MarkReadMode;
   markReadDelaySeconds: number;
+  threadOrder: ThreadOrder;
   setDefaultAccountId: (value: string) => void;
   setTimeFormat: (value: TimeFormat) => void;
   setMarkReadMode: (value: MarkReadMode) => void;
   setMarkReadDelaySeconds: (value: number) => void;
+  setThreadOrder: (value: ThreadOrder) => void;
 };
 
 const GeneralContext = createContext<GeneralContextValue | null>(null);
@@ -32,10 +34,12 @@ export function GeneralProvider({ children }: { children: ReactNode }) {
   const hydrateGeneral = useUiStore((s) => s.hydrateGeneral);
   const markReadMode = useUiStore((s) => s.markReadMode);
   const markReadDelaySeconds = useUiStore((s) => s.markReadDelaySeconds);
+  const threadOrder = useUiStore((s) => s.threadOrder);
   const storeSetDefaultAccountId = useUiStore((s) => s.setDefaultAccountId);
   const storeSetTimeFormat = useUiStore((s) => s.setTimeFormat);
   const storeSetMarkReadMode = useUiStore((s) => s.setMarkReadMode);
   const storeSetMarkReadDelaySeconds = useUiStore((s) => s.setMarkReadDelaySeconds);
+  const storeSetThreadOrder = useUiStore((s) => s.setThreadOrder);
 
   useEffect(() => {
     let active = true;
@@ -59,6 +63,7 @@ export function GeneralProvider({ children }: { children: ReactNode }) {
       timeFormat,
       markReadMode,
       markReadDelaySeconds,
+      threadOrder,
       setDefaultAccountId: (v) => {
         storeSetDefaultAccountId(v);
         persist(GENERAL_KEYS.defaultAccountId, v);
@@ -75,16 +80,22 @@ export function GeneralProvider({ children }: { children: ReactNode }) {
         storeSetMarkReadDelaySeconds(v);
         persist(GENERAL_KEYS.markReadDelaySeconds, String(v));
       },
+      setThreadOrder: (v) => {
+        storeSetThreadOrder(v);
+        persist(GENERAL_KEYS.threadOrder, v);
+      },
     }),
     [
       defaultAccountId,
       timeFormat,
       markReadMode,
       markReadDelaySeconds,
+      threadOrder,
       storeSetDefaultAccountId,
       storeSetTimeFormat,
       storeSetMarkReadMode,
       storeSetMarkReadDelaySeconds,
+      storeSetThreadOrder,
     ]
   );
 

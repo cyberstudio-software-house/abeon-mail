@@ -2,11 +2,14 @@ export type TimeFormat = "system" | "12h" | "24h";
 
 export type MarkReadMode = "immediate" | "delay" | "never";
 
+export type ThreadOrder = "ascending" | "descending";
+
 export type GeneralFields = {
   defaultAccountId: string;
   timeFormat: TimeFormat;
   markReadMode: MarkReadMode;
   markReadDelaySeconds: number;
+  threadOrder: ThreadOrder;
 };
 
 export const GENERAL_KEYS = {
@@ -14,6 +17,7 @@ export const GENERAL_KEYS = {
   timeFormat: "general.timeFormat",
   markReadMode: "general.markReadMode",
   markReadDelaySeconds: "general.markReadDelaySeconds",
+  threadOrder: "general.threadOrder",
 } as const;
 
 export const DEFAULT_GENERAL: GeneralFields = {
@@ -21,6 +25,7 @@ export const DEFAULT_GENERAL: GeneralFields = {
   timeFormat: "system",
   markReadMode: "immediate",
   markReadDelaySeconds: 2,
+  threadOrder: "ascending",
 };
 
 export const TIME_FORMATS: { value: TimeFormat; label: string }[] = [
@@ -35,12 +40,21 @@ export const MARK_READ_MODES: { value: MarkReadMode; label: string }[] = [
   { value: "never", label: "Never" },
 ];
 
+export const THREAD_ORDERS: { value: ThreadOrder; label: string }[] = [
+  { value: "ascending", label: "Oldest first" },
+  { value: "descending", label: "Newest first" },
+];
+
 function isTimeFormat(v: string): v is TimeFormat {
   return v === "system" || v === "12h" || v === "24h";
 }
 
 function isMarkReadMode(v: string): v is MarkReadMode {
   return v === "immediate" || v === "delay" || v === "never";
+}
+
+function isThreadOrder(v: string): v is ThreadOrder {
+  return v === "ascending" || v === "descending";
 }
 
 export function parseGeneralSettings(pairs: [string, string][]): Partial<GeneralFields> {
@@ -61,6 +75,9 @@ export function parseGeneralSettings(pairs: [string, string][]): Partial<General
         if (Number.isInteger(n) && n >= 1 && n <= 60) out.markReadDelaySeconds = n;
         break;
       }
+      case GENERAL_KEYS.threadOrder:
+        if (isThreadOrder(value)) out.threadOrder = value;
+        break;
       default:
         break;
     }

@@ -168,6 +168,208 @@ pub fn sanitize_for_reader(
     }
 }
 
+fn normalize_for_match(value: &str) -> String {
+    value
+        .to_lowercase()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn decode_entities(value: &str) -> String {
+    value
+        .replace("&nbsp;", " ")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&#39;", "'")
+        .replace("&apos;", "'")
+        .replace("&amp;", "&")
+}
+
+fn is_void_element(name: &str) -> bool {
+    matches!(
+        name,
+        "area" | "base" | "br" | "col" | "embed" | "hr" | "img" | "input"
+            | "link" | "meta" | "param" | "source" | "track" | "wbr"
+    )
+}
+
+fn scan_tag_end(bytes: &[u8], start: usize) -> usize {
+    let n = bytes.len();
+    let mut i = start + 1;
+    let mut quote: u8 = 0;
+    while i < n {
+        let c = bytes[i];
+        if quote != 0 {
+            if c == quote {
+                quote = 0;
+            }
+        } else if c == b'"' || c == b'\'' {
+            quote = c;
+        } else if c == b'>' {
+            return i + 1;
+        }
+        i += 1;
+    }
+    n
+}
+
+fn tag_name(slice: &str) -> String {
+    let bytes = slice.as_bytes();
+    let mut i = 1;
+    if i < bytes.len() && bytes[i] == b'/' {
+        i += 1;
+    }
+    let start = i;
+    while i < bytes.len() {
+        let c = bytes[i];
+        if c.is_ascii_alphanumeric() || c == b'-' || c == b':' {
+            i += 1;
+        } else {
+            break;
+        }
+    }
+    slice[start..i].to_ascii_lowercase()
+}
+
+enum HtmlToken {
+    Open { name: String, start: usize },
+    Close { name: String, end: usize },
+    SelfContained,
+    Text { start: usize, end: usize },
+}
+
+fn tokenize(html: &str) -> Vec<HtmlToken> {
+    let bytes = html.as_bytes();
+    let n = bytes.len();
+    let mut toks = Vec::new();
+    let mut i = 0;
+    let mut text_start = 0;
+    while i < n {
+        if bytes[i] == b'<' {
+            if i > text_start {
+                toks.push(HtmlToken::Text { start: text_start, end: i });
+            }
+            if html[i..].starts_with("<!--") {
+                let end = html[i..].find("-->").map(|p| i + p + 3).unwrap_or(n);
+                toks.push(HtmlToken::SelfContained);
+                i = end;
+                text_start = i;
+                continue;
+            }
+            let tag_end = scan_tag_end(bytes, i);
+            let slice = &html[i..tag_end];
+            if slice.starts_with("<!") || slice.starts_with("<?") {
+                toks.push(HtmlToken::SelfContained);
+            } else if slice.starts_with("</") {
+                toks.push(HtmlToken::Close { name: tag_name(slice), end: tag_end });
+            } else {
+                let name = tag_name(slice);
+                if slice.trim_end().ends_with("/>") || is_void_element(&name) {
+                    toks.push(HtmlToken::SelfContained);
+                } else {
+                    toks.push(HtmlToken::Open { name, start: i });
+                }
+            }
+            i = tag_end;
+            text_start = i;
+        } else {
+            i += 1;
+        }
+    }
+    if n > text_start {
+        toks.push(HtmlToken::Text { start: text_start, end: n });
+    }
+    toks
+}
+
+pub fn strip_leading_subject_heading(html: &str, subject: &str) -> String {
+    let target = normalize_for_match(subject);
+    if target.chars().count() < 3 {
+        return html.to_string();
+    }
+
+    let toks = tokenize(html);
+
+    let mut first_text = None;
+    for (idx, t) in toks.iter().enumerate() {
+        if let HtmlToken::Text { start, end } = t {
+            if !html[*start..*end].trim().is_empty() {
+                first_text = Some(idx);
+                break;
+            }
+        }
+    }
+    let fi = match first_text {
+        Some(v) => v,
+        None => return html.to_string(),
+    };
+
+    let mut stack: Vec<(String, usize)> = Vec::new();
+    for t in &toks[..fi] {
+        match t {
+            HtmlToken::Open { name, start } => stack.push((name.clone(), *start)),
+            HtmlToken::Close { name, .. } => {
+                if let Some(pos) = stack.iter().rposition(|(n, _)| n == name) {
+                    stack.truncate(pos);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    if stack.is_empty() {
+        if let HtmlToken::Text { start, end } = toks[fi] {
+            if normalize_for_match(&decode_entities(&html[start..end])) == target {
+                let mut out = String::with_capacity(html.len());
+                out.push_str(&html[..start]);
+                out.push_str(&html[end..]);
+                return out;
+            }
+        }
+        return html.to_string();
+    }
+
+    let base_depth = stack.len();
+    let mut depth = base_depth;
+    let mut acc = String::new();
+    let mut removal: Option<(usize, usize)> = None;
+    for t in &toks[fi..] {
+        match t {
+            HtmlToken::Text { start, end } => acc.push_str(&html[*start..*end]),
+            HtmlToken::Open { .. } => depth += 1,
+            HtmlToken::SelfContained => {}
+            HtmlToken::Close { end, .. } => {
+                if depth == 0 {
+                    break;
+                }
+                depth -= 1;
+                if depth < base_depth {
+                    let idx = depth;
+                    if normalize_for_match(&decode_entities(&acc)) == target {
+                        removal = Some((stack[idx].1, *end));
+                        break;
+                    }
+                    if idx == 0 {
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    match removal {
+        Some((s, e)) => {
+            let mut out = String::with_capacity(html.len());
+            out.push_str(&html[..s]);
+            out.push_str(&html[e..]);
+            out
+        }
+        None => html.to_string(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -371,5 +573,69 @@ mod tests {
         let result = sanitize_html("<div style=\"color:red\" onclick=\"evil()\">hi</div>");
         assert!(result.html.contains("color:red"));
         assert!(!result.html.contains("onclick"));
+    }
+
+    #[test]
+    fn strip_leading_heading_removes_matching_h1() {
+        let out = strip_leading_subject_heading(
+            "<h1>Weekly report</h1><p>Body content here</p>",
+            "Weekly report",
+        );
+        assert_eq!(out, "<p>Body content here</p>");
+    }
+
+    #[test]
+    fn strip_leading_heading_handles_nested_inline_tags() {
+        let out = strip_leading_subject_heading(
+            "<div><p><b>My</b> Subject</p><p>body</p></div>",
+            "My Subject",
+        );
+        assert_eq!(out, "<div><p>body</p></div>");
+    }
+
+    #[test]
+    fn strip_leading_heading_is_case_and_space_insensitive() {
+        let out = strip_leading_subject_heading(
+            "<p>  [Action required]   Review your   account </p><div>rest</div>",
+            "[Action required] Review your account",
+        );
+        assert_eq!(out, "<div>rest</div>");
+    }
+
+    #[test]
+    fn strip_leading_heading_decodes_entities() {
+        let out = strip_leading_subject_heading(
+            "<h2>Tom &amp; Jerry</h2><p>x</p>",
+            "Tom & Jerry",
+        );
+        assert_eq!(out, "<p>x</p>");
+    }
+
+    #[test]
+    fn strip_leading_heading_keeps_non_matching_body() {
+        let html = "<h1>Different heading</h1><p>x</p>";
+        assert_eq!(strip_leading_subject_heading(html, "Weekly report"), html);
+    }
+
+    #[test]
+    fn strip_leading_heading_keeps_when_text_precedes() {
+        let html = "<p>Hello there</p><h1>Weekly report</h1>";
+        assert_eq!(strip_leading_subject_heading(html, "Weekly report"), html);
+    }
+
+    #[test]
+    fn strip_leading_heading_noop_on_empty_subject() {
+        let html = "<h1>Anything</h1>";
+        assert_eq!(strip_leading_subject_heading(html, ""), html);
+        assert_eq!(strip_leading_subject_heading(html, "ab"), html);
+    }
+
+    #[test]
+    fn strip_leading_heading_ignores_self_closing_before_text() {
+        let out = strip_leading_subject_heading(
+            "<div><img src=\"data:image/png;base64,AA\"/><h1>Report</h1><p>b</p></div>",
+            "Report",
+        );
+        assert_eq!(out, "<div><img src=\"data:image/png;base64,AA\"/><p>b</p></div>");
     }
 }

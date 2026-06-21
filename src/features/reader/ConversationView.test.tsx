@@ -73,6 +73,8 @@ vi.mock("../../ipc/bindings", () => ({
     }),
     setMessageFlags: vi.fn().mockResolvedValue({ status: "ok", data: null }),
     refreshUnreadBadge: vi.fn().mockResolvedValue({ status: "ok", data: null }),
+    listAccounts: vi.fn().mockResolvedValue({ status: "ok", data: [] }),
+    messageRecipients: vi.fn().mockResolvedValue({ status: "ok", data: { to: [], cc: [] } }),
     labelsForMessages: vi.fn().mockResolvedValue({
       status: "ok",
       data: [[2, { id: 1, name: "Work", color: "#4f46e5" }]],
@@ -269,7 +271,7 @@ describe("ConversationView", () => {
 
     await screen.findAllByText("B");
 
-    const flagButton = await screen.findByRole("button", { name: "Flag" });
+    const flagButton = await screen.findByRole("button", { name: "Remove importance" });
     fireEvent.click(flagButton);
 
     await waitFor(() => {
@@ -277,13 +279,18 @@ describe("ConversationView", () => {
     });
   });
 
-  it("reader toolbar More is a disabled placeholder", async () => {
+  it("reader toolbar More opens a menu with additional actions", async () => {
     render(<ConversationView threadId={1} />, { wrapper: Wrapper });
 
     await screen.findAllByText("B");
 
-    const more = await screen.findByRole("button", { name: "More" });
-    expect(more.getAttribute("aria-disabled")).toBe("true");
+    const more = await screen.findByRole("button", { name: "More actions" });
+    expect(more.getAttribute("aria-disabled")).not.toBe("true");
+    fireEvent.click(more);
+
+    expect(await screen.findByRole("menuitem", { name: "Move to folder…" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "Mark as unread" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "Remove importance" })).toBeTruthy();
   });
 
   it("archive button is enabled and not aria-disabled", async () => {

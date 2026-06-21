@@ -13,6 +13,7 @@ import {
   type GeneralFields,
   type TimeFormat,
   type MarkReadMode,
+  type ThreadOrder,
 } from "../shared/general/general";
 import {
   DEFAULT_SNOOZE_CONFIG,
@@ -22,6 +23,7 @@ import {
 export type { Density };
 export type { TimeFormat };
 export type { MarkReadMode };
+export type { ThreadOrder };
 
 type ComposerState = {
   open: boolean;
@@ -49,6 +51,7 @@ export type UiState = {
   timeFormat: TimeFormat;
   markReadMode: MarkReadMode;
   markReadDelaySeconds: number;
+  threadOrder: ThreadOrder;
   generalHydrated: boolean;
   markUnreadEpoch: number;
   snoozeMorningHour: number;
@@ -107,6 +110,7 @@ export type UiState = {
   setTimeFormat: (value: TimeFormat) => void;
   setMarkReadMode: (value: MarkReadMode) => void;
   setMarkReadDelaySeconds: (value: number) => void;
+  setThreadOrder: (value: ThreadOrder) => void;
   hydrateGeneral: (partial: Partial<GeneralFields>) => void;
   setSnoozeMorningHour: (value: number) => void;
   setSnoozeLaterTodayHours: (value: number) => void;
@@ -159,6 +163,7 @@ export const useUiStore = create<UiState>((set) => ({
   timeFormat: DEFAULT_GENERAL.timeFormat,
   markReadMode: DEFAULT_GENERAL.markReadMode,
   markReadDelaySeconds: DEFAULT_GENERAL.markReadDelaySeconds,
+  threadOrder: DEFAULT_GENERAL.threadOrder,
   generalHydrated: false,
   markUnreadEpoch: 0,
   snoozeMorningHour: DEFAULT_SNOOZE_CONFIG.morningHour,
@@ -234,6 +239,7 @@ export const useUiStore = create<UiState>((set) => ({
   setTimeFormat: (timeFormat) => set({ timeFormat }),
   setMarkReadMode: (markReadMode) => set({ markReadMode }),
   setMarkReadDelaySeconds: (markReadDelaySeconds) => set({ markReadDelaySeconds }),
+  setThreadOrder: (threadOrder) => set({ threadOrder }),
   hydrateGeneral: (partial) => set({ ...partial, generalHydrated: true }),
   setSnoozeMorningHour: (snoozeMorningHour) => set({ snoozeMorningHour }),
   setSnoozeLaterTodayHours: (snoozeLaterTodayHours) => set({ snoozeLaterTodayHours }),

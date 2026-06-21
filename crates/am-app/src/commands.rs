@@ -165,9 +165,9 @@ pub async fn render_message_html(
         }
     };
 
-    let account_id = messages_repo::get_header(&db, message_id)
-        .map(|h| h.account_id)
-        .map_err(|e| e.to_string())?;
+    let header = messages_repo::get_header(&db, message_id).map_err(|e| e.to_string())?;
+    let account_id = header.account_id;
+    let subject = header.subject;
     let autoload = settings_repo::get_setting(&db, &format!("images.autoload.{account_id}"))
         .ok()
         .flatten()
@@ -186,7 +186,7 @@ pub async fn render_message_html(
     let first = am_mime::sanitize::sanitize_for_reader(&html, load_remote, &cid_map, &empty);
     if !load_remote {
         return Ok(RenderedMessage {
-            html: Some(first.html),
+            html: Some(am_mime::sanitize::strip_leading_subject_heading(&first.html, &subject)),
             blocked_remote_content: first.blocked_remote_content,
             remote_loaded: false,
         });
@@ -201,10 +201,26 @@ pub async fn render_message_html(
 
     let second = am_mime::sanitize::sanitize_for_reader(&html, false, &cid_map, &remote_map);
     Ok(RenderedMessage {
-        html: Some(second.html),
+        html: Some(am_mime::sanitize::strip_leading_subject_heading(&second.html, &subject)),
         blocked_remote_content: second.blocked_remote_content,
         remote_loaded: true,
     })
+}
+
+#[derive(serde::Serialize, serde::Deserialize, specta::Type)]
+pub struct MessageRecipients {
+    pub to: Vec<String>,
+    pub cc: Vec<String>,
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn message_recipients(
+    state: tauri::State<'_, AppState>,
+    message_id: i64,
+) -> Result<MessageRecipients, String> {
+    let (to, cc) = messages_repo::get_recipients(&state.db, message_id).map_err(|e| e.to_string())?;
+    Ok(MessageRecipients { to, cc })
 }
 
 fn is_blocked_ip(ip: std::net::IpAddr) -> bool {

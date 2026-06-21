@@ -312,6 +312,23 @@ pub fn get_header(db: &Database, id: i64) -> Result<MessageHeader, StorageError>
     .map(tuple_to_header)
 }
 
+pub fn get_recipients(db: &Database, id: i64) -> Result<(Vec<String>, Vec<String>), StorageError> {
+    let conn = db.conn();
+    let (to_json, cc_json): (String, String) = conn
+        .query_row(
+            "SELECT to_addresses, cc_addresses FROM messages WHERE id = ?1",
+            params![id],
+            |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+        )
+        .map_err(|e| match e {
+            rusqlite::Error::QueryReturnedNoRows => StorageError::NotFound,
+            other => StorageError::Sqlite(other),
+        })?;
+    let to = serde_json::from_str::<Vec<String>>(&to_json).unwrap_or_default();
+    let cc = serde_json::from_str::<Vec<String>>(&cc_json).unwrap_or_default();
+    Ok((to, cc))
+}
+
 pub fn get_body(db: &Database, message_id: i64) -> Result<Option<MessageBody>, StorageError> {
     let conn = db.conn();
     let result = conn.query_row(
@@ -958,6 +975,35 @@ mod tests {
         ).unwrap();
         let to_vec: Vec<String> = serde_json::from_str(&to_json).unwrap();
         assert_eq!(to_vec, vec!["alice@example.com"]);
+    }
+
+    #[test]
+    fn get_recipients_returns_stored_to_and_cc() {
+        let db = Database::open_in_memory().unwrap();
+        let folder_id = setup(&db);
+        insert_headers(&db, folder_id, &[make_header(1, 1000)]).unwrap();
+        let msg = list_by_folder(&db, folder_id, 1, 0, i64::MAX).unwrap().into_iter().next().unwrap();
+        store_recipients(
+            &db,
+            msg.id,
+            &["alice@example.com".to_string(), "bob@example.com".to_string()],
+            &["carol@example.com".to_string()],
+        )
+        .unwrap();
+        let (to, cc) = get_recipients(&db, msg.id).unwrap();
+        assert_eq!(to, vec!["alice@example.com", "bob@example.com"]);
+        assert_eq!(cc, vec!["carol@example.com"]);
+    }
+
+    #[test]
+    fn get_recipients_defaults_to_empty_when_unset() {
+        let db = Database::open_in_memory().unwrap();
+        let folder_id = setup(&db);
+        insert_headers(&db, folder_id, &[make_header(1, 1000)]).unwrap();
+        let msg = list_by_folder(&db, folder_id, 1, 0, i64::MAX).unwrap().into_iter().next().unwrap();
+        let (to, cc) = get_recipients(&db, msg.id).unwrap();
+        assert!(to.is_empty());
+        assert!(cc.is_empty());
     }
 
     #[test]

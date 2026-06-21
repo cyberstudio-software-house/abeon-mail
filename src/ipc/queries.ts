@@ -135,9 +135,21 @@ export function useSetFlag() {
       commands.setMessageFlags(messageId, flag, value).then(unwrap),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["messages"] });
+      queryClient.invalidateQueries({ queryKey: ["thread-messages"] });
+      queryClient.invalidateQueries({ queryKey: ["threads"] });
+      queryClient.invalidateQueries({ queryKey: ["smart"] });
+      queryClient.invalidateQueries({ queryKey: ["messages-by-label"] });
       queryClient.invalidateQueries({ queryKey: ["folders"] });
       void commands.refreshUnreadBadge(useUiStore.getState().badgeEnabled);
     },
+  });
+}
+
+export function useMessageRecipients(messageId: number | null) {
+  return useQuery({
+    queryKey: ["recipients", messageId],
+    queryFn: () => commands.messageRecipients(messageId!).then(unwrap),
+    enabled: messageId != null,
   });
 }
 

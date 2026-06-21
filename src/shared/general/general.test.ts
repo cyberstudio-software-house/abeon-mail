@@ -29,7 +29,14 @@ describe("parseGeneralSettings", () => {
       timeFormat: "system",
       markReadMode: "immediate",
       markReadDelaySeconds: 2,
+      threadOrder: "ascending",
     });
+  });
+
+  it("whitelists threadOrder and rejects junk", () => {
+    expect(parseGeneralSettings([[GENERAL_KEYS.threadOrder, "ascending"]]).threadOrder).toBe("ascending");
+    expect(parseGeneralSettings([[GENERAL_KEYS.threadOrder, "descending"]]).threadOrder).toBe("descending");
+    expect(parseGeneralSettings([[GENERAL_KEYS.threadOrder, "nope"]]).threadOrder).toBeUndefined();
   });
 
   it("whitelists markReadMode and rejects junk", () => {
