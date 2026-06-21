@@ -355,9 +355,7 @@ describe("Composer", () => {
     render(<Composer />, { wrapper: Wrapper });
     await screen.findByRole("dialog");
 
-    await waitFor(() => {
-      expect(commands.listSignatures).toHaveBeenCalled();
-    });
+    await screen.findByTitle("signature-preview");
     const injected = mockSetContent.mock.calls.find((c) => String(c[0]).includes("HTML-SIG"));
     expect(injected).toBeUndefined();
 
@@ -381,7 +379,7 @@ describe("Composer", () => {
 
     render(<Composer />, { wrapper: Wrapper });
     await screen.findByRole("dialog");
-    await waitFor(() => expect(commands.listSignatures).toHaveBeenCalled());
+    await screen.findByTitle("signature-preview");
 
     const saveDraftButton = await screen.findByRole("button", { name: "Save draft" });
     fireEvent.click(saveDraftButton);
