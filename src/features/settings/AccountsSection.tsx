@@ -16,9 +16,10 @@ import {
   useFolders,
 } from "../../ipc/queries";
 import { isFolderPrefetched } from "../mailbox/prefetch";
+import { decodeImapUtf7 } from "../mailbox/folder-tree";
 import { Avatar } from "../../shared/appearance/Avatar";
 import { AddAccountWizard } from "../accounts/AddAccountWizard";
-import type { Account, Endpoints } from "../../ipc/bindings";
+import type { Account, Endpoints, Folder } from "../../ipc/bindings";
 
 function AccountEditForm({ account, onClose }: { account: Account; onClose: () => void }) {
   const isImap = account.provider_type === "imap_password";
@@ -192,12 +193,98 @@ function AccountImageToggle({ accountId, email }: { accountId: number; email: st
   );
 }
 
+function PrefetchFoldersModal({
+  accountId,
+  email,
+  folders,
+  prefetchMap,
+  onToggle,
+  onClose,
+}: {
+  accountId: number;
+  email: string;
+  folders: Folder[];
+  prefetchMap: Map<number, number[]>;
+  onToggle: (folderId: number) => void;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape") onClose();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  const selectedCount = prefetchMap.get(accountId)?.length ?? 0;
+
+  return (
+    <div className="prefetch-modal__overlay" role="presentation" onClick={onClose}>
+      <div
+        className="prefetch-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Offline folders for ${email}`}
+        onClick={(event) => event.stopPropagation()}
+      >
+        <header className="prefetch-modal__header">
+          <div>
+            <div className="prefetch-modal__title">Folders to download offline</div>
+            <div className="prefetch-modal__sub">{email}</div>
+          </div>
+          <button
+            type="button"
+            className="prefetch-modal__close"
+            aria-label="Close"
+            onClick={onClose}
+          >
+            ✕
+          </button>
+        </header>
+
+        {folders.length === 0 ? (
+          <p className="prefetch-modal__empty">No folders for this account yet.</p>
+        ) : (
+          <ul className="prefetch-modal__list">
+            {folders.map((folder) => {
+              const name = decodeImapUtf7(folder.name);
+              return (
+                <li key={folder.id}>
+                  <label className="prefetch-modal__check">
+                    <input
+                      type="checkbox"
+                      aria-label={`Prefetch ${name}`}
+                      checked={isFolderPrefetched(prefetchMap, accountId, folder.id)}
+                      onChange={() => onToggle(folder.id)}
+                    />
+                    <span>{name}</span>
+                  </label>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+
+        <footer className="prefetch-modal__footer">
+          <span className="prefetch-modal__count">{selectedCount} selected</span>
+          <button type="button" className="prefetch-modal__done" onClick={onClose}>
+            Done
+          </button>
+        </footer>
+      </div>
+    </div>
+  );
+}
+
 function AccountPrefetchControls({ accountId, email }: { accountId: number; email: string }) {
   const { data: enabled = false } = useAccountPrefetch(accountId);
   const setEnabled = useSetAccountPrefetch();
   const { data: folders = [] } = useFolders(accountId);
   const prefetchMap = usePrefetchFoldersMap().data ?? new Map<number, number[]>();
   const toggleFolder = useToggleFolderPrefetch();
+  const [modalOpen, setModalOpen] = useState(false);
+
+  const selectedCount = prefetchMap.get(accountId)?.length ?? 0;
 
   return (
     <div className="appearance-toggle accounts-settings__images">
@@ -207,33 +294,37 @@ function AccountPrefetchControls({ accountId, email }: { accountId: number; emai
           Bodies for the selected folders download in the background after headers
         </div>
       </div>
-      <button
-        type="button"
-        role="switch"
-        aria-checked={enabled}
-        aria-label={`Download message bodies for offline for ${email}`}
-        className={`switch${enabled ? " switch--on" : ""}`}
-        onClick={() => setEnabled.mutate({ accountId, value: !enabled })}
-      >
-        <span className="switch__knob" />
-      </button>
+      <div className="accounts-settings__prefetch-actions">
+        {enabled && (
+          <button
+            type="button"
+            className="accounts-settings__prefetch-manage"
+            onClick={() => setModalOpen(true)}
+          >
+            Folders{selectedCount > 0 ? ` (${selectedCount})` : ""}
+          </button>
+        )}
+        <button
+          type="button"
+          role="switch"
+          aria-checked={enabled}
+          aria-label={`Download message bodies for offline for ${email}`}
+          className={`switch${enabled ? " switch--on" : ""}`}
+          onClick={() => setEnabled.mutate({ accountId, value: !enabled })}
+        >
+          <span className="switch__knob" />
+        </button>
+      </div>
 
-      {enabled && (
-        <ul className="accounts-settings__prefetch-folders">
-          {folders.map((folder) => (
-            <li key={folder.id}>
-              <label className="accounts-settings__check">
-                <input
-                  type="checkbox"
-                  aria-label={`Prefetch ${folder.name}`}
-                  checked={isFolderPrefetched(prefetchMap, accountId, folder.id)}
-                  onChange={() => toggleFolder.mutate({ accountId, folderId: folder.id })}
-                />
-                <span>{folder.name}</span>
-              </label>
-            </li>
-          ))}
-        </ul>
+      {modalOpen && (
+        <PrefetchFoldersModal
+          accountId={accountId}
+          email={email}
+          folders={folders}
+          prefetchMap={prefetchMap}
+          onToggle={(folderId) => toggleFolder.mutate({ accountId, folderId })}
+          onClose={() => setModalOpen(false)}
+        />
       )}
     </div>
   );

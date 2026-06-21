@@ -475,14 +475,127 @@
   padding-bottom: 8px;
 }
 
-.accounts-settings__prefetch-folders {
-  flex-basis: 100%;
+.accounts-settings__prefetch-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.accounts-settings__prefetch-manage {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  padding: 4px 10px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.accounts-settings__prefetch-manage:hover {
+  border-color: var(--accent);
+}
+
+.prefetch-modal__overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 320;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.prefetch-modal {
+  width: 380px;
+  max-height: 70vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
+}
+
+.prefetch-modal__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  padding: var(--space-4);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.prefetch-modal__title {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.prefetch-modal__sub {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.prefetch-modal__close {
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 15px;
+  cursor: pointer;
+  line-height: 1;
+  padding: 2px 4px;
+}
+
+.prefetch-modal__list {
   list-style: none;
-  margin: 8px 0 0;
-  padding: 0;
+  margin: 0;
+  padding: var(--space-2) var(--space-4);
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 2px;
+}
+
+.prefetch-modal__check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  padding: 4px 0;
+  cursor: pointer;
+}
+
+.prefetch-modal__empty {
+  padding: var(--space-4);
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.prefetch-modal__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.prefetch-modal__count {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.prefetch-modal__done {
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  background: var(--accent);
+  color: #fff;
+  font: inherit;
+  font-size: 13px;
+  padding: 6px 14px;
+  cursor: pointer;
 }
 
 .accounts-settings__edit-actions {

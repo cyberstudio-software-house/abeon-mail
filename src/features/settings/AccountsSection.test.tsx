@@ -47,6 +47,7 @@ vi.mock("../../ipc/bindings", () => ({
 
 import { AccountsSection } from "./AccountsSection";
 import { commands } from "../../ipc/bindings";
+import { decodeImapUtf7 } from "../mailbox/folder-tree";
 
 function wrap() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -114,5 +115,45 @@ describe("AccountsSection", () => {
       name: /Download message bodies for offline/i,
     });
     expect(switches.length).toBe(2);
+  });
+
+  it("opens a folder modal with decoded names and toggles a selection", async () => {
+    const raw = "Firmowe og&APM-lne";
+    const decoded = decodeImapUtf7(raw);
+    expect(decoded).not.toBe(raw);
+
+    vi.mocked(commands.getSettings).mockResolvedValue({
+      status: "ok",
+      data: [["prefetch.bodies.1", "true"]],
+    });
+    vi.mocked(commands.listFolders).mockResolvedValue({
+      status: "ok",
+      data: [
+        {
+          id: 11,
+          account_id: 1,
+          remote_path: "Firmowe ogólne",
+          name: raw,
+          folder_type: "custom",
+          unread_count: 0,
+          total_count: 0,
+        },
+      ],
+    });
+
+    const { findByRole, getByText, queryByText, getByLabelText } = wrap();
+
+    fireEvent.click(await findByRole("button", { name: /^Folders/ }));
+
+    expect(getByText(decoded)).toBeTruthy();
+    expect(queryByText(raw)).toBeNull();
+
+    fireEvent.click(getByLabelText(`Prefetch ${decoded}`));
+    await waitFor(() =>
+      expect(commands.setSetting).toHaveBeenCalledWith(
+        "prefetch.folders.1",
+        JSON.stringify([11]),
+      ),
+    );
   });
 });
