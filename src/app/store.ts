@@ -75,6 +75,9 @@ export type UiState = {
   undoToast: { kind: "archive" | "delete"; messageIds: number[] } | null;
   showUndoToast: (kind: "archive" | "delete", messageIds: number[]) => void;
   clearUndoToast: () => void;
+  errorToast: string | null;
+  showErrorToast: (message: string) => void;
+  clearErrorToast: () => void;
   setSelectedAccountId: (id: number | null) => void;
   setSelectedFolderId: (id: number | null) => void;
   setSelectedMessageId: (id: number | null) => void;
@@ -175,6 +178,9 @@ export const useUiStore = create<UiState>((set) => ({
   undoToast: null,
   showUndoToast: (kind, messageIds) => set({ undoToast: { kind, messageIds } }),
   clearUndoToast: () => set({ undoToast: null }),
+  errorToast: null,
+  showErrorToast: (message) => set({ errorToast: message }),
+  clearErrorToast: () => set({ errorToast: null }),
   setSelectedAccountId: (id) =>
     set({ selectedAccountId: id, selectedSmartFolder: null, selectedLabelId: null, selectedMessageId: null, searchQuery: "", searchActive: false }),
   setSelectedFolderId: (id) =>

@@ -26,6 +26,10 @@ vi.mock("../../ipc/queries", () => ({
   useAllAccountFolders: () => foldersByAccount,
   usePinnedMap: () => ({ data: new Map<number, number[]>([[1, [11]]]) }),
   useTogglePinnedFolder: () => ({ mutate }),
+  useMarkFolderRead: () => ({ mutate: vi.fn() }),
+  useRenameFolder: () => ({ mutate: vi.fn() }),
+  useDeleteFolder: () => ({ mutate: vi.fn() }),
+  useCreateSubfolder: () => ({ mutate: vi.fn() }),
 }));
 
 vi.mock("../../app/store", () => ({ useUiStore: vi.fn() }));

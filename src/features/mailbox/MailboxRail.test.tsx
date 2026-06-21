@@ -9,6 +9,10 @@ vi.mock("../../ipc/queries", () => ({
   useAllAccountFolders: () => new Map(),
   usePinnedMap: () => ({ data: new Map() }),
   useTogglePinnedFolder: () => ({ mutate: vi.fn() }),
+  useMarkFolderRead: () => ({ mutate: vi.fn() }),
+  useRenameFolder: () => ({ mutate: vi.fn() }),
+  useDeleteFolder: () => ({ mutate: vi.fn() }),
+  useCreateSubfolder: () => ({ mutate: vi.fn() }),
 }));
 
 vi.mock("../../app/store", async (importOriginal) => {

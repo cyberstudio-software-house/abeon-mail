@@ -24,6 +24,10 @@ import {
   useAllAccountFolders,
   usePinnedMap,
   useTogglePinnedFolder,
+  useMarkFolderRead,
+  useRenameFolder,
+  useDeleteFolder,
+  useCreateSubfolder,
 } from "../../ipc/queries";
 import { useUiStore } from "../../app/store";
 import { Avatar } from "../../shared/appearance/Avatar";
@@ -37,6 +41,9 @@ import {
 import type { FolderNode } from "./folder-tree";
 import { selectInboxes, selectPinnedByAccount, isFolderPinned } from "./pinned";
 import { RailContextMenu } from "./RailContextMenu";
+import { TextInputDialog, ConfirmDialog } from "./RailDialogs";
+import { ErrorToast } from "./ErrorToast";
+import type { ContextMenuItem } from "./RailContextMenu";
 import type { Account, Folder, SmartFolderKind } from "../../ipc/bindings";
 import "./MailboxRail.css";
 
@@ -171,6 +178,7 @@ export function MailboxRail() {
   const setSelectedLabelId = useUiStore((s) => s.setSelectedLabelId);
   const openLabelPicker = useUiStore((s) => s.openLabelPicker);
   const openSettings = useUiStore((s) => s.openSettings);
+  const showErrorToast = useUiStore((s) => s.showErrorToast);
   const searchQuery = useUiStore((s) => s.searchQuery);
   const setSearchQuery = useUiStore((s) => s.setSearchQuery);
   const clearSearch = useUiStore((s) => s.clearSearch);
@@ -183,15 +191,16 @@ export function MailboxRail() {
   const foldersByAccount = useAllAccountFolders(accounts);
   const pinnedMap = usePinnedMap().data ?? new Map<number, number[]>();
   const togglePin = useTogglePinnedFolder();
+  const markFolderRead = useMarkFolderRead();
+  const renameFolder = useRenameFolder();
+  const deleteFolder = useDeleteFolder();
+  const createSubfolder = useCreateSubfolder();
+  const [dialog, setDialog] = useState<
+    { kind: "rename" | "create" | "delete"; folder: Folder } | null
+  >(null);
   const inboxEntries = selectInboxes(accounts, foldersByAccount);
   const pinnedGroups = selectPinnedByAccount(accounts, foldersByAccount, pinnedMap);
-  const [menu, setMenu] = useState<{
-    x: number;
-    y: number;
-    folderId: number;
-    accountId: number;
-    isPinned: boolean;
-  } | null>(null);
+  const [menu, setMenu] = useState<{ x: number; y: number; folder: Folder } | null>(null);
 
   const { priority: priorityFolders, rest: restFolders } = partitionPriorityFolders(folders);
   const priorityNodes: FolderNode[] = priorityFolders.map((f) => ({
@@ -247,16 +256,35 @@ export function MailboxRail() {
     setSelectedFolderId(folderId);
   }
 
-  function handleFolderContextMenu(event: React.MouseEvent, folder: Folder) {
-    if (folder.folder_type === "inbox") return;
-    event.preventDefault();
-    setMenu({
-      x: event.clientX,
-      y: event.clientY,
-      folderId: folder.id,
-      accountId: folder.account_id,
-      isPinned: isFolderPinned(pinnedMap, folder.account_id, folder.id),
+  function buildFolderMenuItems(folder: Folder): ContextMenuItem[] {
+    const type = folder.folder_type;
+    const items: ContextMenuItem[] = [];
+    items.push({
+      label: "Oznacz jako przeczytane",
+      onClick: () => markFolderRead.mutate(folder.id),
     });
+    if (type !== "inbox") {
+      const pinned = isFolderPinned(pinnedMap, folder.account_id, folder.id);
+      items.push({
+        label: pinned ? "Odepnij" : "Przypnij",
+        onClick: () => togglePin.mutate({ accountId: folder.account_id, folderId: folder.id }),
+      });
+    }
+    if (type === "inbox" || type === "custom") {
+      items.push({ label: "Nowy podfolder", onClick: () => setDialog({ kind: "create", folder }) });
+    }
+    if (type === "custom") {
+      items.push({ label: "Zmień nazwę", onClick: () => setDialog({ kind: "rename", folder }) });
+      items.push({ label: "Usuń", onClick: () => setDialog({ kind: "delete", folder }) });
+    }
+    return items;
+  }
+
+  function handleFolderContextMenu(event: React.MouseEvent, folder: Folder) {
+    const items = buildFolderMenuItems(folder);
+    if (items.length === 0) return;
+    event.preventDefault();
+    setMenu({ x: event.clientX, y: event.clientY, folder });
   }
 
   const headerAccount = accounts.find((a) => a.id === selectedAccountId) ?? accounts[0];
@@ -451,14 +479,52 @@ export function MailboxRail() {
           x={menu.x}
           y={menu.y}
           onClose={() => setMenu(null)}
-          items={[
-            {
-              label: menu.isPinned ? "Odepnij" : "Przypnij",
-              onClick: () => togglePin.mutate({ accountId: menu.accountId, folderId: menu.folderId }),
-            },
-          ]}
+          items={buildFolderMenuItems(menu.folder)}
         />
       )}
+      {dialog?.kind === "create" && (
+        <TextInputDialog
+          title="Nowy podfolder"
+          placeholder="Nazwa folderu"
+          confirmLabel="Utwórz"
+          onCancel={() => setDialog(null)}
+          onConfirm={(name) => {
+            createSubfolder.mutate(
+              { parentId: dialog.folder.id, name },
+              { onError: (e) => showErrorToast(String(e)) },
+            );
+            setDialog(null);
+          }}
+        />
+      )}
+      {dialog?.kind === "rename" && (
+        <TextInputDialog
+          title="Zmień nazwę folderu"
+          initialValue={decodeImapUtf7(dialog.folder.name)}
+          confirmLabel="Zmień nazwę"
+          onCancel={() => setDialog(null)}
+          onConfirm={(newName) => {
+            renameFolder.mutate(
+              { folderId: dialog.folder.id, newName },
+              { onError: (e) => showErrorToast(String(e)) },
+            );
+            setDialog(null);
+          }}
+        />
+      )}
+      {dialog?.kind === "delete" && (
+        <ConfirmDialog
+          title="Usuń folder"
+          message={`Usunąć folder „${decodeImapUtf7(dialog.folder.name)}" wraz z zawartością? Tej operacji nie można cofnąć.`}
+          confirmLabel="Usuń folder"
+          onCancel={() => setDialog(null)}
+          onConfirm={() => {
+            deleteFolder.mutate(dialog.folder.id, { onError: (e) => showErrorToast(String(e)) });
+            setDialog(null);
+          }}
+        />
+      )}
+      <ErrorToast />
     </aside>
   );
 }
