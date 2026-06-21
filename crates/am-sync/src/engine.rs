@@ -89,6 +89,7 @@ impl SyncEngine {
                     }
                 }
                 let _ = crate::send::drain_outbox(&db, account_id, creds.as_ref(), sink.as_ref(), now).await;
+                let _ = crate::send::drain_invite_replies(&db, account_id, creds.as_ref(), sink.as_ref(), now).await;
                 let _ = crate::send::drain_draft_sync(&db, account_id, creds.as_ref(), now).await;
                 if let Ok(folders) = folders_repo::list_folders(&db, account_id) {
                     for folder in &folders {

@@ -48,6 +48,51 @@ pub fn enqueue_draft_sync(db: &Database, draft_id: i64) -> Result<(), SyncError>
     Ok(())
 }
 
+pub fn enqueue_invite_reply(db: &Database, account_id: i64, reply: &am_core::meeting::InviteReply) -> Result<(), SyncError> {
+    let payload = serde_json::to_string(reply).map_err(|e| SyncError::Protocol(e.to_string()))?;
+    queue_repo::enqueue(db, account_id, "send_invite_reply", &payload)?;
+    Ok(())
+}
+
+pub async fn drain_invite_replies(db: &Database, account_id: i64, creds: &dyn CredentialSource, sink: &dyn SyncEventSink, now: i64) -> Result<(), SyncError> {
+    let due = queue_repo::list_due(db, account_id, now)?;
+    let ops: Vec<_> = due
+        .into_iter()
+        .filter(|o| o.op_type == "send_invite_reply")
+        .collect();
+    if ops.is_empty() {
+        return Ok(());
+    }
+
+    let account = accounts_repo::get_account(db, account_id)?;
+    let endpoints = load_endpoints_pub(db, account_id)?;
+    let auth = creds.auth_for(&account).await?;
+
+    for op in ops {
+        let reply: am_core::meeting::InviteReply = match serde_json::from_str(&op.payload) {
+            Ok(v) => v,
+            Err(_) => {
+                queue_repo::mark_done(db, op.id)?;
+                continue;
+            }
+        };
+
+        let bytes = am_mime::compose::build_invite_reply(&reply);
+        let smtp = smtp_config(&endpoints, &account.email);
+        let recipients = vec![reply.to.clone()];
+
+        match send_raw(&smtp, &auth.to_smtp(), &reply.from_address, &recipients, &bytes).await {
+            Ok(()) => {
+                queue_repo::mark_done(db, op.id)?;
+            }
+            Err(e) => {
+                handle_send_failure(db, sink, account_id, op.id, op.attempts, &e.to_string(), now_secs())?;
+            }
+        }
+    }
+    Ok(())
+}
+
 pub fn list_send_errors(db: &Database, account_id: i64) -> Result<Vec<am_core::outgoing::SendError>, SyncError> {
     let rows = queue_repo::list_send_errors(db, account_id)?;
     let mut out = Vec::with_capacity(rows.len());
@@ -174,6 +219,24 @@ mod tests {
         )
         .unwrap()
         .id
+    }
+
+    #[test]
+    fn enqueue_invite_reply_creates_op() {
+        use am_core::meeting::InviteReply;
+        let db = Database::open_in_memory().unwrap();
+        let account_id = seed_account(&db);
+        let reply = InviteReply {
+            from_address: "me@x.com".into(),
+            from_name: None,
+            to: "org@x.com".into(),
+            subject: "Accepted: X".into(),
+            text_body: "ok".into(),
+            ics: "BEGIN:VCALENDAR\r\nEND:VCALENDAR\r\n".into(),
+        };
+        enqueue_invite_reply(&db, account_id, &reply).unwrap();
+        let due = queue_repo::list_due(&db, account_id, now_secs() + 1).unwrap();
+        assert!(due.iter().any(|o| o.op_type == "send_invite_reply"));
     }
 
     #[test]
