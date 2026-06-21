@@ -159,8 +159,7 @@ function setupStore(
   searchActive = false,
   searchQuery = "",
   selectedLabelId: number | null = null,
-  selectionActive = false,
-  selectedMessageIds: number[] = []
+  overrides: Partial<UiState> = {}
 ) {
   mockUseUiStore.mockImplementation((selector: (s: UiState) => unknown) => {
     const state: UiState = {
@@ -210,8 +209,8 @@ function setupStore(
       searchQuery,
       searchActive,
       focusSearch: null,
-      selectionActive,
-      selectedMessageIds,
+      selectionActive: false,
+      selectedMessageIds: [],
       selectedRowIds: [],
       selectionAnchorId: null,
       rowAccounts: {},
@@ -277,6 +276,7 @@ function setupStore(
       setSnoozeWeekendDay: vi.fn(),
       setSnoozeWeekStartDay: vi.fn(),
       hydrateSnooze: vi.fn(),
+      ...overrides,
     };
     return selector ? selector(state) : state;
   });
@@ -307,8 +307,9 @@ describe("MessageListPane", () => {
     vi.clearAllMocks();
   });
 
-  it("renders thread list with participants and subject visible, clicking row calls setSelectedThreadId", () => {
-    setupStore(10);
+  it("renders thread list with participants and subject visible, clicking row calls selectRow", () => {
+    const selectRow = vi.fn();
+    setupStore(10, "comfortable", null, false, "", null, { selectRow });
     mockUseThreads.mockReturnValue({
       data: sampleThreads,
       isLoading: false,
@@ -331,7 +332,7 @@ describe("MessageListPane", () => {
     const firstRow = screen.getByText("Hello World").closest("[data-thread-id]");
     expect(firstRow).toBeTruthy();
     fireEvent.click(firstRow!);
-    expect(mockSetSelectedThreadId).toHaveBeenCalledWith(1);
+    expect(selectRow).toHaveBeenCalledWith(1);
   });
 
   it("shows select-folder empty state when selectedFolderId and selectedSmartFolder are both null", () => {
@@ -421,8 +422,9 @@ describe("MessageListPane", () => {
     expect((dots[1] as HTMLElement).style.background).toBe("#00ff00");
   });
 
-  it("clicking a smart row calls setSelectedMessageId", () => {
-    setupStore(null, "comfortable", "all_inboxes");
+  it("clicking a smart row calls selectRow", () => {
+    const selectRow = vi.fn();
+    setupStore(null, "comfortable", "all_inboxes", false, "", null, { selectRow });
     mockUseThreads.mockReturnValue({
       data: undefined,
       isLoading: false,
@@ -441,7 +443,7 @@ describe("MessageListPane", () => {
     const firstRow = screen.getByText("Smart Inbox Subject").closest("[data-message-id]");
     expect(firstRow).toBeTruthy();
     fireEvent.click(firstRow!);
-    expect(mockSetSelectedMessageId).toHaveBeenCalledWith(100);
+    expect(selectRow).toHaveBeenCalledWith(100);
   });
 
   it("renders date group headers", () => {
@@ -570,8 +572,16 @@ describe("MessageListPane", () => {
     expect(marks.some((m) => m.tagName === "MARK")).toBe(true);
   });
 
-  it("selects rows and opens the picker with selected ids", () => {
-    setupStore(null, "comfortable", "unread", false, "", null, true, [100]);
+  it("plain click calls selectRow; ctrl click calls toggleRow; shift click calls selectRangeTo", () => {
+    const selectRow = vi.fn();
+    const toggleRow = vi.fn();
+    const selectRangeTo = vi.fn();
+    setupStore(null, "comfortable", "all_inboxes", false, "", null, {
+      selectRow,
+      toggleRow,
+      selectRangeTo,
+      selectedRowIds: [],
+    });
     mockUseThreads.mockReturnValue({
       data: undefined,
       isLoading: false,
@@ -585,65 +595,15 @@ describe("MessageListPane", () => {
       error: null,
     } as unknown as ReturnType<typeof useSmartFolder>);
 
-    const { getAllByLabelText, getByText } = renderPane();
+    render(<MessageListPane />);
 
-    const checkboxes = getAllByLabelText("Select message");
-    expect(checkboxes.length).toBeGreaterThan(0);
-
-    fireEvent.click(getByText("Done"));
-    expect(mockToggleSelectionMode).toHaveBeenCalled();
-
-    fireEvent.click(checkboxes[0]);
-    expect(mockToggleMessageSelected).toHaveBeenCalledWith(100);
-
-    fireEvent.click(getByText("Label"));
-    expect(mockOpenLabelPicker).toHaveBeenCalledWith([100]);
-
-    fireEvent.click(getByText("Cancel"));
-    expect(mockClearSelection).toHaveBeenCalled();
-  });
-
-  it("selection toolbar shows Snooze in a flat non-snoozed view and opens the picker", () => {
-    setupStore(null, "comfortable", "unread", false, "", null, true, [100]);
-    mockUseThreads.mockReturnValue({
-      data: undefined,
-      isLoading: false,
-      isError: false,
-      error: null,
-    } as unknown as ReturnType<typeof useThreads>);
-    mockUseSmartFolder.mockReturnValue({
-      data: sampleSmartRows,
-      isLoading: false,
-      isError: false,
-      error: null,
-    } as unknown as ReturnType<typeof useSmartFolder>);
-
-    renderPane();
-
-    const snoozeBtn = screen.getByRole("button", { name: "Snooze" });
-    fireEvent.click(snoozeBtn);
-    expect(mockOpenSnoozePicker).toHaveBeenCalledWith([100]);
-  });
-
-  it("selection toolbar shows Unsnooze in the Snoozed view", () => {
-    setupStore(null, "comfortable", "snoozed", false, "", null, true, [100]);
-    mockUseThreads.mockReturnValue({
-      data: undefined,
-      isLoading: false,
-      isError: false,
-      error: null,
-    } as unknown as ReturnType<typeof useThreads>);
-    mockUseSmartFolder.mockReturnValue({
-      data: sampleSmartRows,
-      isLoading: false,
-      isError: false,
-      error: null,
-    } as unknown as ReturnType<typeof useSmartFolder>);
-
-    renderPane();
-
-    expect(screen.getByRole("button", { name: "Unsnooze" })).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Snooze" })).toBeNull();
+    const rows = screen.getAllByRole("option");
+    fireEvent.click(rows[0]);
+    expect(selectRow).toHaveBeenCalled();
+    fireEvent.click(rows[1], { ctrlKey: true });
+    expect(toggleRow).toHaveBeenCalled();
+    fireEvent.click(rows[0], { shiftKey: true });
+    expect(selectRangeTo).toHaveBeenCalled();
   });
 
   it("renders a wake-time label for rows with snooze_wake_at", () => {
@@ -668,36 +628,5 @@ describe("MessageListPane", () => {
     renderPane();
 
     expect(screen.getByTestId("snooze-wake").textContent?.length).toBeGreaterThan(0);
-  });
-
-  it("selection toolbar Mark read calls setSeen with value true and clears selection", () => {
-    setupStore(null, "comfortable", "unread", false, "", null, true, [100]);
-    mockUseSmartFolder.mockReturnValue({
-      data: [
-        { message_id: 100, account_id: 1, folder_id: 1, account_color: "#4f46e5", from_address: "a@b.com", from_name: "A", subject: "S", date: 1000, seen: false, flagged: false, has_attachments: false, snippet: "" },
-      ],
-      isLoading: false,
-    } as unknown as ReturnType<typeof useSmartFolder>);
-
-    renderPane();
-    fireEvent.click(screen.getByText("Mark read"));
-
-    expect(mockSetSeen.mutate).toHaveBeenCalledWith({ ids: [100], value: true });
-    expect(mockClearSelection).toHaveBeenCalled();
-  });
-
-  it("selection toolbar Mark unread calls setSeen with value false", () => {
-    setupStore(null, "comfortable", "unread", false, "", null, true, [100]);
-    mockUseSmartFolder.mockReturnValue({
-      data: [
-        { message_id: 100, account_id: 1, folder_id: 1, account_color: "#4f46e5", from_address: "a@b.com", from_name: "A", subject: "S", date: 1000, seen: true, flagged: false, has_attachments: false, snippet: "" },
-      ],
-      isLoading: false,
-    } as unknown as ReturnType<typeof useSmartFolder>);
-
-    renderPane();
-    fireEvent.click(screen.getByText("Mark unread"));
-
-    expect(mockSetSeen.mutate).toHaveBeenCalledWith({ ids: [100], value: false });
   });
 });

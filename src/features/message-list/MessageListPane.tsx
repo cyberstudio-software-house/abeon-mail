@@ -1,7 +1,7 @@
-import { useRef, useMemo, useEffect } from "react";
+import { useRef, useMemo, useEffect, type MouseEvent as ReactMouseEvent } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { PencilLine, ChevronDown } from "lucide-react";
-import { useThreads, useSmartFolder, useSearch, useLabelsForMessages, useMessagesByLabel, useLabels, useUnsnooze, useSetSeen } from "../../ipc/queries";
+import { useThreads, useSmartFolder, useSearch, useLabelsForMessages, useMessagesByLabel, useLabels } from "../../ipc/queries";
 import { formatListDate, formatWakeTime } from "../../shared/datetime/datetime";
 import { useDebouncedValue } from "../../shared/hooks/useDebouncedValue";
 import { useUiStore, type Density } from "../../app/store";
@@ -26,14 +26,14 @@ function ThreadRow({
   rowHeight,
   showAvatars,
   showSnippet,
-  onSelect,
+  onClick,
 }: {
   thread: ThreadSummary;
   isSelected: boolean;
   rowHeight: number;
   showAvatars: boolean;
   showSnippet: boolean;
-  onSelect: (id: number) => void;
+  onClick: (e: ReactMouseEvent, id: number) => void;
 }) {
   const timeFormat = useUiStore((s) => s.timeFormat);
   const isUnread = thread.unread_count > 0;
@@ -43,7 +43,7 @@ function ThreadRow({
       className={`message-row${isUnread ? " message-row--unread" : ""}${isSelected ? " message-row--selected" : ""}`}
       style={{ height: rowHeight }}
       data-thread-id={thread.thread_id}
-      onClick={() => onSelect(thread.thread_id)}
+      onClick={(e) => onClick(e, thread.thread_id)}
       role="option"
       aria-selected={isSelected}
     >
@@ -98,12 +98,9 @@ function SmartRow({
   rowHeight,
   showAvatars,
   showSnippet,
-  onSelect,
+  onClick,
   highlightTerms,
   labels,
-  selectable,
-  selected,
-  onToggleSelect,
   wakeAt,
 }: {
   row: SmartMessageRow;
@@ -111,12 +108,9 @@ function SmartRow({
   rowHeight: number;
   showAvatars: boolean;
   showSnippet: boolean;
-  onSelect: (id: number) => void;
+  onClick: (e: ReactMouseEvent, id: number) => void;
   highlightTerms?: string[];
   labels?: Label[];
-  selectable: boolean;
-  selected: boolean;
-  onToggleSelect: (id: number) => void;
   wakeAt?: number | null;
 }) {
   const timeFormat = useUiStore((s) => s.timeFormat);
@@ -127,20 +121,11 @@ function SmartRow({
       className={`message-row${!row.seen ? " message-row--unread" : ""}${isSelected ? " message-row--selected" : ""}`}
       style={{ height: rowHeight }}
       data-message-id={row.message_id}
-      onClick={() => onSelect(row.message_id)}
+      onClick={(e) => onClick(e, row.message_id)}
       role="option"
       aria-selected={isSelected}
     >
       <div className="message-row__indicators">
-        {selectable && (
-          <input
-            type="checkbox"
-            aria-label="Select message"
-            checked={selected}
-            onClick={(e) => e.stopPropagation()}
-            onChange={() => onToggleSelect(row.message_id)}
-          />
-        )}
         {!row.seen && <span className="message-row__unread-dot" aria-label="unread" />}
       </div>
       {showAvatars && <Avatar seed={row.from_address} label={row.from_name ?? row.from_address} />}
@@ -209,31 +194,28 @@ function SkeletonRow({ height }: { height: number }) {
 export function MessageListPane() {
   const selectedFolderId = useUiStore((s) => s.selectedFolderId);
   const selectedSmartFolder = useUiStore((s) => s.selectedSmartFolder);
-  const selectedThreadId = useUiStore((s) => s.selectedThreadId);
-  const selectedMessageId = useUiStore((s) => s.selectedMessageId);
   const density = useUiStore((s) => s.density);
   const showPreview = useUiStore((s) => s.showPreview);
   const showAvatars = useUiStore((s) => s.showAvatars);
-  const setSelectedThreadId = useUiStore((s) => s.setSelectedThreadId);
-  const setSelectedMessageId = useUiStore((s) => s.setSelectedMessageId);
   const openComposer = useUiStore((s) => s.openComposer);
   const setListContext = useUiStore((s) => s.setListContext);
+
+  const selectedRowIds = useUiStore((s) => s.selectedRowIds);
+  const selectRow = useUiStore((s) => s.selectRow);
+  const toggleRow = useUiStore((s) => s.toggleRow);
+  const selectRangeTo = useUiStore((s) => s.selectRangeTo);
 
   const searchActive = useUiStore((s) => s.searchActive);
   const searchQuery = useUiStore((s) => s.searchQuery);
   const clearSearch = useUiStore((s) => s.clearSearch);
   const selectedLabelId = useUiStore((s) => s.selectedLabelId);
-  const selectionActive = useUiStore((s) => s.selectionActive);
-  const selectedMessageIds = useUiStore((s) => s.selectedMessageIds);
-  const toggleSelectionMode = useUiStore((s) => s.toggleSelectionMode);
-  const toggleMessageSelected = useUiStore((s) => s.toggleMessageSelected);
-  const clearSelection = useUiStore((s) => s.clearSelection);
-  const openLabelPicker = useUiStore((s) => s.openLabelPicker);
-  const openSnoozePicker = useUiStore((s) => s.openSnoozePicker);
   const debouncedQuery = useDebouncedValue(searchQuery, 200);
 
-  const unsnooze = useUnsnooze();
-  const setSeen = useSetSeen();
+  function handleRowClick(e: ReactMouseEvent, rowId: number) {
+    if (e.shiftKey) selectRangeTo(rowId);
+    else if (e.metaKey || e.ctrlKey) toggleRow(rowId);
+    else selectRow(rowId);
+  }
 
   const { data: threads, isLoading: threadsLoading } = useThreads(selectedFolderId);
   const { data: smartRows, isLoading: smartLoading } = useSmartFolder(selectedSmartFolder);
@@ -244,7 +226,6 @@ export function MessageListPane() {
   const isLabelMode = !searchActive && selectedLabelId != null;
   const isSmartMode = !searchActive && !isLabelMode && selectedSmartFolder != null;
   const isFlatMode = searchActive || isLabelMode || isSmartMode;
-  const isSnoozedView = isSmartMode && selectedSmartFolder === "snoozed";
   const isLoading = searchActive
     ? searchLoading
     : isLabelMode
@@ -302,10 +283,16 @@ export function MessageListPane() {
   );
 
   useEffect(() => {
+    const accounts: Record<number, number> = {};
+    if (isFlatMode) {
+      for (const r of rawItems as SmartMessageRow[]) accounts[r.message_id] = r.account_id;
+    } else {
+      for (const t of rawItems as ThreadSummary[]) accounts[t.thread_id] = t.account_id;
+    }
     const ids = isFlatMode
       ? (rawItems as SmartMessageRow[]).map((r) => r.message_id)
       : (rawItems as ThreadSummary[]).map((t) => t.thread_id);
-    setListContext(ids, isFlatMode ? "message" : "thread");
+    setListContext(ids, isFlatMode ? "message" : "thread", accounts);
   }, [rawItems, isFlatMode, setListContext]);
 
   const virtualizer = useVirtualizer({
@@ -331,72 +318,7 @@ export function MessageListPane() {
         <span className="message-list__sort" aria-disabled="true">
           Newest <ChevronDown size={13} />
         </span>
-        {isFlatMode && (
-          <button
-            type="button"
-            className="message-list__select-toggle"
-            onClick={() => toggleSelectionMode()}
-          >
-            {selectionActive ? "Done" : "Select"}
-          </button>
-        )}
       </div>
-
-      {isFlatMode && selectionActive && (
-        <div className="message-list__selection-bar" role="toolbar" aria-label="Selection actions">
-          <span>{selectedMessageIds.length} selected</span>
-          <button
-            type="button"
-            disabled={selectedMessageIds.length === 0}
-            onClick={() => openLabelPicker(selectedMessageIds)}
-          >
-            Label
-          </button>
-          <button
-            type="button"
-            disabled={selectedMessageIds.length === 0}
-            onClick={() => {
-              setSeen.mutate({ ids: selectedMessageIds, value: true });
-              clearSelection();
-            }}
-          >
-            Mark read
-          </button>
-          <button
-            type="button"
-            disabled={selectedMessageIds.length === 0}
-            onClick={() => {
-              setSeen.mutate({ ids: selectedMessageIds, value: false });
-              clearSelection();
-            }}
-          >
-            Mark unread
-          </button>
-          {isSnoozedView ? (
-            <button
-              type="button"
-              disabled={selectedMessageIds.length === 0}
-              onClick={() => {
-                unsnooze.mutate(selectedMessageIds);
-                clearSelection();
-              }}
-            >
-              Unsnooze
-            </button>
-          ) : (
-            <button
-              type="button"
-              disabled={selectedMessageIds.length === 0}
-              onClick={() => openSnoozePicker(selectedMessageIds)}
-            >
-              Snooze
-            </button>
-          )}
-          <button type="button" onClick={() => clearSelection()}>
-            Cancel
-          </button>
-        </div>
-      )}
 
       {searchActive && (
         <div className="message-list__search-banner" role="status">
@@ -480,17 +402,14 @@ export function MessageListPane() {
                   >
                     <SmartRow
                       row={row}
-                      isSelected={selectedMessageId === row.message_id}
+                      isSelected={selectedRowIds.includes(row.message_id)}
                       rowHeight={rowHeight}
                       showAvatars={showAvatars}
                       showSnippet={showSnippet}
-                      onSelect={setSelectedMessageId}
+                      onClick={handleRowClick}
                       highlightTerms={searchActive ? highlightTerms : undefined}
                       labels={labelsByMessage.get(row.message_id)}
                       wakeAt={row.snooze_wake_at}
-                      selectable={selectionActive}
-                      selected={selectedMessageIds.includes(row.message_id)}
-                      onToggleSelect={toggleMessageSelected}
                     />
                   </div>
                 );
@@ -509,11 +428,11 @@ export function MessageListPane() {
                 >
                   <ThreadRow
                     thread={thread}
-                    isSelected={selectedThreadId === thread.thread_id}
+                    isSelected={selectedRowIds.includes(thread.thread_id)}
                     rowHeight={rowHeight}
                     showAvatars={showAvatars}
                     showSnippet={showSnippet}
-                    onSelect={setSelectedThreadId}
+                    onClick={handleRowClick}
                   />
                 </div>
               );
