@@ -1,15 +1,19 @@
-import { initials, avatarColor } from "./appearance";
+import { useUiStore } from "../../app/store";
+import { initials, senderAvatarColor } from "./appearance";
 
 export function Avatar({
   seed,
   label,
   size = 28,
+  variant = "sender",
 }: {
   seed: string;
   label: string;
   size?: number;
+  variant?: "account" | "sender";
 }) {
-  const color = avatarColor(seed);
+  const accent = useUiStore((s) => s.accent);
+  const color = variant === "account" ? accent : senderAvatarColor(seed, accent);
   return (
     <span
       className="avatar"

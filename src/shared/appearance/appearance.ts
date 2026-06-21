@@ -47,16 +47,76 @@ export const DENSITIES: { value: Density; label: string; hint: string }[] = [
   { value: "dense", label: "Dense", hint: "Maximum rows" },
 ];
 
-const AVATAR_PALETTE = [
-  "#4f46e5",
-  "#7c3aed",
-  "#0ea5e9",
-  "#10b981",
-  "#ef5d3a",
-  "#ec4899",
-  "#f59e0b",
-  "#0d9488",
-];
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+function hashSeed(seed: string): number {
+  let hash = 0;
+  for (let i = 0; i < seed.length; i += 1) {
+    hash = (hash * 31 + seed.charCodeAt(i)) >>> 0;
+  }
+  return hash;
+}
+
+function hexToRgb(hex: string): [number, number, number] {
+  const clean = hex.replace("#", "");
+  const full = clean.length === 3 ? clean.replace(/(.)/g, "$1$1") : clean;
+  const value = parseInt(full, 16);
+  return [(value >> 16) & 255, (value >> 8) & 255, value & 255];
+}
+
+function rgbToHsl(r: number, g: number, b: number): [number, number, number] {
+  const rn = r / 255;
+  const gn = g / 255;
+  const bn = b / 255;
+  const max = Math.max(rn, gn, bn);
+  const min = Math.min(rn, gn, bn);
+  const delta = max - min;
+  const l = (max + min) / 2;
+  let h = 0;
+  let s = 0;
+  if (delta !== 0) {
+    s = delta / (1 - Math.abs(2 * l - 1));
+    switch (max) {
+      case rn:
+        h = ((gn - bn) / delta) % 6;
+        break;
+      case gn:
+        h = (bn - rn) / delta + 2;
+        break;
+      default:
+        h = (rn - gn) / delta + 4;
+    }
+    h = (h * 60 + 360) % 360;
+  }
+  return [h, s * 100, l * 100];
+}
+
+function hslToHex(h: number, s: number, l: number): string {
+  const sn = s / 100;
+  const ln = l / 100;
+  const c = (1 - Math.abs(2 * ln - 1)) * sn;
+  const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+  const m = ln - c / 2;
+  let rgb: [number, number, number];
+  if (h < 60) rgb = [c, x, 0];
+  else if (h < 120) rgb = [x, c, 0];
+  else if (h < 180) rgb = [0, c, x];
+  else if (h < 240) rgb = [0, x, c];
+  else if (h < 300) rgb = [x, 0, c];
+  else rgb = [c, 0, x];
+  const toHex = (v: number) =>
+    Math.round((v + m) * 255)
+      .toString(16)
+      .padStart(2, "0");
+  return `#${toHex(rgb[0])}${toHex(rgb[1])}${toHex(rgb[2])}`;
+}
+
+function hexToHsl(hex: string): [number, number, number] {
+  const [r, g, b] = hexToRgb(hex);
+  return rgbToHsl(r, g, b);
+}
 
 export function initials(nameOrEmail: string): string {
   const trimmed = nameOrEmail.trim();
@@ -69,12 +129,40 @@ export function initials(nameOrEmail: string): string {
   return local.slice(0, 2).toUpperCase();
 }
 
-export function avatarColor(seed: string): string {
-  let hash = 0;
-  for (let i = 0; i < seed.length; i += 1) {
-    hash = (hash * 31 + seed.charCodeAt(i)) >>> 0;
-  }
-  return AVATAR_PALETTE[hash % AVATAR_PALETTE.length];
+export type AccentVars = {
+  accent: string;
+  accentHover: string;
+  shadowAccent: string;
+};
+
+export function deriveAccentVars(accent: string): AccentVars {
+  const [h, s, l] = hexToHsl(accent);
+  const [r, g, b] = hexToRgb(accent);
+  return {
+    accent,
+    accentHover: hslToHex(h, s, clamp(l + 6, 0, 100)),
+    shadowAccent: `0 6px 14px -6px rgba(${r}, ${g}, ${b}, 0.6)`,
+  };
+}
+
+const SENDER_TINT_STEPS = [
+  { h: 0, s: 0, l: 0 },
+  { h: -14, s: 6, l: -9 },
+  { h: 12, s: -10, l: 9 },
+  { h: -22, s: -4, l: 5 },
+  { h: 18, s: 8, l: -6 },
+  { h: -8, s: 12, l: 12 },
+  { h: 24, s: -8, l: -11 },
+  { h: -18, s: 2, l: 7 },
+];
+
+export function senderAvatarColor(seed: string, accent: string): string {
+  const [h, s, l] = hexToHsl(accent);
+  const step = SENDER_TINT_STEPS[hashSeed(seed) % SENDER_TINT_STEPS.length];
+  const hue = (h + step.h + 360) % 360;
+  const sat = clamp(s + step.s, 35, 90);
+  const light = clamp(l + step.l, 40, 64);
+  return hslToHex(hue, sat, light);
 }
 
 function isThemeMode(v: string): v is ThemeMode {

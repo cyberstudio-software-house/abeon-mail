@@ -380,6 +380,7 @@ export function AccountsSection() {
                 seed={account.email}
                 label={account.display_name || account.email}
                 size={28}
+                variant="account"
               />
               <div className="accounts-settings__identity">
                 <span className="accounts-settings__name">

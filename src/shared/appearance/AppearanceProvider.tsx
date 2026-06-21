@@ -11,6 +11,7 @@ import { useUiStore } from "../../app/store";
 import { resolveTheme, type ThemeMode } from "../theme/theme";
 import {
   SETTINGS_KEYS,
+  deriveAccentVars,
   parseSettings,
   type AppearanceFields,
   type Density,
@@ -75,7 +76,11 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
   }, [theme, prefersDark]);
 
   useEffect(() => {
-    document.documentElement.style.setProperty("--accent", accent);
+    const vars = deriveAccentVars(accent);
+    const root = document.documentElement.style;
+    root.setProperty("--accent", vars.accent);
+    root.setProperty("--accent-hover", vars.accentHover);
+    root.setProperty("--shadow-accent", vars.shadowAccent);
   }, [accent]);
 
   const value = useMemo<AppearanceContextValue>(

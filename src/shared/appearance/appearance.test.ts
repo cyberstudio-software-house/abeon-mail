@@ -1,5 +1,19 @@
 import { describe, it, expect } from "vitest";
-import { initials, avatarColor, parseSettings, DEFAULT_APPEARANCE } from "./appearance";
+import {
+  initials,
+  senderAvatarColor,
+  deriveAccentVars,
+  parseSettings,
+  DEFAULT_APPEARANCE,
+} from "./appearance";
+
+function lightness(hex: string): number {
+  const n = parseInt(hex.replace("#", ""), 16);
+  const r = ((n >> 16) & 255) / 255;
+  const g = ((n >> 8) & 255) / 255;
+  const b = (n & 255) / 255;
+  return ((Math.max(r, g, b) + Math.min(r, g, b)) / 2) * 100;
+}
 
 describe("initials", () => {
   it("takes first letters of first two words", () => {
@@ -15,12 +29,36 @@ describe("initials", () => {
   });
 });
 
-describe("avatarColor", () => {
-  it("is deterministic for the same seed", () => {
-    expect(avatarColor("a@b.com")).toBe(avatarColor("a@b.com"));
+describe("senderAvatarColor", () => {
+  it("is deterministic for the same seed and accent", () => {
+    expect(senderAvatarColor("a@b.com", "#4f46e5")).toBe(
+      senderAvatarColor("a@b.com", "#4f46e5")
+    );
   });
-  it("returns a hex color from the palette", () => {
-    expect(avatarColor("x@y.com")).toMatch(/^#[0-9a-f]{6}$/i);
+  it("returns a hex color", () => {
+    expect(senderAvatarColor("x@y.com", "#4f46e5")).toMatch(/^#[0-9a-f]{6}$/i);
+  });
+  it("keeps lightness in a band that stays legible under white text", () => {
+    for (const seed of ["a@b.com", "z@q.io", "team@abeon.hosting", "j", ""]) {
+      const l = lightness(senderAvatarColor(seed, "#4f46e5"));
+      expect(l).toBeGreaterThanOrEqual(39);
+      expect(l).toBeLessThanOrEqual(65);
+    }
+  });
+  it("follows the accent: a different accent yields a different color", () => {
+    expect(senderAvatarColor("a@b.com", "#4f46e5")).not.toBe(
+      senderAvatarColor("a@b.com", "#10b981")
+    );
+  });
+});
+
+describe("deriveAccentVars", () => {
+  it("echoes the accent and derives a hover shade and shadow", () => {
+    const vars = deriveAccentVars("#4f46e5");
+    expect(vars.accent).toBe("#4f46e5");
+    expect(vars.accentHover).toMatch(/^#[0-9a-f]{6}$/i);
+    expect(vars.accentHover).not.toBe("#4f46e5");
+    expect(vars.shadowAccent).toBe("0 6px 14px -6px rgba(79, 70, 229, 0.6)");
   });
 });
 

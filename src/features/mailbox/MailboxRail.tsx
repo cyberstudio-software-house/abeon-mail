@@ -151,7 +151,12 @@ function AccountRow({
       onClick={() => onClick(account.id)}
     >
       {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-      <Avatar seed={account.email} label={account.display_name || account.email} size={22} />
+      <Avatar
+        seed={account.email}
+        label={account.display_name || account.email}
+        size={22}
+        variant="account"
+      />
       <span className="rail__item-label">{account.display_name || account.email}</span>
       {account.requires_reauth && (
         <span
@@ -312,6 +317,7 @@ export function MailboxRail() {
             seed={headerAccount.email}
             label={headerAccount.display_name || headerAccount.email}
             size={30}
+            variant="account"
           />
         )}
       </header>
@@ -359,6 +365,7 @@ export function MailboxRail() {
                   seed={account.email}
                   label={account.display_name || account.email}
                   size={18}
+                  variant="account"
                 />
                 <span className="rail__item-label">{account.display_name || account.email}</span>
                 {inbox.unread_count > 0 && <span className="rail__count">{inbox.unread_count}</span>}
