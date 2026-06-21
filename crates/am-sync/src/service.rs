@@ -157,6 +157,17 @@ fn folder_type_for(remote_path: &str, special_use: Option<&str>) -> FolderType {
     FolderType::Custom
 }
 
+pub fn rename_path(remote_path: &str, delimiter: &str, new_name: &str) -> String {
+    match remote_path.rfind(delimiter) {
+        Some(idx) => format!("{}{}", &remote_path[..idx + delimiter.len()], new_name),
+        None => new_name.to_string(),
+    }
+}
+
+pub fn child_path(parent_path: &str, delimiter: &str, name: &str) -> String {
+    format!("{parent_path}{delimiter}{name}")
+}
+
 fn imap_config(endpoints: &Endpoints, username: &str) -> ImapConfig {
     ImapConfig {
         host: endpoints.imap_host.clone(),
@@ -1130,5 +1141,23 @@ mod tests {
     fn sync_error_never_contains_password() {
         let err = SyncError::Auth;
         assert_eq!(err.to_string(), "authentication failed");
+    }
+}
+
+#[cfg(test)]
+mod path_tests {
+    use super::{child_path, rename_path};
+
+    #[test]
+    fn rename_path_replaces_last_segment() {
+        assert_eq!(rename_path("Clients/Work", "/", "Job"), "Clients/Job");
+        assert_eq!(rename_path("Work", "/", "Job"), "Job");
+        assert_eq!(rename_path("A.B.C", ".", "D"), "A.B.D");
+    }
+
+    #[test]
+    fn child_path_appends_with_delimiter() {
+        assert_eq!(child_path("Clients", "/", "Work"), "Clients/Work");
+        assert_eq!(child_path("INBOX", ".", "Sub"), "INBOX.Sub");
     }
 }
