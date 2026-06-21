@@ -150,4 +150,26 @@ mod tests {
             .unwrap();
         assert_eq!(trigger_count, 1);
     }
+
+    #[test]
+    fn migration_v13_adds_backfill_and_body_state_index() {
+        let db = Database::open_in_memory().unwrap();
+        let conn = db.conn();
+        let col: i64 = conn
+            .query_row(
+                "SELECT count(*) FROM pragma_table_info('folders') WHERE name = 'backfill_complete'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(col, 1);
+        let idx: i64 = conn
+            .query_row(
+                "SELECT count(*) FROM sqlite_master WHERE type='index' AND name='idx_messages_body_state'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(idx, 1);
+    }
 }
