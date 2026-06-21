@@ -646,6 +646,26 @@ pub fn enqueue_flag(db: &Database, message_id: i64, flag: MessageFlag, value: bo
     Ok(())
 }
 
+pub fn enqueue_mark_folder_read(db: &Database, folder_id: i64) -> Result<(), SyncError> {
+    let folder = folders_repo::get_folder(db, folder_id)?;
+    let markers = folders_repo::get_sync_markers(db, folder_id)?;
+    let uidvalidity = markers.uidvalidity.unwrap_or(0);
+
+    messages_repo::mark_folder_seen(db, folder_id)?;
+    folders_repo::recount_unread(db, folder_id)?;
+    for thread_id in messages_repo::thread_ids_in_folder(db, folder_id)? {
+        threads_repo::recompute(db, thread_id)?;
+    }
+
+    let payload = serde_json::json!({
+        "folder_id": folder_id,
+        "uidvalidity": uidvalidity,
+    })
+    .to_string();
+    queue_repo::enqueue(db, folder.account_id, "mark_folder_read", &payload)?;
+    Ok(())
+}
+
 pub fn enqueue_move(db: &Database, message_id: i64, target: MoveTarget, now: i64) -> Result<(), SyncError> {
     let loc = messages_repo::locate(db, message_id)?;
     let markers = folders_repo::get_sync_markers(db, loc.folder_id)?;
@@ -1025,6 +1045,27 @@ mod rules_engine_tests {
 
         let after = threads_repo::list_for_folder(&db, folder, 50, 0, i64::MAX).unwrap();
         assert_eq!(after[0].unread_count, 0);
+    }
+
+    #[test]
+    fn enqueue_mark_folder_read_clears_unread_and_enqueues() {
+        let db = Database::open_in_memory().unwrap();
+        let (acc, folder) = seed(&db);
+        messages_repo::insert_headers(&db, folder, &[
+            header(1, "a@b.com", "hi"),
+            header(2, "c@d.com", "yo"),
+        ]).unwrap();
+        assign_threads(&db, acc).unwrap();
+        folders_repo::set_sync_markers(&db, folder, 100, 3, None, 0).unwrap();
+
+        enqueue_mark_folder_read(&db, folder).unwrap();
+
+        assert_eq!(folders_repo::recount_unread(&db, folder).unwrap(), 0);
+        for t in threads_repo::list_for_folder(&db, folder, 50, 0, i64::MAX).unwrap() {
+            assert_eq!(t.unread_count, 0);
+        }
+        let due = queue_repo::list_due(&db, acc, i64::MAX).unwrap();
+        assert!(due.iter().any(|op| op.op_type == "mark_folder_read"));
     }
 
     #[test]
