@@ -20,6 +20,7 @@ vi.mock("./bindings", () => ({
     setLabelColor: vi.fn(),
     deleteLabel: vi.fn(),
     setMessageLabels: vi.fn(),
+    threadForMessage: vi.fn(),
   },
   events: {
     syncProgress: { listen: vi.fn() },
@@ -36,6 +37,7 @@ import {
   useCreateLabel,
   useDeleteLabel,
   useSetMessageLabels,
+  useThreadForMessage,
 } from "./queries";
 
 function wrapper({ children }: { children: React.ReactNode }) {
@@ -92,6 +94,31 @@ describe("useAccounts", () => {
     render(<AccountsList />, { wrapper });
 
     await waitFor(() => expect(screen.getByText("error")).toBeTruthy());
+  });
+});
+
+describe("useThreadForMessage", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("keeps the previous thread id while resolving a new message (no flicker)", async () => {
+    vi.mocked(commands.threadForMessage).mockImplementation(async (id: number) => ({
+      status: "ok",
+      data: id === 5 ? 42 : 99,
+    }));
+
+    const { result, rerender } = renderHook(({ id }) => useThreadForMessage(id), {
+      wrapper,
+      initialProps: { id: 5 as number | null },
+    });
+
+    await waitFor(() => expect(result.current.data).toBe(42));
+
+    rerender({ id: 8 });
+    expect(result.current.data).toBe(42);
+
+    await waitFor(() => expect(result.current.data).toBe(99));
   });
 });
 

@@ -42,6 +42,7 @@ export function useThreadForMessage(messageId: number | null) {
     queryKey: ["thread-for-message", messageId],
     queryFn: () => commands.threadForMessage(messageId!).then(unwrap),
     enabled: messageId != null,
+    placeholderData: keepPreviousData,
   });
 }
 
