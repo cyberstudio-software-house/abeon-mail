@@ -51,13 +51,18 @@ Add to the `#[cfg(test)] mod tests` block in `crates/am-storage/src/messages_rep
     #[test]
     fn thread_ids_in_folder_returns_distinct_non_null() {
         let db = Database::open_in_memory().unwrap();
-        let folder = setup(&db);
+        let account = insert_account(&db, &sample_account()).unwrap();
+        let folder = upsert_folder(&db, account.id, "INBOX", "Inbox", FolderType::Inbox).unwrap().id;
         insert_headers(&db, folder, &[make_header(1, 1000), make_header(2, 2000)]).unwrap();
         let ids = ids_by_uids(&db, folder, &[1, 2]).unwrap();
-        db.conn().execute("UPDATE messages SET thread_id = 7 WHERE id IN (?1, ?2)", params![ids[0], ids[1]]).unwrap();
+        let thread_id = crate::threads_repo::create(&db, account.id, "S", 1000).unwrap();
+        db.conn().execute(
+            "UPDATE messages SET thread_id = ?1 WHERE id IN (?2, ?3)",
+            params![thread_id, ids[0], ids[1]],
+        ).unwrap();
 
         let threads = thread_ids_in_folder(&db, folder).unwrap();
-        assert_eq!(threads, vec![7]);
+        assert_eq!(threads, vec![thread_id]);
     }
 ```
 
@@ -102,7 +107,7 @@ Expected: PASS (2 new tests + existing).
 
 ```bash
 git add crates/am-storage/src/messages_repo.rs
-git commit -m "feat(storage): folder-wide seen, thread-id, and delete helpers"
+git commit -m "feat(storage): folder-wide seen and thread-id helpers"
 ```
 
 ---
