@@ -34,6 +34,8 @@ pub fn build_specta_builder() -> Builder<tauri::Wry> {
             commands::archive_messages,
             commands::delete_messages,
             commands::undo_move,
+            commands::move_messages,
+            commands::message_ids_for_threads,
             commands::mark_message_seen,
             commands::list_threads,
             commands::list_thread_messages,

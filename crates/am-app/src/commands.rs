@@ -435,6 +435,21 @@ pub fn delete_messages(
 
 #[tauri::command]
 #[specta::specta]
+pub fn move_messages(
+    state: tauri::State<'_, AppState>,
+    message_ids: Vec<i64>,
+    target_folder_id: i64,
+) -> Result<(), String> {
+    let now = am_sync::service::now_secs();
+    for id in message_ids {
+        am_sync::service::enqueue_move_to_folder(&state.db, id, target_folder_id, now)
+            .map_err(|_| "Failed to move".to_string())?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
 pub fn undo_move(
     state: tauri::State<'_, AppState>,
     message_ids: Vec<i64>,
@@ -558,6 +573,20 @@ pub fn list_thread_messages(
     thread_id: i64,
 ) -> Result<Vec<MessageHeader>, String> {
     messages_repo::list_by_thread(&state.db, thread_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn message_ids_for_threads(
+    state: tauri::State<'_, AppState>,
+    thread_ids: Vec<i64>,
+) -> Result<Vec<i64>, String> {
+    let mut out = Vec::new();
+    for tid in thread_ids {
+        let msgs = messages_repo::list_by_thread(&state.db, tid).map_err(|e| e.to_string())?;
+        out.extend(msgs.into_iter().map(|m| m.id));
+    }
+    Ok(out)
 }
 
 #[tauri::command]
