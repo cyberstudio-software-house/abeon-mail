@@ -52,17 +52,17 @@ describe("signature hooks", () => {
 
   it("useCreateSignature calls command", async () => {
     const { result } = renderHook(() => useCreateSignature(), { wrapper: wrapper() });
-    result.current.mutate({ accountId: 7, name: "Casual", html: "<p>x</p>", makeDefault: false });
+    result.current.mutate({ accountId: 7, name: "Casual", html: "<p>x</p>", makeDefault: false, isHtml: false });
     await waitFor(() =>
-      expect(commands.createSignature).toHaveBeenCalledWith(7, "Casual", "<p>x</p>", false),
+      expect(commands.createSignature).toHaveBeenCalledWith(7, "Casual", "<p>x</p>", false, false),
     );
   });
 
   it("useUpdateSignature calls command", async () => {
     const { result } = renderHook(() => useUpdateSignature(), { wrapper: wrapper() });
-    result.current.mutate({ id: 3, name: "Job", html: "<p>y</p>", accountId: 7 });
+    result.current.mutate({ id: 3, name: "Job", html: "<p>y</p>", accountId: 7, isHtml: false });
     await waitFor(() =>
-      expect(commands.updateSignature).toHaveBeenCalledWith(3, "Job", "<p>y</p>"),
+      expect(commands.updateSignature).toHaveBeenCalledWith(3, "Job", "<p>y</p>", false),
     );
   });
 

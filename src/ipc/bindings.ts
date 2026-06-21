@@ -54,8 +54,8 @@ export const commands = {
 	listDrafts: (accountId: number) => typedError<number[], string>(__TAURI_INVOKE("list_drafts", { accountId })),
 	discardDraft: (draftId: number) => typedError<null, string>(__TAURI_INVOKE("discard_draft", { draftId })),
 	listSignatures: (accountId: number) => typedError<Signature[], string>(__TAURI_INVOKE("list_signatures", { accountId })),
-	createSignature: (accountId: number, name: string, html: string, makeDefault: boolean) => typedError<Signature, string>(__TAURI_INVOKE("create_signature", { accountId, name, html, makeDefault })),
-	updateSignature: (id: number, name: string, html: string) => typedError<null, string>(__TAURI_INVOKE("update_signature", { id, name, html })),
+	createSignature: (accountId: number, name: string, html: string, makeDefault: boolean, isHtml: boolean) => typedError<Signature, string>(__TAURI_INVOKE("create_signature", { accountId, name, html, makeDefault, isHtml })),
+	updateSignature: (id: number, name: string, html: string, isHtml: boolean) => typedError<null, string>(__TAURI_INVOKE("update_signature", { id, name, html, isHtml })),
 	setDefaultSignature: (accountId: number, id: number) => typedError<null, string>(__TAURI_INVOKE("set_default_signature", { accountId, id })),
 	deleteSignature: (id: number) => typedError<null, string>(__TAURI_INVOKE("delete_signature", { id })),
 	pickAttachment: () => typedError<OutgoingAttachment[], string>(__TAURI_INVOKE("pick_attachment")),
@@ -282,6 +282,7 @@ export type Signature = {
 	name: string,
 	html: string,
 	is_default: boolean,
+	is_html: boolean,
 };
 
 export type SmartFolderKind = "all_inboxes" | "unread" | "flagged" | "snoozed";

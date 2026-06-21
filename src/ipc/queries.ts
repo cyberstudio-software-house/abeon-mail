@@ -517,12 +517,14 @@ export function useCreateSignature() {
       name,
       html,
       makeDefault,
+      isHtml,
     }: {
       accountId: number;
       name: string;
       html: string;
       makeDefault: boolean;
-    }) => commands.createSignature(accountId, name, html, makeDefault).then(unwrap),
+      isHtml: boolean;
+    }) => commands.createSignature(accountId, name, html, makeDefault, isHtml).then(unwrap),
     onSuccess: (_data, { accountId }) => {
       queryClient.invalidateQueries({ queryKey: ["signatures", accountId] });
     },
@@ -536,12 +538,14 @@ export function useUpdateSignature() {
       id,
       name,
       html,
+      isHtml,
     }: {
       id: number;
       name: string;
       html: string;
       accountId: number;
-    }) => commands.updateSignature(id, name, html).then(unwrap),
+      isHtml: boolean;
+    }) => commands.updateSignature(id, name, html, isHtml).then(unwrap),
     onSuccess: (_data, { accountId }) => {
       queryClient.invalidateQueries({ queryKey: ["signatures", accountId] });
     },
