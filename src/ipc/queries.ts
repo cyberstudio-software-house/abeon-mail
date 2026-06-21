@@ -664,7 +664,7 @@ export function useRenameFolder() {
   return useMutation({
     mutationFn: ({ folderId, newName }: { folderId: number; newName: string }) =>
       commands.renameFolder(folderId, newName).then(unwrap),
-    onSuccess: () => {
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ["folders"] });
     },
   });
@@ -675,7 +675,7 @@ export function useCreateSubfolder() {
   return useMutation({
     mutationFn: ({ parentId, name }: { parentId: number; name: string }) =>
       commands.createSubfolder(parentId, name).then(unwrap),
-    onSuccess: () => {
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ["folders"] });
     },
   });
@@ -689,10 +689,12 @@ export function useDeleteFolder() {
       if (useUiStore.getState().selectedFolderId === folderId) {
         useUiStore.getState().setSelectedFolderId(null);
       }
-      queryClient.invalidateQueries({ queryKey: ["folders"] });
       queryClient.invalidateQueries({ queryKey: ["messages"] });
       queryClient.invalidateQueries({ queryKey: ["threads"] });
       queryClient.invalidateQueries({ queryKey: ["smart"] });
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["folders"] });
     },
   });
 }

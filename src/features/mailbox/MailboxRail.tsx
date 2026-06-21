@@ -491,7 +491,7 @@ export function MailboxRail() {
           onConfirm={(name) => {
             createSubfolder.mutate(
               { parentId: dialog.folder.id, name },
-              { onError: (e) => showErrorToast(String(e)) },
+              { onError: (e) => showErrorToast(e instanceof Error ? e.message : String(e)) },
             );
             setDialog(null);
           }}
@@ -506,7 +506,7 @@ export function MailboxRail() {
           onConfirm={(newName) => {
             renameFolder.mutate(
               { folderId: dialog.folder.id, newName },
-              { onError: (e) => showErrorToast(String(e)) },
+              { onError: (e) => showErrorToast(e instanceof Error ? e.message : String(e)) },
             );
             setDialog(null);
           }}
@@ -519,7 +519,7 @@ export function MailboxRail() {
           confirmLabel="Usuń folder"
           onCancel={() => setDialog(null)}
           onConfirm={() => {
-            deleteFolder.mutate(dialog.folder.id, { onError: (e) => showErrorToast(String(e)) });
+            deleteFolder.mutate(dialog.folder.id, { onError: (e) => showErrorToast(e instanceof Error ? e.message : String(e)) });
             setDialog(null);
           }}
         />

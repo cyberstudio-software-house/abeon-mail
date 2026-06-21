@@ -44,6 +44,7 @@
   --rail-hover: #efeff7;
   --rail-search-bg: #f0f0f6;
   --rail-search-border: #e6e6ee;
+  --color-red-600: #dc2626;
 }
 
 :root[data-theme="dark"] {
@@ -63,6 +64,7 @@
   --rail-search-border: #2a2a40;
   --text-subject: #d4d4e0;
   --selection-bg: #2a2a40;
+  --color-red-600: #ef4444;
 }
 
 html, body, #root {
