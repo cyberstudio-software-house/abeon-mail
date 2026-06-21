@@ -745,6 +745,38 @@ pub async fn drain_queue(db: &Database, account_id: i64, creds: &dyn CredentialS
             selected = None;
             continue;
         }
+        if op.op_type == "mark_folder_read" {
+            let parsed: serde_json::Value = match serde_json::from_str(&op.payload) {
+                Ok(v) => v,
+                Err(_) => { queue_repo::mark_done(db, op.id)?; continue; }
+            };
+            let folder_id = parsed["folder_id"].as_i64().unwrap_or(0);
+            let folder = match folders_repo::get_folder(db, folder_id) {
+                Ok(f) => f,
+                Err(_) => { queue_repo::mark_done(db, op.id)?; continue; }
+            };
+            if selected.as_deref() != Some(folder.remote_path.as_str()) {
+                if session.select(&folder.remote_path).await.is_err() {
+                    let backoff = now + 2i64.pow((op.attempts + 1).min(5) as u32) * 30;
+                    if op.attempts + 1 >= MAX_QUEUE_ATTEMPTS {
+                        queue_repo::mark_done(db, op.id)?;
+                    } else {
+                        queue_repo::mark_retry(db, op.id, backoff, None)?;
+                    }
+                    continue;
+                }
+                selected = Some(folder.remote_path.clone());
+            }
+            match session.mark_all_seen().await {
+                Ok(()) => queue_repo::mark_done(db, op.id)?,
+                Err(_) if op.attempts + 1 >= MAX_QUEUE_ATTEMPTS => queue_repo::mark_done(db, op.id)?,
+                Err(_) => {
+                    let backoff = now + 2i64.pow((op.attempts + 1).min(5) as u32) * 30;
+                    queue_repo::mark_retry(db, op.id, backoff, None)?;
+                }
+            }
+            continue;
+        }
         if op.op_type != "set_flag" {
             continue;
         }

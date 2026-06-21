@@ -57,6 +57,7 @@ pub struct RemoteFolder {
     pub remote_path: String,
     pub name: String,
     pub special_use: Option<String>,
+    pub delimiter: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -387,6 +388,30 @@ impl ImapSession {
         Ok(())
     }
 
+    pub async fn rename_folder(&mut self, old_path: &str, new_path: &str) -> Result<(), ProtocolError> {
+        match &mut self.session {
+            SessionStream::Plain(s) => s.rename(old_path, new_path).await?,
+            SessionStream::Tls(s) => s.rename(old_path, new_path).await?,
+        }
+        Ok(())
+    }
+
+    pub async fn delete_folder(&mut self, path: &str) -> Result<(), ProtocolError> {
+        match &mut self.session {
+            SessionStream::Plain(s) => s.delete(path).await?,
+            SessionStream::Tls(s) => s.delete(path).await?,
+        }
+        Ok(())
+    }
+
+    pub async fn mark_all_seen(&mut self) -> Result<(), ProtocolError> {
+        let _: Vec<Fetch> = match &mut self.session {
+            SessionStream::Plain(s) => s.uid_store("1:*", "+FLAGS.SILENT (\\Seen)").await?.try_collect().await?,
+            SessionStream::Tls(s) => s.uid_store("1:*", "+FLAGS.SILENT (\\Seen)").await?.try_collect().await?,
+        };
+        Ok(())
+    }
+
     pub async fn idle_wait(self, timeout: Duration) -> Result<(ImapSession, IdleOutcome), ProtocolError> {
         match self.session {
             SessionStream::Plain(s) => {
@@ -489,6 +514,7 @@ fn map_folder(name: &Name) -> RemoteFolder {
         remote_path,
         name: leaf,
         special_use,
+        delimiter: delimiter.to_string(),
     }
 }
 
