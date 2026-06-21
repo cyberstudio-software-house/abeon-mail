@@ -388,6 +388,72 @@ pub async fn discover_folders(
     Ok(())
 }
 
+pub async fn rename_folder(
+    db: &Database,
+    folder_id: i64,
+    new_name: &str,
+    creds: &dyn CredentialSource,
+) -> Result<(), SyncError> {
+    let folder = folders_repo::get_folder(db, folder_id)?;
+    let account = accounts_repo::get_account(db, folder.account_id)?;
+    let endpoints = load_endpoints(db, folder.account_id)?;
+    let auth = creds.auth_for(&account).await?;
+    let config = imap_config(&endpoints, &account.email);
+    let mut session = ImapSession::connect(&config, &auth.to_imap()).await?;
+    let folders = session.list_folders().await?;
+    let delimiter = folders
+        .first()
+        .map(|f| f.delimiter.clone())
+        .unwrap_or_else(|| "/".to_string());
+    let new_path = rename_path(&folder.remote_path, &delimiter, new_name);
+    session.rename_folder(&folder.remote_path, &new_path).await?;
+    session.logout().await?;
+    discover_folders(db, folder.account_id, creds).await?;
+    Ok(())
+}
+
+pub async fn delete_folder(
+    db: &Database,
+    folder_id: i64,
+    creds: &dyn CredentialSource,
+) -> Result<(), SyncError> {
+    let folder = folders_repo::get_folder(db, folder_id)?;
+    let account = accounts_repo::get_account(db, folder.account_id)?;
+    let endpoints = load_endpoints(db, folder.account_id)?;
+    let auth = creds.auth_for(&account).await?;
+    let config = imap_config(&endpoints, &account.email);
+    let mut session = ImapSession::connect(&config, &auth.to_imap()).await?;
+    session.delete_folder(&folder.remote_path).await?;
+    session.logout().await?;
+    folders_repo::delete_folder(db, folder_id)?;
+    discover_folders(db, folder.account_id, creds).await?;
+    Ok(())
+}
+
+pub async fn create_subfolder(
+    db: &Database,
+    parent_folder_id: i64,
+    name: &str,
+    creds: &dyn CredentialSource,
+) -> Result<(), SyncError> {
+    let parent = folders_repo::get_folder(db, parent_folder_id)?;
+    let account = accounts_repo::get_account(db, parent.account_id)?;
+    let endpoints = load_endpoints(db, parent.account_id)?;
+    let auth = creds.auth_for(&account).await?;
+    let config = imap_config(&endpoints, &account.email);
+    let mut session = ImapSession::connect(&config, &auth.to_imap()).await?;
+    let folders = session.list_folders().await?;
+    let delimiter = folders
+        .first()
+        .map(|f| f.delimiter.clone())
+        .unwrap_or_else(|| "/".to_string());
+    let path = child_path(&parent.remote_path, &delimiter, name);
+    session.create_folder(&path).await?;
+    session.logout().await?;
+    discover_folders(db, parent.account_id, creds).await?;
+    Ok(())
+}
+
 pub async fn sync_all_folders(
     db: &Database,
     account_id: i64,
