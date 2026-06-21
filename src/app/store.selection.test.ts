@@ -63,3 +63,18 @@ describe("selection model", () => {
     expect(useUiStore.getState().rowAccounts).toEqual({ 1: 10, 2: 20 });
   });
 });
+
+describe("folder picker state", () => {
+  it("openFolderPicker sets target and account; close resets", () => {
+    useUiStore.getState().openFolderPicker([3, 4], 9);
+    let s = useUiStore.getState();
+    expect(s.folderPickerOpen).toBe(true);
+    expect(s.folderPickerTargetIds).toEqual([3, 4]);
+    expect(s.folderPickerAccountId).toBe(9);
+    useUiStore.getState().closeFolderPicker();
+    s = useUiStore.getState();
+    expect(s.folderPickerOpen).toBe(false);
+    expect(s.folderPickerTargetIds).toEqual([]);
+    expect(s.folderPickerAccountId).toBeNull();
+  });
+});

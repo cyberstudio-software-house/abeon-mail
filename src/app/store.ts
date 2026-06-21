@@ -80,6 +80,11 @@ export type UiState = {
   labelPickerTargetIds: number[];
   snoozePickerOpen: boolean;
   snoozePickerTargetIds: number[];
+  folderPickerOpen: boolean;
+  folderPickerTargetIds: number[];
+  folderPickerAccountId: number | null;
+  openFolderPicker: (ids: number[], accountId: number) => void;
+  closeFolderPicker: () => void;
   undoToast: { kind: "archive" | "delete" | "move"; messageIds: number[] } | null;
   showUndoToast: (kind: "archive" | "delete" | "move", messageIds: number[]) => void;
   clearUndoToast: () => void;
@@ -187,6 +192,13 @@ export const useUiStore = create<UiState>((set) => ({
   labelPickerTargetIds: [],
   snoozePickerOpen: false,
   snoozePickerTargetIds: [],
+  folderPickerOpen: false,
+  folderPickerTargetIds: [],
+  folderPickerAccountId: null,
+  openFolderPicker: (ids, accountId) =>
+    set({ folderPickerOpen: true, folderPickerTargetIds: ids, folderPickerAccountId: accountId }),
+  closeFolderPicker: () =>
+    set({ folderPickerOpen: false, folderPickerTargetIds: [], folderPickerAccountId: null }),
   undoToast: null,
   showUndoToast: (kind, messageIds) => set({ undoToast: { kind, messageIds } }),
   clearUndoToast: () => set({ undoToast: null }),
