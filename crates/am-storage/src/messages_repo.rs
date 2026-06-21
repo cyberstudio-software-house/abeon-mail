@@ -69,6 +69,33 @@ pub fn count_by_folder(db: &Database, folder_id: i64) -> Result<i64, StorageErro
     )?)
 }
 
+pub fn uids_without_body(db: &Database, folder_id: i64, limit: i64) -> Result<Vec<(i64, i64)>, StorageError> {
+    let conn = db.conn();
+    let mut stmt = conn.prepare(
+        "SELECT id, uid FROM messages
+         WHERE folder_id = ?1 AND draft = 0 AND deleted = 0 AND body_state = 'none'
+         ORDER BY uid DESC LIMIT ?2",
+    )?;
+    let rows = stmt.query_map(params![folder_id, limit], |row| {
+        Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?))
+    })?;
+    let mut out = Vec::new();
+    for r in rows {
+        out.push(r?);
+    }
+    Ok(out)
+}
+
+pub fn count_without_body(db: &Database, folder_id: i64) -> Result<i64, StorageError> {
+    let conn = db.conn();
+    Ok(conn.query_row(
+        "SELECT COUNT(*) FROM messages
+         WHERE folder_id = ?1 AND draft = 0 AND deleted = 0 AND body_state = 'none'",
+        params![folder_id],
+        |row| row.get::<_, i64>(0),
+    )?)
+}
+
 pub fn mark_folder_seen(db: &Database, folder_id: i64) -> Result<usize, StorageError> {
     let conn = db.conn();
     Ok(conn.execute(
@@ -303,6 +330,10 @@ pub fn store_body(db: &Database, message_id: i64, body: &MessageBody) -> Result<
          VALUES (?1, ?2, ?3)
          ON CONFLICT(message_id) DO UPDATE SET text_plain = excluded.text_plain, text_html = excluded.text_html",
         params![message_id, body.text_plain, body.text_html],
+    )?;
+    conn.execute(
+        "UPDATE messages SET body_state = 'downloaded' WHERE id = ?1",
+        params![message_id],
     )?;
     Ok(())
 }
@@ -987,5 +1018,39 @@ mod tests {
 
         let threads = thread_ids_in_folder(&db, folder).unwrap();
         assert_eq!(threads, vec![thread_id]);
+    }
+
+    #[test]
+    fn body_state_tracks_download_and_pending_queries() {
+        use am_core::account::{NewAccount, ProviderType};
+        use am_core::folder::FolderType;
+        use am_core::message::{MessageBody, NewMessageHeader};
+
+        let db = Database::open_in_memory().unwrap();
+        let account = crate::accounts_repo::insert_account(&db, &NewAccount {
+            email: "p@e.com".into(), display_name: "P".into(),
+            provider_type: ProviderType::ImapPassword, color: None,
+        }).unwrap();
+        let folder = crate::folders_repo::upsert_folder(&db, account.id, "INBOX", "Inbox", FolderType::Inbox).unwrap();
+        let h = |uid: i64| NewMessageHeader {
+            uid, message_id_hdr: Some(format!("<m{uid}@e>")), in_reply_to: None, references_hdr: None,
+            from_address: "s@e.com".into(), from_name: None, subject: "S".into(), date: uid,
+            seen: false, flagged: false, has_attachments: false, size: 1, snippet: String::new(),
+        };
+        insert_headers(&db, folder.id, &[h(1), h(2)]).unwrap();
+
+        assert_eq!(count_without_body(&db, folder.id).unwrap(), 2);
+        let pending = uids_without_body(&db, folder.id, 10).unwrap();
+        assert_eq!(pending.len(), 2);
+        assert_eq!(pending[0].1, 2);
+
+        let first_id = pending[0].0;
+        store_body(&db, first_id, &MessageBody {
+            message_id: first_id, text_plain: Some("hi".into()), text_html: None,
+        }).unwrap();
+
+        assert_eq!(count_without_body(&db, folder.id).unwrap(), 1);
+        assert!(get_body(&db, first_id).unwrap().is_some());
+        assert_eq!(uids_without_body(&db, folder.id, 10).unwrap().len(), 1);
     }
 }
