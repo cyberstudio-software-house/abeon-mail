@@ -13,6 +13,8 @@ use crate::service::{self, imap_config_pub, load_endpoints_pub};
 pub const POLL_INTERVAL: Duration = Duration::from_secs(300);
 pub const IDLE_TIMEOUT: Duration = Duration::from_secs(1500);
 pub const WAKE_SWEEP_INTERVAL: Duration = Duration::from_secs(60);
+pub const PREFETCH_IDLE_INTERVAL: Duration = Duration::from_secs(60);
+pub const PREFETCH_WORK_PAUSE: Duration = Duration::from_secs(2);
 const INBOX_PATH: &str = "INBOX";
 
 pub fn run_wake_sweep_at(db: &Database, sink: &dyn SyncEventSink, now: i64) {
@@ -65,6 +67,7 @@ impl SyncEngine {
             }
             guard.insert(account_id, token.clone());
         }
+        self.spawn_prefetch(account_id, token.clone());
         let db = Arc::clone(&self.db);
         let sink = Arc::clone(&self.sink);
         let creds = Arc::clone(&self.creds);
@@ -132,6 +135,33 @@ impl SyncEngine {
                 }
                 tokio::select! {
                     _ = tokio::time::sleep(POLL_INTERVAL) => {},
+                    _ = token.cancelled() => break,
+                }
+            }
+        });
+    }
+
+    pub fn spawn_prefetch(self: &Arc<Self>, account_id: i64, token: CancellationToken) {
+        let db = Arc::clone(&self.db);
+        let sink = Arc::clone(&self.sink);
+        let creds = Arc::clone(&self.creds);
+        tokio::spawn(async move {
+            loop {
+                if token.is_cancelled() {
+                    break;
+                }
+                let did_work = match service::run_prefetch_batch(&db, account_id, creds.as_ref(), sink.as_ref()).await {
+                    Ok(worked) => worked,
+                    Err(service::SyncError::NeedsReauth) => {
+                        let _ = am_storage::accounts_repo::set_requires_reauth(&db, account_id, true);
+                        sink.emit(crate::events::SyncEvent::AuthChanged { account_id, requires_reauth: true });
+                        return;
+                    }
+                    Err(_) => false,
+                };
+                let pause = if did_work { PREFETCH_WORK_PAUSE } else { PREFETCH_IDLE_INTERVAL };
+                tokio::select! {
+                    _ = tokio::time::sleep(pause) => {},
                     _ = token.cancelled() => break,
                 }
             }
