@@ -79,7 +79,10 @@ describe("Composer", () => {
   afterEach(() => {
     cleanup();
     vi.clearAllMocks();
-    useUiStore.setState({ composer: { open: false, draftId: null, prefill: null } });
+    useUiStore.setState({
+      composer: { open: false, draftId: null, prefill: null },
+      selectedAccountId: null,
+    });
     mockHtmlContent = "<p>Hello world</p>";
   });
 
@@ -403,5 +406,44 @@ describe("Composer", () => {
 
     const frame = await screen.findByTitle("signature-preview");
     expect(frame.getAttribute("sandbox")).toBe("");
+  });
+
+  const twoAccounts = [
+    { id: 7, email: "first@example.com", display_name: "First", provider_type: "imap_password", color: null, position: 0 },
+    { id: 9, email: "active@example.com", display_name: "Active", provider_type: "imap_password", color: null, position: 1 },
+  ];
+
+  it("defaults the From account to the active account for a new message", async () => {
+    const { commands } = await import("../../ipc/bindings");
+    (commands.listAccounts as ReturnType<typeof vi.fn>).mockResolvedValue({ status: "ok", data: twoAccounts });
+    useUiStore.setState({
+      composer: { open: true, draftId: null, prefill: null },
+      selectedAccountId: 9,
+    });
+
+    render(<Composer />, { wrapper: Wrapper });
+    await screen.findByRole("dialog");
+
+    const fromSelect = (await screen.findByLabelText("From account")) as HTMLSelectElement;
+    await waitFor(() => {
+      expect(fromSelect.value).toBe("9");
+    });
+  });
+
+  it("falls back to the first account for a new message when no account is active", async () => {
+    const { commands } = await import("../../ipc/bindings");
+    (commands.listAccounts as ReturnType<typeof vi.fn>).mockResolvedValue({ status: "ok", data: twoAccounts });
+    useUiStore.setState({
+      composer: { open: true, draftId: null, prefill: null },
+      selectedAccountId: null,
+    });
+
+    render(<Composer />, { wrapper: Wrapper });
+    await screen.findByRole("dialog");
+
+    const fromSelect = (await screen.findByLabelText("From account")) as HTMLSelectElement;
+    await waitFor(() => {
+      expect(fromSelect.value).toBe("7");
+    });
   });
 });

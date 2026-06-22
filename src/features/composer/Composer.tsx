@@ -35,15 +35,21 @@ function htmlToText(html: string): string {
   return el.textContent ?? "";
 }
 
+function resolveInitialFromAccount(isBlankCompose: boolean, activeAccountId: number | null): number | null {
+  return isBlankCompose ? activeAccountId : null;
+}
+
 export function Composer() {
   const composer = useUiStore((s) => s.composer);
   const closeComposer = useUiStore((s) => s.closeComposer);
   const setComposerSend = useUiStore((s) => s.setComposerSend);
+  const selectedAccountId = useUiStore((s) => s.selectedAccountId);
   const { data: accounts = [] } = useAccounts();
 
   const prefill = composer.prefill;
+  const isBlankCompose = composer.draftId == null && prefill == null;
 
-  const [fromAccountId, setFromAccountId] = useState<number | null>(null);
+  const [fromAccountId, setFromAccountId] = useState<number | null>(() => resolveInitialFromAccount(isBlankCompose, selectedAccountId));
   const [to, setTo] = useState<string[]>(prefill?.to ?? []);
   const [cc, setCc] = useState<string[]>(prefill?.cc ?? []);
   const [bcc, setBcc] = useState<string[]>(prefill?.bcc ?? []);
