@@ -1,0 +1,32 @@
+.sending-indicator {
+  position: fixed;
+  left: 50%;
+  bottom: var(--space-4, 16px);
+  transform: translateX(-50%);
+  z-index: 60;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text, #1a1a1a);
+  background: var(--surface, #fff);
+  border: 1px solid var(--border, #e2e2e2);
+  border-radius: 999px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16);
+}
+
+.sending-indicator--sent {
+  color: #1a7f4b;
+}
+
+.sending-indicator__spinner {
+  animation: sending-indicator-spin 0.8s linear infinite;
+}
+
+@keyframes sending-indicator-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
