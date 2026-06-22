@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, fireEvent, waitFor, cleanup } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, cleanup } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 const { endpoints, jan, gmail } = vi.hoisted(() => ({
@@ -193,5 +193,21 @@ describe("AccountsSection", () => {
     const childLi = getByText("2024").closest("li");
     expect(parentLi?.style.paddingLeft).toBe("0px");
     expect(childLi?.style.paddingLeft).toBe("16px");
+  });
+
+  it("locks the per-account image toggle at the Open security level", async () => {
+    (commands.getSettings as ReturnType<typeof vi.fn>).mockResolvedValue({
+      status: "ok",
+      data: [["reader.contentSecurity", "open"]],
+    });
+    wrap();
+
+    const toggle = (await screen.findByLabelText(
+      "Always load remote images for jan@firma.pl"
+    )) as HTMLButtonElement;
+    await waitFor(() => expect(toggle.disabled).toBe(true));
+    expect(
+      screen.getAllByText(/loaded for all accounts by the global Open level/i).length
+    ).toBeGreaterThan(0);
   });
 });

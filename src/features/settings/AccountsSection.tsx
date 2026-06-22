@@ -9,6 +9,7 @@ import {
   useAccountEndpoints,
   useImageAutoload,
   useSetImageAutoload,
+  useContentSecurityLevel,
   useAccountPrefetch,
   useSetAccountPrefetch,
   usePrefetchFoldersMap,
@@ -16,6 +17,7 @@ import {
   useFolders,
 } from "../../ipc/queries";
 import { isFolderPrefetched } from "../mailbox/prefetch";
+import { DEFAULT_CONTENT_SECURITY_LEVEL } from "../../shared/contentSecurity";
 import { buildFolderTree, sortFolderNodes, flattenFolderTree } from "../mailbox/folder-tree";
 import { Avatar } from "../../shared/appearance/Avatar";
 import { AddAccountWizard } from "../accounts/AddAccountWizard";
@@ -170,22 +172,30 @@ function AccountEditForm({ account, onClose }: { account: Account; onClose: () =
 function AccountImageToggle({ accountId, email }: { accountId: number; email: string }) {
   const { data: autoload = false } = useImageAutoload(accountId);
   const setAutoload = useSetImageAutoload();
+  const { data: level = DEFAULT_CONTENT_SECURITY_LEVEL } = useContentSecurityLevel();
+  const lockedOpen = level === "open";
+  const on = lockedOpen || autoload;
 
   return (
-    <div className="appearance-toggle accounts-settings__images">
+    <div className={`appearance-toggle accounts-settings__images${lockedOpen ? " appearance-toggle--disabled" : ""}`}>
       <div className="appearance-toggle__text">
         <div className="appearance-toggle__label">Always load remote images</div>
         <div className="appearance-toggle__hint">
-          When off, images stay blocked until you click “Load images”
+          {lockedOpen
+            ? "Remote images are loaded for all accounts by the global Open level"
+            : "Overrides the global content security level — always loads remote images for this account"}
         </div>
       </div>
       <button
         type="button"
         role="switch"
-        aria-checked={autoload}
+        aria-checked={on}
         aria-label={`Always load remote images for ${email}`}
-        className={`switch${autoload ? " switch--on" : ""}`}
-        onClick={() => setAutoload.mutate({ accountId, value: !autoload })}
+        disabled={lockedOpen}
+        className={`switch${on ? " switch--on" : ""}`}
+        onClick={() => {
+          if (!lockedOpen) setAutoload.mutate({ accountId, value: !autoload });
+        }}
       >
         <span className="switch__knob" />
       </button>
