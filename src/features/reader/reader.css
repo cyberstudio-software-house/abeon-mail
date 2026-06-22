@@ -163,6 +163,7 @@
 .reader__body {
   flex: 1 1 auto;
   min-height: 0;
+  overflow-y: auto;
   padding: 24px 44px;
   display: flex;
   flex-direction: column;
@@ -535,7 +536,7 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 14px 24px;
+  padding: 14px 24px 20px;
   border-top: 1px solid var(--border-subtle);
   flex-shrink: 0;
 }
