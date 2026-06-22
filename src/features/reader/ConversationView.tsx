@@ -5,6 +5,7 @@ import type { MessageHeader } from "../../ipc/bindings";
 import { useUiStore } from "../../app/store";
 import { Avatar } from "../../shared/appearance/Avatar";
 import { MessageBodyView } from "./MessageBodyView";
+import { MeetingInviteCard } from "./MeetingInviteCard";
 import { AttachmentsBar } from "./AttachmentsBar";
 import { LabelChips } from "../labels/LabelChips";
 import { formatMessageTime } from "../../shared/datetime/datetime";
@@ -69,6 +70,7 @@ function ActiveMessage({ message, accountEmail }: { message: MessageHeader; acco
         </dl>
       )}
 
+      <MeetingInviteCard messageId={message.id} />
       <MessageBodyView messageId={message.id} />
       <AttachmentsBar messageId={message.id} />
     </div>

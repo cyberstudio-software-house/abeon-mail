@@ -32,3 +32,5 @@ exports.Tag = Icon;
 exports.Plus = Icon;
 exports.Check = Icon;
 exports.Calendar = Icon;
+exports.Video = Icon;
+exports.Phone = Icon;
