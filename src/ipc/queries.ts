@@ -1,6 +1,6 @@
 import { useQuery, useQueries, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { commands } from "./bindings";
-import type { Account, Endpoints, Folder, Label, MessageFlag, OutgoingMessage, Rule, RuleInput, SendError, Signature, SmartFolderKind, SmartMessageRow } from "./bindings";
+import type { Account, Endpoints, Folder, Label, MessageFlag, OutgoingMessage, Rule, RuleInput, RsvpStatus, SendError, Signature, SmartFolderKind, SmartMessageRow } from "./bindings";
 import { useUiStore } from "../app/store";
 import { parsePinnedMap, pinKey, togglePinnedIds } from "../features/mailbox/pinned";
 import { decodeFolderNames } from "../features/mailbox/folder-tree";
@@ -141,6 +141,25 @@ export function useSetFlag() {
       queryClient.invalidateQueries({ queryKey: ["messages-by-label"] });
       queryClient.invalidateQueries({ queryKey: ["folders"] });
       void commands.refreshUnreadBadge(useUiStore.getState().badgeEnabled);
+    },
+  });
+}
+
+export function useMeetingInvite(messageId: number | null) {
+  return useQuery({
+    queryKey: ["meeting-invite", messageId],
+    queryFn: () => commands.meetingInvite(messageId!).then(unwrap),
+    enabled: messageId != null,
+  });
+}
+
+export function useRespondToInvite() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ messageId, status }: { messageId: number; status: RsvpStatus }) =>
+      commands.respondToInvite(messageId, status).then(unwrap),
+    onSuccess: (_data, { messageId }) => {
+      queryClient.invalidateQueries({ queryKey: ["meeting-invite", messageId] });
     },
   });
 }
