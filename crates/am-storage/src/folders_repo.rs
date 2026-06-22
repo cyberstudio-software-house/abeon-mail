@@ -96,7 +96,10 @@ pub fn upsert_folder(
 pub fn list_folders(db: &Database, account_id: i64) -> Result<Vec<Folder>, StorageError> {
     let conn = db.conn();
     let mut stmt = conn.prepare(
-        "SELECT id, account_id, remote_path, name, folder_type, unread_count, total_count
+        "SELECT id, account_id, remote_path, name, folder_type, unread_count,
+                CASE WHEN folder_type = 'drafts'
+                     THEN (SELECT count(*) FROM messages m WHERE m.folder_id = folders.id AND m.draft = 1 AND m.deleted = 0)
+                     ELSE total_count END
          FROM folders WHERE account_id = ?1 ORDER BY id ASC",
     )?;
     let rows = stmt.query_map(params![account_id], row_to_folder)?;
@@ -225,7 +228,7 @@ pub fn get_backfill_complete(db: &Database, folder_id: i64) -> Result<bool, Stor
 pub fn recount_unread(db: &Database, folder_id: i64) -> Result<i64, StorageError> {
     let conn = db.conn();
     let unread: i64 = conn.query_row(
-        "SELECT count(*) FROM messages WHERE folder_id = ?1 AND seen = 0 AND deleted = 0",
+        "SELECT count(*) FROM messages WHERE folder_id = ?1 AND seen = 0 AND deleted = 0 AND draft = 0",
         params![folder_id],
         |row| row.get(0),
     )?;
@@ -363,6 +366,44 @@ mod tests {
         let ids: Vec<i64> = crate::messages_repo::list_by_folder(&db, folder.id, 50, 0, i64::MAX)
             .unwrap().iter().map(|m| m.id).collect();
         crate::messages_repo::set_deleted(&db, ids[0], true).unwrap();
+        assert_eq!(recount_unread(&db, folder.id).unwrap(), 1);
+    }
+
+    #[test]
+    fn list_folders_reports_live_draft_count_for_drafts_folder() {
+        use am_core::message::NewMessageHeader;
+        let db = Database::open_in_memory().unwrap();
+        let account = insert_account(&db, &sample_account()).unwrap();
+        let drafts = upsert_folder(&db, account.id, "Drafts", "Drafts", FolderType::Drafts).unwrap();
+        let h = |uid: i64, msgid: &str| NewMessageHeader {
+            uid, message_id_hdr: Some(msgid.into()), in_reply_to: None, references_hdr: None,
+            from_address: "s@e.com".into(), from_name: None, subject: "S".into(), date: uid,
+            seen: false, flagged: false, has_attachments: false, size: 1, snippet: "x".into(),
+        };
+        crate::messages_repo::insert_headers(&db, drafts.id, &[h(1, "<a@e>"), h(2, "<b@e>")]).unwrap();
+        db.conn().execute("UPDATE messages SET draft = 1 WHERE folder_id = ?1", params![drafts.id]).unwrap();
+        set_counts(&db, drafts.id, 0, 99).unwrap();
+
+        let listed = list_folders(&db, account.id).unwrap();
+        let drafts_listed = listed.iter().find(|f| f.id == drafts.id).unwrap();
+        assert_eq!(drafts_listed.total_count, 2);
+    }
+
+    #[test]
+    fn recount_unread_excludes_drafts() {
+        use am_core::message::NewMessageHeader;
+        let db = Database::open_in_memory().unwrap();
+        let account = insert_account(&db, &sample_account()).unwrap();
+        let folder = upsert_folder(&db, account.id, "Drafts", "Drafts", FolderType::Drafts).unwrap();
+        let h = |uid: i64, msgid: &str| NewMessageHeader {
+            uid, message_id_hdr: Some(msgid.into()), in_reply_to: None, references_hdr: None,
+            from_address: "s@e.com".into(), from_name: None, subject: "S".into(), date: uid,
+            seen: false, flagged: false, has_attachments: false, size: 1, snippet: "x".into(),
+        };
+        crate::messages_repo::insert_headers(&db, folder.id, &[h(1, "<a@e>"), h(2, "<b@e>")]).unwrap();
+        let ids: Vec<i64> = crate::messages_repo::list_by_folder(&db, folder.id, 50, 0, i64::MAX)
+            .unwrap().iter().map(|m| m.id).collect();
+        db.conn().execute("UPDATE messages SET draft = 1 WHERE id = ?1", params![ids[0]]).unwrap();
         assert_eq!(recount_unread(&db, folder.id).unwrap(), 1);
     }
 

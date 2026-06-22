@@ -55,6 +55,7 @@ pub fn build_specta_builder() -> Builder<tauri::Wry> {
             commands::save_draft,
             commands::get_draft,
             commands::list_drafts,
+            commands::list_draft_summaries,
             commands::discard_draft,
             commands::list_signatures,
             commands::create_signature,

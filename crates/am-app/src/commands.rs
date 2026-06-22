@@ -10,7 +10,7 @@ use am_core::{
     label::Label,
     message::{MessageBody, MessageFlag, MessageHeader},
     notification::NotificationContent,
-    outgoing::{OutgoingAttachment, OutgoingMessage, SendError},
+    outgoing::{DraftSummary, OutgoingAttachment, OutgoingMessage, SendError},
     rule::{Rule, RuleInput},
     signature::Signature,
     smart::{SmartFolderKind, SmartMessageRow},
@@ -861,6 +861,16 @@ pub fn list_drafts(
 ) -> Result<Vec<i64>, String> {
     drafts_repo::list_draft_ids(&state.db, account_id)
         .map_err(|_| "Failed to list drafts".to_string())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn list_draft_summaries(
+    state: tauri::State<'_, AppState>,
+    account_id: i64,
+) -> Result<Vec<DraftSummary>, String> {
+    drafts_repo::list_draft_summaries(&state.db, account_id)
+        .map_err(|_| "Failed to list draft summaries".to_string())
 }
 
 #[tauri::command]

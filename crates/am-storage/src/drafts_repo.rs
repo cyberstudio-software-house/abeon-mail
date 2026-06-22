@@ -1,7 +1,7 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use am_core::folder::FolderType;
-use am_core::outgoing::{OutgoingAttachment, OutgoingMessage};
+use am_core::outgoing::{DraftSummary, OutgoingAttachment, OutgoingMessage};
 use rusqlite::params;
 
 use crate::db::{Database, StorageError};
@@ -162,6 +162,40 @@ pub fn list_draft_ids(db: &Database, account_id: i64) -> Result<Vec<i64>, Storag
     Ok(out)
 }
 
+pub fn list_draft_summaries(
+    db: &Database,
+    account_id: i64,
+) -> Result<Vec<DraftSummary>, StorageError> {
+    let conn = db.conn();
+    let mut stmt = conn.prepare(
+        "SELECT m.id, m.account_id, m.to_addresses, m.subject, m.date,
+                COALESCE(b.text_plain, ''),
+                EXISTS(SELECT 1 FROM attachments a WHERE a.message_id = m.id)
+         FROM messages m
+         LEFT JOIN message_bodies b ON b.message_id = m.id
+         WHERE m.account_id = ?1 AND m.draft = 1 AND m.deleted = 0
+         ORDER BY m.id DESC",
+    )?;
+    let rows = stmt.query_map(params![account_id], |r| {
+        let to_json: String = r.get(2)?;
+        let body: String = r.get(5)?;
+        Ok(DraftSummary {
+            id: r.get(0)?,
+            account_id: r.get(1)?,
+            to: serde_json::from_str(&to_json).unwrap_or_default(),
+            subject: r.get(3)?,
+            date: r.get(4)?,
+            snippet: body.chars().take(140).collect::<String>().replace('\n', " "),
+            has_attachments: r.get::<_, i64>(6)? != 0,
+        })
+    })?;
+    let mut out = Vec::new();
+    for r in rows {
+        out.push(r?);
+    }
+    Ok(out)
+}
+
 pub fn delete_draft(db: &Database, draft_id: i64) -> Result<(), StorageError> {
     let conn = db.conn();
     conn.execute(
@@ -260,6 +294,44 @@ mod tests {
         assert_eq!(id, id2);
         assert_eq!(get_draft(&db, id).unwrap().1.subject, "Updated");
         assert_eq!(list_draft_ids(&db, account_id).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn list_draft_summaries_returns_drafts_newest_first() {
+        let db = Database::open_in_memory().unwrap();
+        let account_id = acct(&db);
+        let first = save_draft(&db, account_id, None, &sample()).unwrap();
+        let mut second_msg = sample();
+        second_msg.subject = "Second draft".into();
+        second_msg.to = vec!["later@x.com".into()];
+        let second = save_draft(&db, account_id, None, &second_msg).unwrap();
+
+        let summaries = list_draft_summaries(&db, account_id).unwrap();
+        assert_eq!(summaries.len(), 2);
+        assert_eq!(summaries[0].id, second);
+        assert_eq!(summaries[0].subject, "Second draft");
+        assert_eq!(summaries[0].to, vec!["later@x.com".to_string()]);
+        assert_eq!(summaries[0].account_id, account_id);
+        assert_eq!(summaries[1].id, first);
+    }
+
+    #[test]
+    fn list_draft_summaries_excludes_other_accounts() {
+        let db = Database::open_in_memory().unwrap();
+        let account_id = acct(&db);
+        save_draft(&db, account_id, None, &sample()).unwrap();
+        let other = insert_account(
+            &db,
+            &NewAccount {
+                email: "other@e.com".into(),
+                display_name: "Other".into(),
+                provider_type: ProviderType::ImapPassword,
+                color: None,
+            },
+        )
+        .unwrap()
+        .id;
+        assert!(list_draft_summaries(&db, other).unwrap().is_empty());
     }
 
     #[test]

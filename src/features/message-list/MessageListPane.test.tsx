@@ -14,6 +14,8 @@ const mockSetSeen = { mutate: vi.fn() };
 
 vi.mock("../../ipc/queries", () => ({
   useThreads: vi.fn(),
+  useFolders: vi.fn(),
+  useDraftSummaries: vi.fn(),
   useSmartFolder: vi.fn(),
   useSearch: vi.fn(),
   useMessagesByLabel: (id: number | null) =>
@@ -30,13 +32,15 @@ vi.mock("../../app/store", () => ({
   useUiStore: vi.fn(),
 }));
 
-import { useThreads, useSmartFolder, useSearch } from "../../ipc/queries";
+import { useThreads, useFolders, useDraftSummaries, useSmartFolder, useSearch } from "../../ipc/queries";
 import { useUiStore } from "../../app/store";
 import type { UiState, Density } from "../../app/store";
 import { MessageListPane } from "./MessageListPane";
 import type { ThreadSummary, SmartMessageRow } from "../../ipc/bindings";
 
 const mockUseThreads = vi.mocked(useThreads);
+const mockUseFolders = vi.mocked(useFolders);
+const mockUseDraftSummaries = vi.mocked(useDraftSummaries);
 const mockUseSmartFolder = vi.mocked(useSmartFolder);
 const mockUseSearch = vi.mocked(useSearch);
 const mockUseUiStore = vi.mocked(useUiStore);
@@ -298,11 +302,40 @@ describe("MessageListPane", () => {
       data: [],
       isLoading: false,
     } as unknown as ReturnType<typeof useSearch>);
+    mockUseFolders.mockReturnValue({
+      data: undefined,
+    } as unknown as ReturnType<typeof useFolders>);
+    mockUseDraftSummaries.mockReturnValue({
+      data: [],
+      isLoading: false,
+    } as unknown as ReturnType<typeof useDraftSummaries>);
   });
 
   afterEach(() => {
     cleanup();
     vi.clearAllMocks();
+  });
+
+  it("renders the drafts list instead of threads when a drafts folder is selected", () => {
+    mockUseThreads.mockReturnValue({ data: [], isLoading: false } as unknown as ReturnType<typeof useThreads>);
+    mockUseSmartFolder.mockReturnValue({ data: undefined, isLoading: false } as unknown as ReturnType<typeof useSmartFolder>);
+    mockUseFolders.mockReturnValue({
+      data: [
+        { id: 29, account_id: 1, remote_path: "Drafts", name: "Drafts", folder_type: "drafts", unread_count: 0, total_count: 3 },
+      ],
+    } as unknown as ReturnType<typeof useFolders>);
+    mockUseDraftSummaries.mockReturnValue({
+      data: [
+        { id: 4098, account_id: 1, to: ["alice@example.com"], subject: "dasdsadas", date: 1700000000, snippet: "", has_attachments: false },
+      ],
+      isLoading: false,
+    } as unknown as ReturnType<typeof useDraftSummaries>);
+    setupStore(29, "comfortable", null, false, "", null, { selectedAccountId: 1 });
+
+    renderPane();
+
+    expect(screen.getByText("dasdsadas")).toBeTruthy();
+    expect(screen.queryByText("No messages")).toBeNull();
   });
 
   it("renders thread list with participants and subject visible, clicking row calls selectRow", () => {

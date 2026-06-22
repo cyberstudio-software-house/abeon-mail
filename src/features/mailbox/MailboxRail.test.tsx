@@ -135,6 +135,17 @@ describe("MailboxRail", () => {
     expect(screen.queryByText("Drafts")).toBeNull();
   });
 
+  it("shows the draft count (total_count) as the badge for a drafts folder", () => {
+    accounts([singleAccount]);
+    folders([
+      { id: 29, account_id: 1, name: "Drafts", folder_type: "drafts", unread_count: 0, total_count: 3, remote_path: "Drafts" },
+    ]);
+    setupStore(1);
+    render(<MailboxRail />);
+    expect(screen.getByText("Drafts")).toBeTruthy();
+    expect(screen.getByText("3")).toBeTruthy();
+  });
+
   it("hides a smart folder turned off in visibility, keeps the rest", () => {
     accounts([]);
     useUiStore.setState({

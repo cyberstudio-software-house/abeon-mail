@@ -59,6 +59,10 @@ const SMART_FOLDER_ICONS: Record<SmartFolderKind, React.ElementType> = {
   snoozed: Clock,
 };
 
+function folderBadgeCount(folder: Folder): number {
+  return folder.folder_type === "drafts" ? folder.total_count : folder.unread_count;
+}
+
 function FolderIcon({ folderType }: { folderType?: string }) {
   const Icon =
     folderType === "inbox" ? Inbox :
@@ -115,8 +119,8 @@ function FolderTreeNodes({
               )}
               <FolderIcon folderType={node.folder?.folder_type} />
               <span className="rail__item-label">{node.segment}</span>
-              {node.folder != null && node.folder.unread_count > 0 && (
-                <span className="rail__count">{node.folder.unread_count}</span>
+              {node.folder != null && folderBadgeCount(node.folder) > 0 && (
+                <span className="rail__count">{folderBadgeCount(node.folder)}</span>
               )}
             </div>
             {hasChildren && isOpen && (
@@ -420,7 +424,7 @@ export function MailboxRail() {
                 <span className="rail__chevron-spacer" />
                 <FolderIcon folderType={folder.folder_type} />
                 <span className="rail__item-label">{folder.name}</span>
-                {folder.unread_count > 0 && <span className="rail__count">{folder.unread_count}</span>}
+                {folderBadgeCount(folder) > 0 && <span className="rail__count">{folderBadgeCount(folder)}</span>}
               </div>
             ))}
           </div>

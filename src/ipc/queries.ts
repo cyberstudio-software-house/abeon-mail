@@ -1,6 +1,6 @@
 import { useQuery, useQueries, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { commands } from "./bindings";
-import type { Account, Endpoints, Folder, Label, MessageFlag, OutgoingMessage, Rule, RuleInput, RsvpStatus, SendError, Signature, SmartFolderKind, SmartMessageRow } from "./bindings";
+import type { Account, DraftSummary, Endpoints, Folder, Label, MessageFlag, OutgoingMessage, Rule, RuleInput, RsvpStatus, SendError, Signature, SmartFolderKind, SmartMessageRow } from "./bindings";
 import { useUiStore } from "../app/store";
 import { parsePinnedMap, pinKey, togglePinnedIds } from "../features/mailbox/pinned";
 import { decodeFolderNames } from "../features/mailbox/folder-tree";
@@ -25,6 +25,14 @@ function unwrap<T>(result: Result<T>): T {
     throw new Error(result.error);
   }
   return result.data;
+}
+
+export function useDraftSummaries(accountId: number | null) {
+  return useQuery<DraftSummary[]>({
+    queryKey: ["draft-summaries", accountId],
+    queryFn: () => commands.listDraftSummaries(accountId!).then(unwrap),
+    enabled: accountId != null,
+  });
 }
 
 export function useThreads(folderId: number | null) {
@@ -263,6 +271,7 @@ export function useStartReply() {
 }
 
 export function useSaveDraft() {
+  const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({
       accountId,
@@ -273,6 +282,19 @@ export function useSaveDraft() {
       draftId: number | null;
       message: OutgoingMessage;
     }) => commands.saveDraft(accountId, draftId, message).then(unwrap),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["draft-summaries"] });
+    },
+  });
+}
+
+export function useDiscardDraft() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (draftId: number) => commands.discardDraft(draftId).then(unwrap),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["draft-summaries"] });
+    },
   });
 }
 
@@ -283,6 +305,7 @@ export function useEnqueueSend() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["folders"] });
       queryClient.invalidateQueries({ queryKey: ["threads"] });
+      queryClient.invalidateQueries({ queryKey: ["draft-summaries"] });
     },
   });
 }

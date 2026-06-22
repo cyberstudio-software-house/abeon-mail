@@ -4,7 +4,7 @@ import StarterKit from "@tiptap/starter-kit";
 import { Image } from "@tiptap/extension-image";
 import { commands } from "../../ipc/bindings";
 import type { OutgoingAttachment, Signature } from "../../ipc/bindings";
-import { useAccounts, useSaveDraft, useEnqueueSend } from "../../ipc/queries";
+import { useAccounts, useSaveDraft, useEnqueueSend, useDiscardDraft } from "../../ipc/queries";
 import { useUiStore } from "../../app/store";
 import { RecipientField } from "./RecipientField";
 import { SafeHtmlFrame } from "../reader/SafeHtmlFrame";
@@ -66,6 +66,7 @@ export function Composer() {
 
   const saveDraftMutation = useSaveDraft();
   const enqueueSendMutation = useEnqueueSend();
+  const discardDraftMutation = useDiscardDraft();
 
   const accountId = fromAccountId ?? (accounts[0]?.id ?? null);
 
@@ -208,7 +209,7 @@ export function Composer() {
       clearTimeout(autosaveTimerRef.current);
     }
     if (draftIdRef.current != null) {
-      await commands.discardDraft(draftIdRef.current);
+      await discardDraftMutation.mutateAsync(draftIdRef.current);
     }
     closeComposer();
   }

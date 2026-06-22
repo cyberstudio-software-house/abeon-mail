@@ -1,7 +1,8 @@
 import { useRef, useMemo, useEffect, type MouseEvent as ReactMouseEvent } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { PencilLine, ChevronDown } from "lucide-react";
-import { useThreads, useSmartFolder, useSearch, useLabelsForMessages, useMessagesByLabel, useLabels } from "../../ipc/queries";
+import { useThreads, useFolders, useSmartFolder, useSearch, useLabelsForMessages, useMessagesByLabel, useLabels } from "../../ipc/queries";
+import { DraftsList } from "./DraftsList";
 import { formatListDate, formatWakeTime } from "../../shared/datetime/datetime";
 import { useDebouncedValue } from "../../shared/hooks/useDebouncedValue";
 import { useUiStore, type Density } from "../../app/store";
@@ -193,6 +194,7 @@ function SkeletonRow({ height }: { height: number }) {
 
 export function MessageListPane() {
   const selectedFolderId = useUiStore((s) => s.selectedFolderId);
+  const selectedAccountId = useUiStore((s) => s.selectedAccountId);
   const selectedSmartFolder = useUiStore((s) => s.selectedSmartFolder);
   const density = useUiStore((s) => s.density);
   const showPreview = useUiStore((s) => s.showPreview);
@@ -222,6 +224,14 @@ export function MessageListPane() {
   const { data: searchRows, isLoading: searchLoading } = useSearch(debouncedQuery);
   const { data: labelRows, isLoading: labelLoading } = useMessagesByLabel(selectedLabelId);
   const { data: allLabels } = useLabels();
+  const { data: folders } = useFolders(selectedAccountId);
+
+  const selectedFolder = folders?.find((f) => f.id === selectedFolderId);
+  const isDraftsMode =
+    !searchActive &&
+    selectedLabelId == null &&
+    selectedSmartFolder == null &&
+    selectedFolder?.folder_type === "drafts";
 
   const isLabelMode = !searchActive && selectedLabelId != null;
   const isSmartMode = !searchActive && !isLabelMode && selectedSmartFolder != null;
@@ -320,6 +330,10 @@ export function MessageListPane() {
         </span>
       </div>
 
+      {isDraftsMode ? (
+        <DraftsList accountId={selectedAccountId} />
+      ) : (
+      <>
       {searchActive && (
         <div className="message-list__search-banner" role="status">
           <span>
@@ -439,6 +453,8 @@ export function MessageListPane() {
             })}
           </div>
         </div>
+      )}
+      </>
       )}
     </section>
   );

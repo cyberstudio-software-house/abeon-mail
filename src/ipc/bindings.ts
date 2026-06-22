@@ -75,6 +75,7 @@ export const commands = {
 	saveDraft: (accountId: number, draftId: number | null, message: OutgoingMessage) => typedError<number, string>(__TAURI_INVOKE("save_draft", { accountId, draftId, message })),
 	getDraft: (draftId: number) => typedError<OutgoingMessage, string>(__TAURI_INVOKE("get_draft", { draftId })),
 	listDrafts: (accountId: number) => typedError<number[], string>(__TAURI_INVOKE("list_drafts", { accountId })),
+	listDraftSummaries: (accountId: number) => typedError<DraftSummary[], string>(__TAURI_INVOKE("list_draft_summaries", { accountId })),
 	discardDraft: (draftId: number) => typedError<null, string>(__TAURI_INVOKE("discard_draft", { draftId })),
 	listSignatures: (accountId: number) => typedError<Signature[], string>(__TAURI_INVOKE("list_signatures", { accountId })),
 	createSignature: (accountId: number, name: string, html: string, makeDefault: boolean, isHtml: boolean) => typedError<Signature, string>(__TAURI_INVOKE("create_signature", { accountId, name, html, makeDefault, isHtml })),
@@ -146,6 +147,16 @@ export type Attachment = {
 export type ConditionField = "from" | "subject" | "recipient" | "has_attachment";
 
 export type ConditionOp = "contains" | "is";
+
+export type DraftSummary = {
+	id: number,
+	account_id: number,
+	to: string[],
+	subject: string,
+	date: number,
+	snippet: string,
+	has_attachments: boolean,
+};
 
 export type Endpoints = {
 	imap_host: string,
