@@ -331,3 +331,23 @@ describe("general mark-as-read slice", () => {
     expect(useUiStore.getState().markUnreadEpoch).toBe(1);
   });
 });
+
+describe("smart folder visibility", () => {
+  it("setSmartFoldersEnabled toggles the master flag", () => {
+    useUiStore.getState().setSmartFoldersEnabled(false);
+    expect(useUiStore.getState().smartFoldersEnabled).toBe(false);
+    useUiStore.getState().setSmartFoldersEnabled(true);
+    expect(useUiStore.getState().smartFoldersEnabled).toBe(true);
+  });
+
+  it("setSmartFolderVisible updates one kind immutably, leaving the rest", () => {
+    useUiStore.setState({
+      smartFolderVisibility: { all_inboxes: true, unread: true, flagged: true, snoozed: true },
+    });
+    const before = useUiStore.getState().smartFolderVisibility;
+    useUiStore.getState().setSmartFolderVisible("flagged", false);
+    const after = useUiStore.getState().smartFolderVisibility;
+    expect(after).toEqual({ all_inboxes: true, unread: true, flagged: false, snoozed: true });
+    expect(after).not.toBe(before);
+  });
+});

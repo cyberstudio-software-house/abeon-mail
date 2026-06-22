@@ -1,4 +1,10 @@
 import type { ThemeMode } from "../theme/theme";
+import type { SmartFolderKind } from "../../ipc/bindings";
+import {
+  DEFAULT_SMART_FOLDER_VISIBILITY,
+  SMART_FOLDER_META,
+  type SmartFolderVisibility,
+} from "../smartFolders";
 
 export type Density = "comfortable" | "compact" | "dense";
 
@@ -8,6 +14,8 @@ export type AppearanceFields = {
   density: Density;
   showPreview: boolean;
   showAvatars: boolean;
+  smartFoldersEnabled: boolean;
+  smartFolderVisibility: SmartFolderVisibility;
 };
 
 export const SETTINGS_KEYS = {
@@ -16,6 +24,8 @@ export const SETTINGS_KEYS = {
   density: "appearance.density",
   showPreview: "appearance.showPreview",
   showAvatars: "appearance.showAvatars",
+  smartFoldersEnabled: "appearance.smartFoldersEnabled",
+  smartFolderVisibility: "appearance.smartFolderVisibility",
 } as const;
 
 export const DEFAULT_APPEARANCE: AppearanceFields = {
@@ -24,6 +34,8 @@ export const DEFAULT_APPEARANCE: AppearanceFields = {
   density: "comfortable",
   showPreview: true,
   showAvatars: true,
+  smartFoldersEnabled: true,
+  smartFolderVisibility: { ...DEFAULT_SMART_FOLDER_VISIBILITY },
 };
 
 export const THEME_MODES: { value: ThemeMode; label: string }[] = [
@@ -173,6 +185,25 @@ function isDensity(v: string): v is Density {
   return v === "comfortable" || v === "compact" || v === "dense";
 }
 
+const SMART_FOLDER_KINDS = SMART_FOLDER_META.map((m) => m.kind);
+
+function parseSmartFolderVisibility(raw: string): SmartFolderVisibility | undefined {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return undefined;
+  }
+  if (typeof parsed !== "object" || parsed === null) return undefined;
+  const source = parsed as Record<string, unknown>;
+  const result: SmartFolderVisibility = { ...DEFAULT_SMART_FOLDER_VISIBILITY };
+  for (const kind of SMART_FOLDER_KINDS) {
+    const value = source[kind];
+    if (typeof value === "boolean") result[kind as SmartFolderKind] = value;
+  }
+  return result;
+}
+
 export function parseSettings(pairs: [string, string][]): Partial<AppearanceFields> {
   const out: Partial<AppearanceFields> = {};
   for (const [key, value] of pairs) {
@@ -192,6 +223,14 @@ export function parseSettings(pairs: [string, string][]): Partial<AppearanceFiel
       case SETTINGS_KEYS.showAvatars:
         if (value === "true" || value === "false") out.showAvatars = value === "true";
         break;
+      case SETTINGS_KEYS.smartFoldersEnabled:
+        if (value === "true" || value === "false") out.smartFoldersEnabled = value === "true";
+        break;
+      case SETTINGS_KEYS.smartFolderVisibility: {
+        const visibility = parseSmartFolderVisibility(value);
+        if (visibility) out.smartFolderVisibility = visibility;
+        break;
+      }
       default:
         break;
     }

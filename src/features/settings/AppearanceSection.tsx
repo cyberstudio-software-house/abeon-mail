@@ -1,19 +1,22 @@
 import { useAppearance } from "../../shared/appearance/AppearanceProvider";
 import { THEME_MODES, ACCENT_PRESETS, DENSITIES } from "../../shared/appearance/appearance";
+import { SMART_FOLDER_META } from "../../shared/smartFolders";
 
 function Toggle({
   label,
   hint,
   checked,
   onChange,
+  disabled = false,
 }: {
   label: string;
   hint?: string;
   checked: boolean;
   onChange: (value: boolean) => void;
+  disabled?: boolean;
 }) {
   return (
-    <div className="appearance-toggle">
+    <div className={`appearance-toggle${disabled ? " appearance-toggle--disabled" : ""}`}>
       <div className="appearance-toggle__text">
         <div className="appearance-toggle__label">{label}</div>
         {hint && <div className="appearance-toggle__hint">{hint}</div>}
@@ -23,6 +26,7 @@ function Toggle({
         role="switch"
         aria-checked={checked}
         aria-label={label}
+        disabled={disabled}
         className={`switch${checked ? " switch--on" : ""}`}
         onClick={() => onChange(!checked)}
       >
@@ -101,6 +105,23 @@ export function AppearanceSection() {
         checked={a.showAvatars}
         onChange={a.setShowAvatars}
       />
+
+      <div className="appearance-field__label">Smart folders</div>
+      <Toggle
+        label="Show smart folders"
+        hint="Show the smart folders section in the sidebar"
+        checked={a.smartFoldersEnabled}
+        onChange={a.setSmartFoldersEnabled}
+      />
+      {SMART_FOLDER_META.map(({ kind, label }) => (
+        <Toggle
+          key={kind}
+          label={label}
+          checked={a.smartFolderVisibility[kind]}
+          disabled={!a.smartFoldersEnabled}
+          onChange={(value) => a.setSmartFolderVisible(kind, value)}
+        />
+      ))}
     </div>
   );
 }

@@ -20,6 +20,8 @@ function Probe() {
     <div>
       <span data-testid="theme">{a.theme}</span>
       <button onClick={() => a.setTheme("dark")}>set-dark</button>
+      <button onClick={() => a.setSmartFoldersEnabled(false)}>disable-smart</button>
+      <button onClick={() => a.setSmartFolderVisible("flagged", false)}>hide-flagged</button>
     </div>
   );
 }
@@ -34,7 +36,15 @@ beforeEach(() => {
     data: [["appearance.theme", "light"]],
   });
   setSetting.mockClear();
-  useUiStore.setState({ theme: "auto", accent: "#4f46e5", density: "comfortable", showPreview: true, showAvatars: true });
+  useUiStore.setState({
+    theme: "auto",
+    accent: "#4f46e5",
+    density: "comfortable",
+    showPreview: true,
+    showAvatars: true,
+    smartFoldersEnabled: true,
+    smartFolderVisibility: { all_inboxes: true, unread: true, flagged: true, snoozed: true },
+  });
   document.documentElement.removeAttribute("data-theme");
   document.documentElement.style.removeProperty("--accent");
 });
@@ -69,5 +79,32 @@ describe("AppearanceProvider", () => {
     fireEvent.click(screen.getByText("set-dark"));
     await waitFor(() => expect(screen.getByTestId("theme").textContent).toBe("dark"));
     expect(setSetting).toHaveBeenCalledWith("appearance.theme", "dark");
+  });
+
+  it("setSmartFoldersEnabled persists the master flag as a boolean string", async () => {
+    render(
+      <AppearanceProvider>
+        <Probe />
+      </AppearanceProvider>
+    );
+    await waitFor(() => expect(screen.getByTestId("theme").textContent).toBe("light"));
+    fireEvent.click(screen.getByText("disable-smart"));
+    expect(setSetting).toHaveBeenCalledWith("appearance.smartFoldersEnabled", "false");
+    expect(useUiStore.getState().smartFoldersEnabled).toBe(false);
+  });
+
+  it("setSmartFolderVisible persists the whole visibility map as JSON", async () => {
+    render(
+      <AppearanceProvider>
+        <Probe />
+      </AppearanceProvider>
+    );
+    await waitFor(() => expect(screen.getByTestId("theme").textContent).toBe("light"));
+    fireEvent.click(screen.getByText("hide-flagged"));
+    expect(setSetting).toHaveBeenCalledWith(
+      "appearance.smartFolderVisibility",
+      JSON.stringify({ all_inboxes: true, unread: true, flagged: false, snoozed: true })
+    );
+    expect(useUiStore.getState().smartFolderVisibility.flagged).toBe(false);
   });
 });

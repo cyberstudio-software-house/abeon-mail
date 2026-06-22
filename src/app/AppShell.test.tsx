@@ -75,6 +75,8 @@ vi.mock("../app/store", () => ({
       accent: "#4f46e5",
       showPreview: true,
       showAvatars: true,
+      smartFoldersEnabled: true,
+      smartFolderVisibility: { all_inboxes: true, unread: true, flagged: true, snoozed: true },
       settingsOpen: false,
       composer: { open: false, draftId: null, prefill: null },
       setSelectedAccountId: vi.fn(),

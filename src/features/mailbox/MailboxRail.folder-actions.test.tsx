@@ -50,6 +50,8 @@ function setupStore() {
       selectedFolderId: null,
       selectedSmartFolder: null,
       selectedLabelId: null,
+      smartFoldersEnabled: true,
+      smartFolderVisibility: { all_inboxes: true, unread: true, flagged: true, snoozed: true },
       searchQuery: "",
       errorToast: null,
       prefetchProgress: {},

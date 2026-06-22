@@ -189,6 +189,14 @@
   margin-top: 1px;
 }
 
+.appearance-toggle--disabled {
+  opacity: 0.45;
+}
+
+.appearance-toggle--disabled .switch {
+  cursor: not-allowed;
+}
+
 .switch {
   width: 42px;
   height: 24px;

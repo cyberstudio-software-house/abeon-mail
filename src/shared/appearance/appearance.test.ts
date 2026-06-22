@@ -91,16 +91,54 @@ describe("parseSettings", () => {
     const parsed = parseSettings([["appearance.showPreview", "garbage"]]);
     expect(parsed.showPreview).toBeUndefined();
   });
+  it("parses the smart folders master toggle", () => {
+    expect(parseSettings([["appearance.smartFoldersEnabled", "false"]]).smartFoldersEnabled).toBe(false);
+    expect(parseSettings([["appearance.smartFoldersEnabled", "true"]]).smartFoldersEnabled).toBe(true);
+  });
+  it("leaves smartFoldersEnabled undefined for a bogus boolean value", () => {
+    expect(parseSettings([["appearance.smartFoldersEnabled", "garbage"]]).smartFoldersEnabled).toBeUndefined();
+  });
+  it("merges partial smart folder visibility onto the all-visible default", () => {
+    const parsed = parseSettings([["appearance.smartFolderVisibility", JSON.stringify({ flagged: false })]]);
+    expect(parsed.smartFolderVisibility).toEqual({
+      all_inboxes: true,
+      unread: true,
+      flagged: false,
+      snoozed: true,
+    });
+  });
+  it("ignores unknown kinds and non-boolean values inside the visibility map", () => {
+    const parsed = parseSettings([
+      ["appearance.smartFolderVisibility", JSON.stringify({ unread: false, flagged: "nope", bogus: true })],
+    ]);
+    expect(parsed.smartFolderVisibility).toEqual({
+      all_inboxes: true,
+      unread: false,
+      flagged: true,
+      snoozed: true,
+    });
+  });
+  it("leaves smartFolderVisibility undefined for malformed JSON", () => {
+    const parsed = parseSettings([["appearance.smartFolderVisibility", "{not json"]]);
+    expect(parsed.smartFolderVisibility).toBeUndefined();
+  });
 });
 
 describe("DEFAULT_APPEARANCE", () => {
-  it("defaults theme auto, accent indigo, density comfortable, toggles on", () => {
+  it("defaults theme auto, accent indigo, density comfortable, toggles on, all smart folders shown", () => {
     expect(DEFAULT_APPEARANCE).toEqual({
       theme: "auto",
       accent: "#4f46e5",
       density: "comfortable",
       showPreview: true,
       showAvatars: true,
+      smartFoldersEnabled: true,
+      smartFolderVisibility: {
+        all_inboxes: true,
+        unread: true,
+        flagged: true,
+        snoozed: true,
+      },
     });
   });
 });

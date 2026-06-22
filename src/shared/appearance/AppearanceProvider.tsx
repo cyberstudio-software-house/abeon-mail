@@ -6,7 +6,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { commands } from "../../ipc/bindings";
+import { commands, type SmartFolderKind } from "../../ipc/bindings";
 import { useUiStore } from "../../app/store";
 import { resolveTheme, type ThemeMode } from "../theme/theme";
 import {
@@ -23,6 +23,8 @@ type AppearanceContextValue = AppearanceFields & {
   setDensity: (density: Density) => void;
   setShowPreview: (value: boolean) => void;
   setShowAvatars: (value: boolean) => void;
+  setSmartFoldersEnabled: (value: boolean) => void;
+  setSmartFolderVisible: (kind: SmartFolderKind, visible: boolean) => void;
 };
 
 const AppearanceContext = createContext<AppearanceContextValue | null>(null);
@@ -37,12 +39,16 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
   const density = useUiStore((s) => s.density);
   const showPreview = useUiStore((s) => s.showPreview);
   const showAvatars = useUiStore((s) => s.showAvatars);
+  const smartFoldersEnabled = useUiStore((s) => s.smartFoldersEnabled);
+  const smartFolderVisibility = useUiStore((s) => s.smartFolderVisibility);
   const hydrateAppearance = useUiStore((s) => s.hydrateAppearance);
   const storeSetTheme = useUiStore((s) => s.setTheme);
   const storeSetAccent = useUiStore((s) => s.setAccent);
   const storeSetDensity = useUiStore((s) => s.setDensity);
   const storeSetShowPreview = useUiStore((s) => s.setShowPreview);
   const storeSetShowAvatars = useUiStore((s) => s.setShowAvatars);
+  const storeSetSmartFoldersEnabled = useUiStore((s) => s.setSmartFoldersEnabled);
+  const storeSetSmartFolderVisible = useUiStore((s) => s.setSmartFolderVisible);
 
   const [prefersDark, setPrefersDark] = useState(
     () => window.matchMedia("(prefers-color-scheme: dark)").matches
@@ -90,6 +96,8 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
       density,
       showPreview,
       showAvatars,
+      smartFoldersEnabled,
+      smartFolderVisibility,
       setTheme: (t) => {
         storeSetTheme(t);
         persist(SETTINGS_KEYS.theme, t);
@@ -110,6 +118,15 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
         storeSetShowAvatars(v);
         persist(SETTINGS_KEYS.showAvatars, String(v));
       },
+      setSmartFoldersEnabled: (v) => {
+        storeSetSmartFoldersEnabled(v);
+        persist(SETTINGS_KEYS.smartFoldersEnabled, String(v));
+      },
+      setSmartFolderVisible: (kind, v) => {
+        const next = { ...smartFolderVisibility, [kind]: v };
+        storeSetSmartFolderVisible(kind, v);
+        persist(SETTINGS_KEYS.smartFolderVisibility, JSON.stringify(next));
+      },
     }),
     [
       theme,
@@ -117,11 +134,15 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
       density,
       showPreview,
       showAvatars,
+      smartFoldersEnabled,
+      smartFolderVisibility,
       storeSetTheme,
       storeSetAccent,
       storeSetDensity,
       storeSetShowPreview,
       storeSetShowAvatars,
+      storeSetSmartFoldersEnabled,
+      storeSetSmartFolderVisible,
     ]
   );
 

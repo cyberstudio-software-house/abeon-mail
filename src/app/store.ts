@@ -7,6 +7,7 @@ import {
   type AppearanceFields,
   type Density,
 } from "../shared/appearance/appearance";
+import type { SmartFolderVisibility } from "../shared/smartFolders";
 import { DEFAULT_NOTIFICATIONS } from "../shared/notifications/notifications";
 import {
   DEFAULT_GENERAL,
@@ -44,6 +45,8 @@ export type UiState = {
   density: Density;
   showPreview: boolean;
   showAvatars: boolean;
+  smartFoldersEnabled: boolean;
+  smartFolderVisibility: SmartFolderVisibility;
   notificationsEnabled: boolean;
   badgeEnabled: boolean;
   trayEnabled: boolean;
@@ -105,6 +108,8 @@ export type UiState = {
   setDensity: (density: Density) => void;
   setShowPreview: (value: boolean) => void;
   setShowAvatars: (value: boolean) => void;
+  setSmartFoldersEnabled: (value: boolean) => void;
+  setSmartFolderVisible: (kind: SmartFolderKind, visible: boolean) => void;
   hydrateAppearance: (partial: Partial<AppearanceFields>) => void;
   setNotificationsEnabled: (value: boolean) => void;
   setBadgeEnabled: (value: boolean) => void;
@@ -160,6 +165,8 @@ export const useUiStore = create<UiState>((set) => ({
   density: DEFAULT_APPEARANCE.density,
   showPreview: DEFAULT_APPEARANCE.showPreview,
   showAvatars: DEFAULT_APPEARANCE.showAvatars,
+  smartFoldersEnabled: DEFAULT_APPEARANCE.smartFoldersEnabled,
+  smartFolderVisibility: { ...DEFAULT_APPEARANCE.smartFolderVisibility },
   notificationsEnabled: DEFAULT_NOTIFICATIONS.notificationsEnabled,
   badgeEnabled: DEFAULT_NOTIFICATIONS.badgeEnabled,
   trayEnabled: DEFAULT_NOTIFICATIONS.trayEnabled,
@@ -234,6 +241,9 @@ export const useUiStore = create<UiState>((set) => ({
   setDensity: (density) => set({ density }),
   setShowPreview: (showPreview) => set({ showPreview }),
   setShowAvatars: (showAvatars) => set({ showAvatars }),
+  setSmartFoldersEnabled: (smartFoldersEnabled) => set({ smartFoldersEnabled }),
+  setSmartFolderVisible: (kind, visible) =>
+    set((s) => ({ smartFolderVisibility: { ...s.smartFolderVisibility, [kind]: visible } })),
   hydrateAppearance: (partial) => set(partial),
   setNotificationsEnabled: (notificationsEnabled) => set({ notificationsEnabled }),
   setBadgeEnabled: (badgeEnabled) => set({ badgeEnabled }),

@@ -49,14 +49,15 @@ import { TextInputDialog, ConfirmDialog } from "./RailDialogs";
 import { ErrorToast } from "./ErrorToast";
 import type { ContextMenuItem } from "./RailContextMenu";
 import type { Account, Folder, SmartFolderKind } from "../../ipc/bindings";
+import { SMART_FOLDER_META } from "../../shared/smartFolders";
 import "./MailboxRail.css";
 
-const SMART_FOLDERS: { label: string; kind: SmartFolderKind; Icon: React.ElementType }[] = [
-  { label: "All Inboxes", kind: "all_inboxes", Icon: Layers },
-  { label: "Unread", kind: "unread", Icon: MailOpen },
-  { label: "Flagged", kind: "flagged", Icon: Flag },
-  { label: "Snoozed", kind: "snoozed", Icon: Clock },
-];
+const SMART_FOLDER_ICONS: Record<SmartFolderKind, React.ElementType> = {
+  all_inboxes: Layers,
+  unread: MailOpen,
+  flagged: Flag,
+  snoozed: Clock,
+};
 
 function FolderIcon({ folderType }: { folderType?: string }) {
   const Icon =
@@ -181,6 +182,8 @@ export function MailboxRail() {
   const selectedFolderId = useUiStore((s) => s.selectedFolderId);
   const selectedSmartFolder = useUiStore((s) => s.selectedSmartFolder);
   const selectedLabelId = useUiStore((s) => s.selectedLabelId);
+  const smartFoldersEnabled = useUiStore((s) => s.smartFoldersEnabled);
+  const smartFolderVisibility = useUiStore((s) => s.smartFolderVisibility);
   const setSelectedAccountId = useUiStore((s) => s.setSelectedAccountId);
   const setSelectedFolderId = useUiStore((s) => s.setSelectedFolderId);
   const setSelectedSmartFolder = useUiStore((s) => s.setSelectedSmartFolder);
@@ -322,6 +325,7 @@ export function MailboxRail() {
   }
 
   const headerAccount = accounts.find((a) => a.id === selectedAccountId) ?? accounts[0];
+  const visibleSmartFolders = SMART_FOLDER_META.filter((m) => smartFolderVisibility[m.kind]);
 
   return (
     <aside className="rail">
@@ -421,17 +425,24 @@ export function MailboxRail() {
             ))}
           </div>
         ))}
-        <div className="rail__section">Smart Folders</div>
-        {SMART_FOLDERS.map(({ label, kind, Icon }) => (
-          <div
-            key={kind}
-            className={`rail__item${selectedSmartFolder === kind ? " rail__item--active" : ""}`}
-            onClick={() => setSelectedSmartFolder(kind)}
-          >
-            <Icon size={15} className="rail__item-icon" />
-            <span className="rail__item-label">{label}</span>
-          </div>
-        ))}
+        {smartFoldersEnabled && visibleSmartFolders.length > 0 && (
+          <>
+            <div className="rail__section">Smart Folders</div>
+            {visibleSmartFolders.map(({ kind, label }) => {
+              const Icon = SMART_FOLDER_ICONS[kind];
+              return (
+                <div
+                  key={kind}
+                  className={`rail__item${selectedSmartFolder === kind ? " rail__item--active" : ""}`}
+                  onClick={() => setSelectedSmartFolder(kind)}
+                >
+                  <Icon size={15} className="rail__item-icon" />
+                  <span className="rail__item-label">{label}</span>
+                </div>
+              );
+            })}
+          </>
+        )}
         {!accountsLoading && accounts.length > 0 && (
           <>
             <div className="rail__section">Accounts</div>

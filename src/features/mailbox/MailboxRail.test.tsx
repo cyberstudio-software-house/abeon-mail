@@ -109,6 +109,8 @@ function setupStore(selectedAccountId: number | null = 1) {
     searchQuery: "",
     searchActive: false,
     focusSearch: null,
+    smartFoldersEnabled: true,
+    smartFolderVisibility: { all_inboxes: true, unread: true, flagged: true, snoozed: true },
   });
 }
 
@@ -131,6 +133,38 @@ describe("MailboxRail", () => {
     expect(screen.getByText("Flagged")).toBeTruthy();
     expect(screen.getByText("Snoozed")).toBeTruthy();
     expect(screen.queryByText("Drafts")).toBeNull();
+  });
+
+  it("hides a smart folder turned off in visibility, keeps the rest", () => {
+    accounts([]);
+    useUiStore.setState({
+      smartFolderVisibility: { all_inboxes: true, unread: true, flagged: false, snoozed: true },
+    });
+    render(<MailboxRail />);
+    expect(screen.queryByText("Flagged")).toBeNull();
+    expect(screen.getByText("All Inboxes")).toBeTruthy();
+    expect(screen.getByText("Unread")).toBeTruthy();
+    expect(screen.getByText("Snoozed")).toBeTruthy();
+  });
+
+  it("hides the whole Smart Folders section when the master toggle is off", () => {
+    accounts([]);
+    useUiStore.setState({ smartFoldersEnabled: false });
+    render(<MailboxRail />);
+    expect(screen.queryByText("Smart Folders")).toBeNull();
+    expect(screen.queryByText("All Inboxes")).toBeNull();
+    expect(screen.queryByText("Unread")).toBeNull();
+    expect(screen.queryByText("Flagged")).toBeNull();
+    expect(screen.queryByText("Snoozed")).toBeNull();
+  });
+
+  it("hides the section when every smart folder is turned off", () => {
+    accounts([]);
+    useUiStore.setState({
+      smartFolderVisibility: { all_inboxes: false, unread: false, flagged: false, snoozed: false },
+    });
+    render(<MailboxRail />);
+    expect(screen.queryByText("Smart Folders")).toBeNull();
   });
 
   it("clicking a smart folder selects it", async () => {
