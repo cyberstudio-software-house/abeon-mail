@@ -7,6 +7,7 @@ pub enum SyncEvent {
     SnoozeWoke { count: i64 },
     SendFailed { account_id: i64, error: String },
     PrefetchProgress { account_id: i64, done: i64, total: i64 },
+    SendSucceeded { account_id: i64 },
 }
 
 pub trait SyncEventSink: Send + Sync {
@@ -60,5 +61,11 @@ mod tests {
     fn prefetch_progress_variant_stores_fields() {
         let ev = SyncEvent::PrefetchProgress { account_id: 1, done: 5, total: 10 };
         assert_eq!(ev, SyncEvent::PrefetchProgress { account_id: 1, done: 5, total: 10 });
+    }
+
+    #[test]
+    fn send_succeeded_variant_stores_fields() {
+        let ev = SyncEvent::SendSucceeded { account_id: 9 };
+        assert_eq!(ev, SyncEvent::SendSucceeded { account_id: 9 });
     }
 }

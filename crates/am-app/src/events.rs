@@ -44,3 +44,8 @@ pub struct PrefetchProgress {
     pub done: i64,
     pub total: i64,
 }
+
+#[derive(Serialize, Deserialize, Clone, Debug, specta::Type, tauri_specta::Event)]
+pub struct SendSucceeded {
+    pub account_id: i64,
+}

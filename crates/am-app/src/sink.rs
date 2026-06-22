@@ -2,7 +2,7 @@ use am_sync::{SyncEvent, SyncEventSink};
 use tauri::AppHandle;
 use tauri_specta::Event;
 
-use crate::events::{AccountAuthChanged, MailboxChanged, NewMessages, PrefetchProgress, SendFailed, SnoozeWoke, SyncProgress};
+use crate::events::{AccountAuthChanged, MailboxChanged, NewMessages, PrefetchProgress, SendFailed, SendSucceeded, SnoozeWoke, SyncProgress};
 
 pub struct AppEventSink {
     pub app: AppHandle,
@@ -32,6 +32,9 @@ impl SyncEventSink for AppEventSink {
             SyncEvent::PrefetchProgress { account_id, done, total } => {
                 let _ = PrefetchProgress { account_id, done, total }.emit(&self.app);
             }
+            SyncEvent::SendSucceeded { account_id } => {
+                let _ = SendSucceeded { account_id }.emit(&self.app);
+            }
         }
     }
 }
@@ -51,5 +54,11 @@ mod tests {
     fn snooze_woke_event_struct_has_count() {
         let ev = crate::events::SnoozeWoke { count: 3 };
         assert_eq!(ev.count, 3);
+    }
+
+    #[test]
+    fn send_succeeded_event_struct_has_account_id() {
+        let ev = crate::events::SendSucceeded { account_id: 42 };
+        assert_eq!(ev.account_id, 42);
     }
 }
