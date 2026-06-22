@@ -12,22 +12,21 @@ vi.mock("../../ipc/bindings", () => ({
       status: "ok",
       data: { html: "<p>safe</p>", blocked_remote_content: false, remote_loaded: false },
     }),
+    getSettings: vi.fn().mockResolvedValue({ status: "ok", data: [] }),
+    openExternalUrl: vi.fn().mockResolvedValue({ status: "ok", data: null }),
   },
   events: {},
 }));
 
 import { MessageBodyView } from "./MessageBodyView";
+import { commands } from "../../ipc/bindings";
 
 function makeQueryClient() {
   return new QueryClient({ defaultOptions: { queries: { retry: false } } });
 }
 
 function Wrapper({ children }: { children: React.ReactNode }) {
-  return (
-    <QueryClientProvider client={makeQueryClient()}>
-      {children}
-    </QueryClientProvider>
-  );
+  return <QueryClientProvider client={makeQueryClient()}>{children}</QueryClientProvider>;
 }
 
 describe("MessageBodyView — HTML body path", () => {
@@ -36,17 +35,30 @@ describe("MessageBodyView — HTML body path", () => {
     vi.clearAllMocks();
   });
 
-  it("renders a sandboxed iframe via SafeHtmlFrame when text_html is present", async () => {
+  it("uses a fully locked iframe at the strict level", async () => {
+    (commands.getSettings as ReturnType<typeof vi.fn>).mockResolvedValue({
+      status: "ok",
+      data: [["reader.contentSecurity", "strict"]],
+    });
     render(<MessageBodyView messageId={42} />, { wrapper: Wrapper });
 
-    const iframe = await waitFor(() => {
+    await waitFor(() => {
       const el = screen.getByTitle("message-content");
-      return el;
+      expect(el.getAttribute("sandbox")).toBe("");
     });
+  });
 
-    expect(iframe.tagName.toLowerCase()).toBe("iframe");
-    expect(iframe.getAttribute("sandbox")).toBe("");
-    expect(iframe.getAttribute("sandbox")).not.toContain("allow-scripts");
-    expect(iframe.getAttribute("sandbox")).not.toContain("allow-same-origin");
+  it("relaxes the iframe to same-origin (never scripts) at the balanced level", async () => {
+    (commands.getSettings as ReturnType<typeof vi.fn>).mockResolvedValue({
+      status: "ok",
+      data: [["reader.contentSecurity", "balanced"]],
+    });
+    render(<MessageBodyView messageId={42} />, { wrapper: Wrapper });
+
+    await waitFor(() => {
+      const el = screen.getByTitle("message-content");
+      expect(el.getAttribute("sandbox")).toBe("allow-same-origin");
+    });
+    expect(screen.getByTitle("message-content").getAttribute("sandbox")).not.toContain("allow-scripts");
   });
 });

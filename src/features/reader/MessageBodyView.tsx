@@ -1,6 +1,12 @@
 import { useState, useEffect } from "react";
-import { useRenderedMessage, useMessageBody } from "../../ipc/queries";
+import { useRenderedMessage, useMessageBody, useContentSecurityLevel } from "../../ipc/queries";
 import { SafeHtmlFrame } from "./SafeHtmlFrame";
+import {
+  sandboxForLevel,
+  interceptLinksForLevel,
+  autoloadRemoteForLevel,
+  DEFAULT_CONTENT_SECURITY_LEVEL,
+} from "../../shared/contentSecurity";
 
 function RemoteContentBanner({ onLoad }: { onLoad: () => void }) {
   return (
@@ -14,13 +20,14 @@ function RemoteContentBanner({ onLoad }: { onLoad: () => void }) {
 }
 
 export function MessageBodyView({ messageId }: { messageId: number }) {
-  const [forceLoadRemote, setForceLoadRemote] = useState(false);
+  const { data: level = DEFAULT_CONTENT_SECURITY_LEVEL } = useContentSecurityLevel();
+  const [forceLoadRemote, setForceLoadRemote] = useState(autoloadRemoteForLevel(level));
   const { data: rendered, isLoading: renderLoading } = useRenderedMessage(messageId, forceLoadRemote);
   const { data: body, isLoading: bodyLoading } = useMessageBody(messageId);
 
   useEffect(() => {
-    setForceLoadRemote(false);
-  }, [messageId]);
+    setForceLoadRemote(autoloadRemoteForLevel(level));
+  }, [messageId, level]);
 
   if (renderLoading && rendered == null) {
     return <p className="loading-state">Loading…</p>;
@@ -30,7 +37,11 @@ export function MessageBodyView({ messageId }: { messageId: number }) {
     return (
       <div className="message-body">
         {rendered.blocked_remote_content && <RemoteContentBanner onLoad={() => setForceLoadRemote(true)} />}
-        <SafeHtmlFrame html={rendered.html} />
+        <SafeHtmlFrame
+          html={rendered.html}
+          sandbox={sandboxForLevel(level)}
+          interceptLinks={interceptLinksForLevel(level)}
+        />
       </div>
     );
   }
