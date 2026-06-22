@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { render, screen, cleanup, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, cleanup, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { useSetContentSecurityLevel } from "../../ipc/queries";
 
 vi.mock("../../ipc/bindings", () => ({
   commands: {
@@ -13,6 +14,7 @@ vi.mock("../../ipc/bindings", () => ({
       data: { html: "<p>safe</p>", blocked_remote_content: false, remote_loaded: false },
     }),
     getSettings: vi.fn().mockResolvedValue({ status: "ok", data: [] }),
+    setSetting: vi.fn().mockResolvedValue({ status: "ok", data: null }),
     openExternalUrl: vi.fn().mockResolvedValue({ status: "ok", data: null }),
   },
   events: {},
@@ -33,6 +35,49 @@ describe("MessageBodyView — HTML body path", () => {
   afterEach(() => {
     cleanup();
     vi.clearAllMocks();
+  });
+
+  it("re-renders with remote content when the level changes to open while open", async () => {
+    let currentLevel = "balanced";
+    (commands.getSettings as ReturnType<typeof vi.fn>).mockImplementation(() =>
+      Promise.resolve({ status: "ok", data: [["reader.contentSecurity", currentLevel]] })
+    );
+    (commands.setSetting as ReturnType<typeof vi.fn>).mockImplementation((key: string, value: string) => {
+      if (key === "reader.contentSecurity") currentLevel = value;
+      return Promise.resolve({ status: "ok", data: null });
+    });
+
+    function Harness() {
+      const setLevel = useSetContentSecurityLevel();
+      return (
+        <>
+          <button type="button" onClick={() => setLevel.mutate("open")}>
+            go-open
+          </button>
+          <MessageBodyView messageId={42} />
+        </>
+      );
+    }
+
+    render(<Harness />, { wrapper: Wrapper });
+
+    await waitFor(() => expect(commands.renderMessageHtml).toHaveBeenCalledWith(42, false));
+
+    fireEvent.click(screen.getByText("go-open"));
+
+    await waitFor(() => expect(commands.renderMessageHtml).toHaveBeenCalledWith(42, true));
+  });
+
+  it("auto-loads remote content at the open level", async () => {
+    (commands.getSettings as ReturnType<typeof vi.fn>).mockResolvedValue({
+      status: "ok",
+      data: [["reader.contentSecurity", "open"]],
+    });
+    render(<MessageBodyView messageId={42} />, { wrapper: Wrapper });
+
+    await waitFor(() => {
+      expect(commands.renderMessageHtml).toHaveBeenCalledWith(42, true);
+    });
   });
 
   it("uses a fully locked iframe at the strict level", async () => {
