@@ -86,4 +86,16 @@ mod tests {
         set_response(&db, msg_id, RsvpStatus::Accepted, 200).unwrap();
         assert_eq!(get_response(&db, msg_id).unwrap(), Some(RsvpStatus::Accepted));
     }
+
+    #[test]
+    fn response_is_deleted_when_message_is_deleted() {
+        let db = Database::open_in_memory().unwrap();
+        let msg_id = seed_message(&db);
+        set_response(&db, msg_id, RsvpStatus::Accepted, 100).unwrap();
+        assert_eq!(get_response(&db, msg_id).unwrap(), Some(RsvpStatus::Accepted));
+        db.conn()
+            .execute("DELETE FROM messages WHERE id = ?1", params![msg_id])
+            .unwrap();
+        assert_eq!(get_response(&db, msg_id).unwrap(), None);
+    }
 }
