@@ -5,21 +5,14 @@ import { useThreads, useFolders, useSmartFolder, useSearch, useLabelsForMessages
 import { DraftsList } from "./DraftsList";
 import { formatListDate, formatWakeTime } from "../../shared/datetime/datetime";
 import { useDebouncedValue } from "../../shared/hooks/useDebouncedValue";
-import { useUiStore, type Density } from "../../app/store";
+import { useUiStore } from "../../app/store";
 import type { ThreadSummary, SmartMessageRow, Label } from "../../ipc/bindings";
 import { LabelChips } from "../labels/LabelChips";
 import { Avatar } from "../../shared/appearance/Avatar";
 import { groupIntoEntries, type ListEntry } from "./grouping";
 import { extractTerms, Highlight } from "./highlight";
+import { ROW_HEIGHT, HEADER_HEIGHT } from "./rowMetrics";
 import "./MessageListPane.css";
-
-const ROW_HEIGHT: Record<Density, number> = {
-  comfortable: 72,
-  compact: 48,
-  dense: 36,
-};
-
-const HEADER_HEIGHT = 28;
 
 function ThreadRow({
   thread,

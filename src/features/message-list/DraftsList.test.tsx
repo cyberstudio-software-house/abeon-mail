@@ -27,7 +27,13 @@ const mockGetDraft = vi.mocked(commands.getDraft);
 
 function setupStore() {
   mockUseUiStore.mockImplementation((selector: (s: any) => unknown) =>
-    selector({ openComposer: mockOpenComposer, timeFormat: "24h" })
+    selector({
+      openComposer: mockOpenComposer,
+      timeFormat: "24h",
+      density: "comfortable",
+      showAvatars: false,
+      showPreview: true,
+    })
   );
 }
 
