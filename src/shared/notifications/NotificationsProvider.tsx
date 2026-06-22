@@ -72,10 +72,6 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
     void commands.refreshUnreadBadge(badgeEnabled).catch(() => undefined);
   }, [badgeEnabled]);
 
-  useEffect(() => {
-    void commands.setTrayEnabled(trayEnabled).catch(() => undefined);
-  }, [trayEnabled]);
-
   const value = useMemo<NotificationsContextValue>(
     () => ({
       notificationsEnabled,
@@ -93,6 +89,7 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
       setTrayEnabled: (v) => {
         storeSetTrayEnabled(v);
         persist(NOTIFICATION_KEYS.tray, String(v));
+        void commands.setTrayEnabled(v).catch(() => undefined);
       },
     }),
     [

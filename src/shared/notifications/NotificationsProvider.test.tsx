@@ -69,9 +69,10 @@ describe("NotificationsProvider", () => {
     await waitFor(() => expect(commands.refreshUnreadBadge).toHaveBeenCalledWith(true));
   });
 
-  it("persists the tray setting and syncs the native tray", async () => {
+  it("syncs the native tray only on an explicit user toggle, not on mount", async () => {
     const { result } = renderHook(() => useNotifications(), { wrapper });
-    await waitFor(() => expect(commands.setTrayEnabled).toHaveBeenCalled());
+    await waitFor(() => expect(result.current.badgeEnabled).toBe(false));
+    expect(commands.setTrayEnabled).not.toHaveBeenCalled();
     act(() => result.current.setTrayEnabled(true));
     await waitFor(() =>
       expect(commands.setSetting).toHaveBeenCalledWith("notifications.tray", "true"),
