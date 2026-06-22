@@ -14,9 +14,11 @@ import { NOTIFICATION_KEYS, parseNotificationSettings } from "./notifications";
 type NotificationsContextValue = {
   notificationsEnabled: boolean;
   badgeEnabled: boolean;
+  trayEnabled: boolean;
   permissionGranted: boolean;
   setNotificationsEnabled: (value: boolean) => void;
   setBadgeEnabled: (value: boolean) => void;
+  setTrayEnabled: (value: boolean) => void;
 };
 
 const NotificationsContext = createContext<NotificationsContextValue | null>(null);
@@ -28,9 +30,11 @@ function persist(key: string, value: string) {
 export function NotificationsProvider({ children }: { children: ReactNode }) {
   const notificationsEnabled = useUiStore((s) => s.notificationsEnabled);
   const badgeEnabled = useUiStore((s) => s.badgeEnabled);
+  const trayEnabled = useUiStore((s) => s.trayEnabled);
   const hydrateNotifications = useUiStore((s) => s.hydrateNotifications);
   const storeSetNotificationsEnabled = useUiStore((s) => s.setNotificationsEnabled);
   const storeSetBadgeEnabled = useUiStore((s) => s.setBadgeEnabled);
+  const storeSetTrayEnabled = useUiStore((s) => s.setTrayEnabled);
   const [permissionGranted, setPermissionGranted] = useState(true);
 
   useEffect(() => {
@@ -68,10 +72,15 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
     void commands.refreshUnreadBadge(badgeEnabled).catch(() => undefined);
   }, [badgeEnabled]);
 
+  useEffect(() => {
+    void commands.setTrayEnabled(trayEnabled).catch(() => undefined);
+  }, [trayEnabled]);
+
   const value = useMemo<NotificationsContextValue>(
     () => ({
       notificationsEnabled,
       badgeEnabled,
+      trayEnabled,
       permissionGranted,
       setNotificationsEnabled: (v) => {
         storeSetNotificationsEnabled(v);
@@ -81,13 +90,19 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
         storeSetBadgeEnabled(v);
         persist(NOTIFICATION_KEYS.badgeEnabled, String(v));
       },
+      setTrayEnabled: (v) => {
+        storeSetTrayEnabled(v);
+        persist(NOTIFICATION_KEYS.tray, String(v));
+      },
     }),
     [
       notificationsEnabled,
       badgeEnabled,
+      trayEnabled,
       permissionGranted,
       storeSetNotificationsEnabled,
       storeSetBadgeEnabled,
+      storeSetTrayEnabled,
     ]
   );
 

@@ -51,6 +51,12 @@ export function NotificationsSection() {
         checked={n.badgeEnabled}
         onChange={n.setBadgeEnabled}
       />
+      <Toggle
+        label="Minimize to tray on close"
+        hint="Keep AbeonMail running in the system tray when you close the window; the tray icon shows your unread count."
+        checked={n.trayEnabled}
+        onChange={n.setTrayEnabled}
+      />
       {n.notificationsEnabled && !n.permissionGranted && (
         <p className="appearance-section__intro" role="status">
           System notifications are blocked. Enable them in your operating system settings.

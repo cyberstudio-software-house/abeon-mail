@@ -18,6 +18,7 @@ vi.mock("../../ipc/bindings", () => ({
     }),
     setSetting: vi.fn().mockResolvedValue({ status: "ok", data: null }),
     refreshUnreadBadge: vi.fn().mockResolvedValue({ status: "ok", data: null }),
+    setTrayEnabled: vi.fn().mockResolvedValue({ status: "ok", data: null }),
   },
 }));
 
@@ -35,7 +36,7 @@ describe("NotificationsProvider", () => {
     vi.clearAllMocks();
     mockIsGranted.mockResolvedValue(true);
     mockRequest.mockResolvedValue("granted");
-    useUiStore.setState({ notificationsEnabled: true, badgeEnabled: true });
+    useUiStore.setState({ notificationsEnabled: true, badgeEnabled: true, trayEnabled: false });
   });
   afterEach(() => cleanup());
 
@@ -66,5 +67,16 @@ describe("NotificationsProvider", () => {
     await waitFor(() => expect(commands.refreshUnreadBadge).toHaveBeenCalled());
     act(() => result.current.setBadgeEnabled(true));
     await waitFor(() => expect(commands.refreshUnreadBadge).toHaveBeenCalledWith(true));
+  });
+
+  it("persists the tray setting and syncs the native tray", async () => {
+    const { result } = renderHook(() => useNotifications(), { wrapper });
+    await waitFor(() => expect(commands.setTrayEnabled).toHaveBeenCalled());
+    act(() => result.current.setTrayEnabled(true));
+    await waitFor(() =>
+      expect(commands.setSetting).toHaveBeenCalledWith("notifications.tray", "true"),
+    );
+    await waitFor(() => expect(commands.setTrayEnabled).toHaveBeenCalledWith(true));
+    expect(useUiStore.getState().trayEnabled).toBe(true);
   });
 });

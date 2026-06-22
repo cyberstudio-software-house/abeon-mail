@@ -99,6 +99,7 @@ export const commands = {
 	body: string,
 } | null, string>(__TAURI_INVOKE("build_new_mail_notification", { folderId, count })),
 	refreshUnreadBadge: (enabled: boolean) => typedError<null, string>(__TAURI_INVOKE("refresh_unread_badge", { enabled })),
+	setTrayEnabled: (enabled: boolean) => typedError<null, string>(__TAURI_INVOKE("set_tray_enabled", { enabled })),
 	listRules: (accountId: number) => typedError<Rule[], string>(__TAURI_INVOKE("list_rules", { accountId })),
 	createRule: (accountId: number, input: RuleInput) => typedError<Rule, string>(__TAURI_INVOKE("create_rule", { accountId, input })),
 	updateRule: (ruleId: number, input: RuleInput) => typedError<null, string>(__TAURI_INVOKE("update_rule", { ruleId, input })),

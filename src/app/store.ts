@@ -45,6 +45,7 @@ export type UiState = {
   showAvatars: boolean;
   notificationsEnabled: boolean;
   badgeEnabled: boolean;
+  trayEnabled: boolean;
   prefetchProgress: Record<number, { done: number; total: number }>;
   setPrefetchProgress: (accountId: number, done: number, total: number) => void;
   defaultAccountId: string;
@@ -105,7 +106,8 @@ export type UiState = {
   hydrateAppearance: (partial: Partial<AppearanceFields>) => void;
   setNotificationsEnabled: (value: boolean) => void;
   setBadgeEnabled: (value: boolean) => void;
-  hydrateNotifications: (partial: Partial<{ notificationsEnabled: boolean; badgeEnabled: boolean }>) => void;
+  setTrayEnabled: (value: boolean) => void;
+  hydrateNotifications: (partial: Partial<{ notificationsEnabled: boolean; badgeEnabled: boolean; trayEnabled: boolean }>) => void;
   setDefaultAccountId: (value: string) => void;
   setTimeFormat: (value: TimeFormat) => void;
   setMarkReadMode: (value: MarkReadMode) => void;
@@ -158,6 +160,7 @@ export const useUiStore = create<UiState>((set) => ({
   showAvatars: DEFAULT_APPEARANCE.showAvatars,
   notificationsEnabled: DEFAULT_NOTIFICATIONS.notificationsEnabled,
   badgeEnabled: DEFAULT_NOTIFICATIONS.badgeEnabled,
+  trayEnabled: DEFAULT_NOTIFICATIONS.trayEnabled,
   prefetchProgress: {},
   defaultAccountId: DEFAULT_GENERAL.defaultAccountId,
   timeFormat: DEFAULT_GENERAL.timeFormat,
@@ -232,6 +235,7 @@ export const useUiStore = create<UiState>((set) => ({
   hydrateAppearance: (partial) => set(partial),
   setNotificationsEnabled: (notificationsEnabled) => set({ notificationsEnabled }),
   setBadgeEnabled: (badgeEnabled) => set({ badgeEnabled }),
+  setTrayEnabled: (trayEnabled) => set({ trayEnabled }),
   setPrefetchProgress: (accountId, done, total) =>
     set((s) => ({ prefetchProgress: { ...s.prefetchProgress, [accountId]: { done, total } } })),
   hydrateNotifications: (partial) => set(partial),

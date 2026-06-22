@@ -1188,15 +1188,32 @@ pub fn refresh_unread_badge(
     enabled: bool,
 ) -> Result<(), String> {
     use tauri::Manager;
-    let count = if enabled {
-        notifications_repo::count_inbox_unread(&state.db)
-            .map_err(|_| "Failed to count unread".to_string())?
-    } else {
-        0
-    };
+    let count = notifications_repo::count_inbox_unread(&state.db)
+        .map_err(|_| "Failed to count unread".to_string())?;
     if let Some(window) = app.get_webview_window("main") {
-        let badge = if count > 0 { Some(count) } else { None };
+        let badge = if enabled && count > 0 { Some(count) } else { None };
         let _ = window.set_badge_count(badge);
+    }
+    crate::tray::update_tray(&app, count);
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn set_tray_enabled(
+    state: tauri::State<'_, AppState>,
+    app: tauri::AppHandle,
+    enabled: bool,
+) -> Result<(), String> {
+    if enabled {
+        if app.tray_by_id("main").is_none() {
+            crate::tray::build_tray(&app).map_err(|e| e.to_string())?;
+        } else {
+            let count = crate::tray::count_for_tray(&state.db);
+            crate::tray::update_tray(&app, count);
+        }
+    } else {
+        app.remove_tray_by_id("main");
     }
     Ok(())
 }

@@ -1,6 +1,6 @@
 use am_app::{build_specta_builder, state::AppState};
-use am_storage::Database;
-use tauri::Manager;
+use am_storage::{settings_repo, Database};
+use tauri::{Manager, WindowEvent};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -27,7 +27,25 @@ pub fn run() {
             {
                 eprintln!("header redecode migration failed: {err}");
             }
+            let tray_enabled =
+                matches!(settings_repo::get_setting(&db, "notifications.tray"), Ok(Some(ref v)) if v == "true");
             app.manage(AppState::new(db));
+            if tray_enabled {
+                if let Err(err) = am_app::tray::build_tray(app.handle()) {
+                    eprintln!("failed to build system tray: {err}");
+                }
+            }
+            if let Some(main) = app.get_webview_window("main") {
+                let handle = app.handle().clone();
+                main.clone().on_window_event(move |event| {
+                    if let WindowEvent::CloseRequested { api, .. } = event {
+                        if handle.tray_by_id("main").is_some() {
+                            api.prevent_close();
+                            let _ = main.hide();
+                        }
+                    }
+                });
+            }
             let state: tauri::State<AppState> = app.state();
             let sink = std::sync::Arc::new(am_app::sink::AppEventSink { app: app.handle().clone() });
             let rt = tauri::async_runtime::handle();

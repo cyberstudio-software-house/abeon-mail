@@ -3,18 +3,21 @@ import { render, fireEvent, cleanup } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { NotificationsSection } from "./NotificationsSection";
 
-const { setNotificationsEnabled, setBadgeEnabled } = vi.hoisted(() => ({
+const { setNotificationsEnabled, setBadgeEnabled, setTrayEnabled } = vi.hoisted(() => ({
   setNotificationsEnabled: vi.fn(),
   setBadgeEnabled: vi.fn(),
+  setTrayEnabled: vi.fn(),
 }));
 
 vi.mock("../../shared/notifications/NotificationsProvider", () => ({
   useNotifications: () => ({
     notificationsEnabled: true,
     badgeEnabled: false,
+    trayEnabled: false,
     permissionGranted: true,
     setNotificationsEnabled,
     setBadgeEnabled,
+    setTrayEnabled,
   }),
 }));
 
@@ -42,5 +45,11 @@ describe("NotificationsSection", () => {
     const { getByLabelText } = wrap(<NotificationsSection />);
     fireEvent.click(getByLabelText("Unread badge"));
     expect(setBadgeEnabled).toHaveBeenCalledWith(true);
+  });
+
+  it("toggles minimize to tray", () => {
+    const { getByLabelText } = wrap(<NotificationsSection />);
+    fireEvent.click(getByLabelText("Minimize to tray on close"));
+    expect(setTrayEnabled).toHaveBeenCalledWith(true);
   });
 });

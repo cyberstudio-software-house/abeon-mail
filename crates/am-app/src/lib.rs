@@ -2,6 +2,7 @@ pub mod commands;
 pub mod events;
 pub mod sink;
 pub mod state;
+pub mod tray;
 
 use tauri_specta::{collect_commands, collect_events, Builder};
 
@@ -75,6 +76,7 @@ pub fn build_specta_builder() -> Builder<tauri::Wry> {
             commands::unsnooze_messages,
             commands::build_new_mail_notification,
             commands::refresh_unread_badge,
+            commands::set_tray_enabled,
             commands::list_rules,
             commands::create_rule,
             commands::update_rule,
