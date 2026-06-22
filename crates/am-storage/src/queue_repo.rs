@@ -97,6 +97,16 @@ pub fn mark_failed(db: &Database, id: i64, last_error: &str) -> Result<(), Stora
     Ok(())
 }
 
+pub fn set_last_error(db: &Database, id: i64, last_error: &str) -> Result<bool, StorageError> {
+    let conn = db.conn();
+    let changed = conn.execute(
+        "UPDATE sync_queue SET last_error = ?2
+         WHERE id = ?1 AND (last_error IS NULL OR last_error <> ?2)",
+        params![id, last_error],
+    )?;
+    Ok(changed > 0)
+}
+
 pub fn reset_for_retry(db: &Database, id: i64) -> Result<(), StorageError> {
     let conn = db.conn();
     conn.execute(
@@ -210,6 +220,22 @@ mod tests {
         assert_eq!(errors.len(), 1);
         assert_eq!(errors[0].id, failed_send);
         assert_ne!(errors[0].id, pending_send);
+    }
+
+    #[test]
+    fn set_last_error_sets_then_dedupes() {
+        let db = Database::open_in_memory().unwrap();
+        let a = acc(&db);
+        let id = enqueue(&db, a, "send_message", "{\"draft_id\":1}").unwrap();
+        assert!(set_last_error(&db, id, "auth failed").unwrap());
+        assert!(!set_last_error(&db, id, "auth failed").unwrap());
+        assert!(set_last_error(&db, id, "other error").unwrap());
+        let errors = list_send_errors(&db, a).unwrap();
+        assert_eq!(errors.len(), 1);
+        assert_eq!(errors[0].state, "pending");
+        assert_eq!(errors[0].attempts, 0);
+        assert_eq!(errors[0].last_error, "other error");
+        assert_eq!(list_due(&db, a, 0).unwrap().len(), 1);
     }
 
     #[test]

@@ -34,6 +34,42 @@ fn handle_send_failure(
 const MAX_SEND_ATTEMPTS: i64 = 6;
 const MAX_DRAFT_SYNC_ATTEMPTS: i64 = 6;
 
+fn send_setup_failure_message(err: &SyncError) -> String {
+    match err {
+        SyncError::Auth
+        | SyncError::NeedsReauth
+        | SyncError::CredentialMissing
+        | SyncError::Keychain
+        | SyncError::InvalidSettings => {
+            "Couldn't authenticate this account to send — open Settings → Accounts to reconnect.".to_string()
+        }
+        other => format!("Couldn't send the message: {other}"),
+    }
+}
+
+fn report_send_setup_failure(
+    db: &Database,
+    sink: &dyn SyncEventSink,
+    account_id: i64,
+    send_ops: &[queue_repo::QueuedOp],
+    err: &SyncError,
+) -> Result<(), SyncError> {
+    let message = send_setup_failure_message(err);
+    let mut newly_surfaced = false;
+    for op in send_ops {
+        if queue_repo::set_last_error(db, op.id, &message)? {
+            newly_surfaced = true;
+        }
+    }
+    if newly_surfaced {
+        sink.emit(SyncEvent::SendFailed {
+            account_id,
+            error: message,
+        });
+    }
+    Ok(())
+}
+
 pub fn enqueue_send(db: &Database, draft_id: i64) -> Result<(), SyncError> {
     let (account_id, _msg) = drafts_repo::get_draft(db, draft_id)?;
     let payload = serde_json::json!({ "draft_id": draft_id }).to_string();
@@ -135,9 +171,17 @@ pub async fn drain_outbox(db: &Database, account_id: i64, creds: &dyn Credential
         return Ok(());
     }
 
-    let account = accounts_repo::get_account(db, account_id)?;
-    let endpoints = load_endpoints_pub(db, account_id)?;
-    let auth = creds.auth_for(&account).await?;
+    let setup = async {
+        let account = accounts_repo::get_account(db, account_id)?;
+        let endpoints = load_endpoints_pub(db, account_id)?;
+        let auth = creds.auth_for(&account).await?;
+        Ok::<_, SyncError>((account, endpoints, auth))
+    }
+    .await;
+    let (account, endpoints, auth) = match setup {
+        Ok(v) => v,
+        Err(e) => return report_send_setup_failure(db, sink, account_id, &send_ops, &e),
+    };
 
     for op in send_ops {
         let parsed: serde_json::Value = match serde_json::from_str(&op.payload) {
@@ -325,6 +369,76 @@ mod tests {
         assert_eq!(errors[0].recipient, "a@x.com");
         assert_eq!(errors[0].error, "connection failed: 465");
         assert!(errors[0].permanent);
+    }
+
+    struct AuthFailCreds;
+
+    #[async_trait::async_trait]
+    impl crate::auth::CredentialSource for AuthFailCreds {
+        async fn auth_for(
+            &self,
+            _account: &am_core::account::Account,
+        ) -> Result<crate::auth::AccountAuth, SyncError> {
+            Err(SyncError::Auth)
+        }
+    }
+
+    #[test]
+    fn report_setup_failure_surfaces_once_and_keeps_op_pending() {
+        let db = Database::open_in_memory().unwrap();
+        let account_id = seed_account(&db);
+        queue_repo::enqueue(&db, account_id, "send_message", "{\"draft_id\":1}").unwrap();
+        let ops = queue_repo::list_due(&db, account_id, now_secs() + 1).unwrap();
+        let sink = RecordingSink::new();
+
+        report_send_setup_failure(&db, &sink, account_id, &ops, &SyncError::Auth).unwrap();
+        {
+            let events = sink.events.lock().unwrap();
+            assert_eq!(events.len(), 1);
+            assert!(matches!(
+                &events[0],
+                SyncEvent::SendFailed { account_id: a, error }
+                    if *a == account_id && error.contains("reconnect")
+            ));
+        }
+
+        let errors = queue_repo::list_send_errors(&db, account_id).unwrap();
+        assert_eq!(errors.len(), 1);
+        assert_eq!(errors[0].state, "pending");
+        assert_eq!(errors[0].attempts, 0);
+
+        report_send_setup_failure(&db, &sink, account_id, &ops, &SyncError::Auth).unwrap();
+        assert_eq!(sink.events.lock().unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn drain_outbox_surfaces_setup_failure_without_consuming_attempt() {
+        let db = Database::open_in_memory().unwrap();
+        let account_id = seed_account(&db);
+        queue_repo::enqueue(&db, account_id, "send_message", "{\"draft_id\":1}").unwrap();
+        let sink = RecordingSink::new();
+        let creds = AuthFailCreds;
+
+        drain_outbox(&db, account_id, &creds, &sink, now_secs())
+            .await
+            .unwrap();
+
+        {
+            let events = sink.events.lock().unwrap();
+            assert_eq!(events.len(), 1);
+            assert!(matches!(&events[0], SyncEvent::SendFailed { .. }));
+        }
+
+        let errors = queue_repo::list_send_errors(&db, account_id).unwrap();
+        assert_eq!(errors.len(), 1);
+        assert_eq!(errors[0].state, "pending");
+        assert_eq!(errors[0].attempts, 0);
+        assert_eq!(queue_repo::list_due(&db, account_id, now_secs()).unwrap().len(), 1);
+
+        drain_outbox(&db, account_id, &creds, &sink, now_secs())
+            .await
+            .unwrap();
+        assert_eq!(sink.events.lock().unwrap().len(), 1);
     }
 }
 
