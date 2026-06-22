@@ -1,11 +1,19 @@
 import { useGeneral } from "../../shared/general/GeneralProvider";
 import { TIME_FORMATS, MARK_READ_MODES, THREAD_ORDERS } from "../../shared/general/general";
-import { useAccounts } from "../../ipc/queries";
+import { useAccounts, useContentSecurityLevel, useSetContentSecurityLevel } from "../../ipc/queries";
+import {
+  CONTENT_SECURITY_LEVELS,
+  DEFAULT_CONTENT_SECURITY_LEVEL,
+  type ContentSecurityLevel,
+} from "../../shared/contentSecurity";
 import { UpdatesPanel } from "../updates/UpdatesPanel";
 
 export function GeneralSection() {
   const g = useGeneral();
   const { data: accounts = [] } = useAccounts();
+  const { data: contentSecurity = DEFAULT_CONTENT_SECURITY_LEVEL } = useContentSecurityLevel();
+  const setContentSecurity = useSetContentSecurityLevel();
+  const activeContentSecurity = CONTENT_SECURITY_LEVELS.find((l) => l.value === contentSecurity);
 
   return (
     <div className="appearance-section">
@@ -26,6 +34,25 @@ export function GeneralSection() {
             </option>
           ))}
         </select>
+      </div>
+
+      <div className="settings-field">
+        <div className="settings-field__label">Email content security</div>
+        <select
+          className="settings-select"
+          aria-label="Email content security"
+          value={contentSecurity}
+          onChange={(e) => setContentSecurity.mutate(e.target.value as ContentSecurityLevel)}
+        >
+          {CONTENT_SECURITY_LEVELS.map((l) => (
+            <option key={l.value} value={l.value}>
+              {l.label}
+            </option>
+          ))}
+        </select>
+        {activeContentSecurity && (
+          <div className="settings-field__hint">{activeContentSecurity.description}</div>
+        )}
       </div>
 
       <div className="appearance-field__label">Time format</div>

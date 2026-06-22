@@ -2,12 +2,13 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, fireEvent, cleanup } from "@testing-library/react";
 import { GeneralSection } from "./GeneralSection";
 
-const { state, setDefaultAccountId, setTimeFormat, setMarkReadMode, setMarkReadDelaySeconds } = vi.hoisted(() => ({
+const { state, setDefaultAccountId, setTimeFormat, setMarkReadMode, setMarkReadDelaySeconds, setContentSecurity } = vi.hoisted(() => ({
   state: { markReadMode: "immediate" as "immediate" | "delay" | "never", markReadDelaySeconds: 2 },
   setDefaultAccountId: vi.fn(),
   setTimeFormat: vi.fn(),
   setMarkReadMode: vi.fn(),
   setMarkReadDelaySeconds: vi.fn(),
+  setContentSecurity: vi.fn(),
 }));
 
 vi.mock("../../shared/general/GeneralProvider", () => ({
@@ -32,6 +33,8 @@ vi.mock("../../ipc/queries", () => ({
       { id: 5, email: "b@example.com", display_name: "B", provider_type: "imap_password", color: null, position: 1, requires_reauth: false },
     ],
   }),
+  useContentSecurityLevel: () => ({ data: "balanced" }),
+  useSetContentSecurityLevel: () => ({ mutate: setContentSecurity }),
 }));
 
 beforeEach(() => {
@@ -54,6 +57,12 @@ describe("GeneralSection", () => {
     const { getByLabelText } = render(<GeneralSection />);
     fireEvent.change(getByLabelText("Default account"), { target: { value: "5" } });
     expect(setDefaultAccountId).toHaveBeenCalledWith("5");
+  });
+
+  it("persists a chosen email content security level", () => {
+    const { getByLabelText } = render(<GeneralSection />);
+    fireEvent.change(getByLabelText("Email content security"), { target: { value: "strict" } });
+    expect(setContentSecurity).toHaveBeenCalledWith("strict");
   });
 
   it("persists a chosen time format", () => {

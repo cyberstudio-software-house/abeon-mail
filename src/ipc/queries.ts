@@ -11,6 +11,10 @@ import {
   prefetchBodiesKey,
   parseAccountPrefetch,
 } from "../features/mailbox/prefetch";
+import {
+  parseContentSecurityLevel,
+  type ContentSecurityLevel,
+} from "../shared/contentSecurity";
 
 type ResultOk<T> = { status: "ok"; data: T };
 type ResultErr = { status: "error"; error: string };
@@ -118,6 +122,33 @@ export function useSetImageAutoload() {
       commands.setSetting(`images.autoload.${accountId}`, value ? "true" : "false").then(unwrap),
     onSuccess: (_data, { accountId }) => {
       queryClient.invalidateQueries({ queryKey: ["image-autoload", accountId] });
+    },
+  });
+}
+
+const CONTENT_SECURITY_KEY = "reader.contentSecurity";
+
+export function useContentSecurityLevel() {
+  return useQuery({
+    queryKey: ["content-security-level"],
+    queryFn: () =>
+      commands
+        .getSettings()
+        .then(unwrap)
+        .then((all) => {
+          const found = all.find(([k]) => k === CONTENT_SECURITY_KEY);
+          return parseContentSecurityLevel(found?.[1]);
+        }),
+  });
+}
+
+export function useSetContentSecurityLevel() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (level: ContentSecurityLevel) =>
+      commands.setSetting(CONTENT_SECURITY_KEY, level).then(unwrap),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["content-security-level"] });
     },
   });
 }

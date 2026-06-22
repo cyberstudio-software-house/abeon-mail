@@ -110,6 +110,12 @@
   margin-bottom: var(--space-3);
 }
 
+.settings-field__hint {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
 .theme-cards,
 .density-cards {
   display: flex;
