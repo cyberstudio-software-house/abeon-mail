@@ -308,7 +308,31 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+}
+
+.composer-signature-preview--expanded .composer-signature-preview__header {
   margin-bottom: 4px;
+}
+
+.composer-signature-preview__toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+
+.composer-signature-preview__chevron {
+  font-size: 13px;
+  line-height: 1;
+  color: var(--text-muted, #888);
+  transition: transform 0.15s ease;
+}
+
+.composer-signature-preview--expanded .composer-signature-preview__chevron {
+  transform: rotate(90deg);
 }
 
 .composer-signature-preview__label {

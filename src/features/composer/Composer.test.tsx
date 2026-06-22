@@ -358,7 +358,7 @@ describe("Composer", () => {
     render(<Composer />, { wrapper: Wrapper });
     await screen.findByRole("dialog");
 
-    await screen.findByTitle("signature-preview");
+    await screen.findByText("Signature preview");
     const injected = mockSetContent.mock.calls.find((c) => String(c[0]).includes("HTML-SIG"));
     expect(injected).toBeUndefined();
 
@@ -382,7 +382,7 @@ describe("Composer", () => {
 
     render(<Composer />, { wrapper: Wrapper });
     await screen.findByRole("dialog");
-    await screen.findByTitle("signature-preview");
+    await screen.findByText("Signature preview");
 
     const saveDraftButton = await screen.findByRole("button", { name: "Save draft" });
     fireEvent.click(saveDraftButton);
@@ -404,6 +404,9 @@ describe("Composer", () => {
     render(<Composer />, { wrapper: Wrapper });
     await screen.findByRole("dialog");
 
+    const toggle = await screen.findByRole("button", { name: "Signature preview" });
+    fireEvent.click(toggle);
+
     const frame = await screen.findByTitle("signature-preview");
     expect(frame.getAttribute("sandbox")).toBe("");
   });
@@ -417,7 +420,7 @@ describe("Composer", () => {
 
     render(<Composer />, { wrapper: Wrapper });
     await screen.findByRole("dialog");
-    await screen.findByTitle("signature-preview");
+    await screen.findByText("Signature preview");
 
     const removeButton = await screen.findByRole("button", { name: "Remove signature" });
     fireEvent.click(removeButton);

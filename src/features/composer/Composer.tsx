@@ -83,6 +83,7 @@ export function Composer() {
   const [signatures, setSignatures] = useState<Signature[]>([]);
   const signatureInsertedRef = useRef(false);
   const [activeHtmlSignature, setActiveHtmlSignature] = useState<Signature | null>(null);
+  const [signatureExpanded, setSignatureExpanded] = useState(false);
 
   useEffect(() => {
     if (accountId == null) return;
@@ -383,9 +384,23 @@ export function Composer() {
         </div>
 
         {activeHtmlSignature && (
-          <div className="composer-signature-preview">
+          <div
+            className={`composer-signature-preview${
+              signatureExpanded ? " composer-signature-preview--expanded" : ""
+            }`}
+          >
             <div className="composer-signature-preview__header">
-              <div className="composer-signature-preview__label">Signature preview</div>
+              <button
+                type="button"
+                className="composer-signature-preview__toggle"
+                aria-expanded={signatureExpanded}
+                onClick={() => setSignatureExpanded((value) => !value)}
+              >
+                <span className="composer-signature-preview__chevron" aria-hidden="true">
+                  ›
+                </span>
+                <span className="composer-signature-preview__label">Signature preview</span>
+              </button>
               <button
                 type="button"
                 className="signature-remove"
@@ -395,11 +410,13 @@ export function Composer() {
                 × Remove
               </button>
             </div>
-            <SafeHtmlFrame
-              html={activeHtmlSignature.html}
-              title="signature-preview"
-              className="signature-preview-frame"
-            />
+            {signatureExpanded && (
+              <SafeHtmlFrame
+                html={activeHtmlSignature.html}
+                title="signature-preview"
+                className="signature-preview-frame"
+              />
+            )}
           </div>
         )}
 
