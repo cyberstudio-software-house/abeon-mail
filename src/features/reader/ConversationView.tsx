@@ -12,7 +12,17 @@ import { formatMessageTime } from "../../shared/datetime/datetime";
 import { seenIdsForBulk } from "./seen";
 import "./reader.css";
 
-function ActiveMessage({ message, accountEmail }: { message: MessageHeader; accountEmail: string | null }) {
+type ReplyMode = "reply" | "reply_all" | "forward";
+
+function ActiveMessage({
+  message,
+  accountEmail,
+  onReply,
+}: {
+  message: MessageHeader;
+  accountEmail: string | null;
+  onReply: (mode: ReplyMode) => void;
+}) {
   const timeFormat = useUiStore((s) => s.timeFormat);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const recipients = useMessageRecipients(detailsOpen ? message.id : null);
@@ -73,6 +83,21 @@ function ActiveMessage({ message, accountEmail }: { message: MessageHeader; acco
       <MeetingInviteCard messageId={message.id} />
       <MessageBodyView messageId={message.id} />
       <AttachmentsBar messageId={message.id} />
+
+      <div className="reader__message-actions">
+        <button type="button" className="reader__action" onClick={() => onReply("reply")}>
+          <Reply size={16} />
+          Reply
+        </button>
+        <button type="button" className="reader__action" onClick={() => onReply("reply_all")}>
+          <ReplyAll size={16} />
+          Reply all
+        </button>
+        <button type="button" className="reader__action" onClick={() => onReply("forward")}>
+          <Forward size={16} />
+          Forward
+        </button>
+      </div>
     </div>
   );
 }
@@ -185,8 +210,8 @@ export function ConversationView({ threadId }: { threadId: number }) {
     s.advanceSelectionAfter(s.selectMode === "message" ? ids : s.selectedRowIds);
   }
 
-  async function handleReply(mode: "reply" | "reply_all" | "forward") {
-    const prefill = await startReplyMutation.mutateAsync({ messageId: last.id, mode });
+  async function handleReply(messageId: number, mode: ReplyMode) {
+    const prefill = await startReplyMutation.mutateAsync({ messageId, mode });
     openComposer(null, prefill);
   }
 
@@ -233,13 +258,13 @@ export function ConversationView({ threadId }: { threadId: number }) {
           <Trash2 size={18} />
         </button>
         <div className="reader__divider" />
-        <button type="button" className="reader__icon" aria-label="Reply" title="Reply" onClick={() => handleReply("reply")}>
+        <button type="button" className="reader__icon" aria-label="Reply" title="Reply" onClick={() => handleReply(last.id, "reply")}>
           <Reply size={18} />
         </button>
-        <button type="button" className="reader__icon" aria-label="Reply all" title="Reply all" onClick={() => handleReply("reply_all")}>
+        <button type="button" className="reader__icon" aria-label="Reply all" title="Reply all" onClick={() => handleReply(last.id, "reply_all")}>
           <ReplyAll size={18} />
         </button>
-        <button type="button" className="reader__icon" aria-label="Forward" title="Forward" onClick={() => handleReply("forward")}>
+        <button type="button" className="reader__icon" aria-label="Forward" title="Forward" onClick={() => handleReply(last.id, "forward")}>
           <Forward size={18} />
         </button>
         <button
@@ -329,7 +354,14 @@ export function ConversationView({ threadId }: { threadId: number }) {
                   </button>
                 );
               }
-              return <ActiveMessage key={m.id} message={m} accountEmail={accountEmail} />;
+              return (
+                <ActiveMessage
+                  key={m.id}
+                  message={m}
+                  accountEmail={accountEmail}
+                  onReply={(mode) => handleReply(m.id, mode)}
+                />
+              );
             })}
           </div>
         </div>
@@ -340,7 +372,7 @@ export function ConversationView({ threadId }: { threadId: number }) {
           type="button"
           className="reader__reply-trigger"
           aria-label={`Reply to ${senderName}…`}
-          onClick={() => handleReply("reply")}
+          onClick={() => handleReply(last.id, "reply")}
         >
           Reply to {senderName}…
         </button>
@@ -348,7 +380,7 @@ export function ConversationView({ threadId }: { threadId: number }) {
           type="button"
           className="reader__send"
           aria-label="Send"
-          onClick={() => handleReply("reply")}
+          onClick={() => handleReply(last.id, "reply")}
         >
           <SendHorizontal size={16} />
           Send
