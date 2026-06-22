@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach } from "vitest";
-import { useUiStore } from "./store";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { useUiStore, SEND_WATCHDOG_MS } from "./store";
 import { DEFAULT_SNOOZE_CONFIG } from "../shared/snooze/snooze";
 import { DEFAULT_GENERAL } from "../shared/general/general";
 
@@ -349,5 +349,56 @@ describe("smart folder visibility", () => {
     const after = useUiStore.getState().smartFolderVisibility;
     expect(after).toEqual({ all_inboxes: true, unread: true, flagged: false, snoozed: true });
     expect(after).not.toBe(before);
+  });
+});
+
+describe("sending counter", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(1_000_000));
+    useUiStore.setState({ sendingCount: 0, lastSentAt: null, sendWatchdogs: [] });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("increments on each started send", () => {
+    useUiStore.getState().markSendStarted();
+    useUiStore.getState().markSendStarted();
+    expect(useUiStore.getState().sendingCount).toBe(2);
+  });
+
+  it("decrements and records lastSentAt on success", () => {
+    useUiStore.getState().markSendStarted();
+    useUiStore.getState().markSendSucceeded();
+    expect(useUiStore.getState().sendingCount).toBe(0);
+    expect(useUiStore.getState().lastSentAt).toBe(1_000_000);
+  });
+
+  it("decrements without lastSentAt on failure", () => {
+    useUiStore.getState().markSendStarted();
+    useUiStore.getState().markSendFailed();
+    expect(useUiStore.getState().sendingCount).toBe(0);
+    expect(useUiStore.getState().lastSentAt).toBeNull();
+  });
+
+  it("never goes below zero on an extra confirmation", () => {
+    useUiStore.getState().markSendSucceeded();
+    expect(useUiStore.getState().sendingCount).toBe(0);
+  });
+
+  it("watchdog clears a stuck send after SEND_WATCHDOG_MS", () => {
+    useUiStore.getState().markSendStarted();
+    expect(useUiStore.getState().sendingCount).toBe(1);
+    vi.advanceTimersByTime(SEND_WATCHDOG_MS);
+    expect(useUiStore.getState().sendingCount).toBe(0);
+  });
+
+  it("a real confirmation cancels the watchdog (no double decrement)", () => {
+    useUiStore.getState().markSendStarted();
+    useUiStore.getState().markSendSucceeded();
+    expect(useUiStore.getState().sendingCount).toBe(0);
+    vi.advanceTimersByTime(SEND_WATCHDOG_MS);
+    expect(useUiStore.getState().sendingCount).toBe(0);
   });
 });

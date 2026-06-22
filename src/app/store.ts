@@ -52,6 +52,12 @@ export type UiState = {
   trayEnabled: boolean;
   prefetchProgress: Record<number, { done: number; total: number }>;
   setPrefetchProgress: (accountId: number, done: number, total: number) => void;
+  sendingCount: number;
+  lastSentAt: number | null;
+  sendWatchdogs: ReturnType<typeof setTimeout>[];
+  markSendStarted: () => void;
+  markSendSucceeded: () => void;
+  markSendFailed: () => void;
   defaultAccountId: string;
   timeFormat: TimeFormat;
   markReadMode: MarkReadMode;
@@ -153,7 +159,9 @@ export type UiState = {
   bumpMarkUnreadEpoch: () => void;
 };
 
-export const useUiStore = create<UiState>((set) => ({
+export const SEND_WATCHDOG_MS = 300000;
+
+export const useUiStore = create<UiState>((set, get) => ({
   selectedAccountId: null,
   selectedFolderId: null,
   selectedMessageId: null,
@@ -171,6 +179,9 @@ export const useUiStore = create<UiState>((set) => ({
   badgeEnabled: DEFAULT_NOTIFICATIONS.badgeEnabled,
   trayEnabled: DEFAULT_NOTIFICATIONS.trayEnabled,
   prefetchProgress: {},
+  sendingCount: 0,
+  lastSentAt: null,
+  sendWatchdogs: [],
   defaultAccountId: DEFAULT_GENERAL.defaultAccountId,
   timeFormat: DEFAULT_GENERAL.timeFormat,
   markReadMode: DEFAULT_GENERAL.markReadMode,
@@ -250,6 +261,36 @@ export const useUiStore = create<UiState>((set) => ({
   setTrayEnabled: (trayEnabled) => set({ trayEnabled }),
   setPrefetchProgress: (accountId, done, total) =>
     set((s) => ({ prefetchProgress: { ...s.prefetchProgress, [accountId]: { done, total } } })),
+  markSendStarted: () => {
+    const handle = setTimeout(() => {
+      set((s) =>
+        s.sendingCount <= 0
+          ? {}
+          : {
+              sendingCount: s.sendingCount - 1,
+              sendWatchdogs: s.sendWatchdogs.filter((h) => h !== handle),
+            },
+      );
+    }, SEND_WATCHDOG_MS);
+    set((s) => ({ sendingCount: s.sendingCount + 1, sendWatchdogs: [...s.sendWatchdogs, handle] }));
+  },
+  markSendSucceeded: () => {
+    const first = get().sendWatchdogs[0];
+    if (first) clearTimeout(first);
+    set((s) => ({
+      sendingCount: Math.max(0, s.sendingCount - 1),
+      sendWatchdogs: s.sendWatchdogs.slice(1),
+      lastSentAt: Date.now(),
+    }));
+  },
+  markSendFailed: () => {
+    const first = get().sendWatchdogs[0];
+    if (first) clearTimeout(first);
+    set((s) => ({
+      sendingCount: Math.max(0, s.sendingCount - 1),
+      sendWatchdogs: s.sendWatchdogs.slice(1),
+    }));
+  },
   hydrateNotifications: (partial) => set(partial),
   setDefaultAccountId: (defaultAccountId) => set({ defaultAccountId }),
   setTimeFormat: (timeFormat) => set({ timeFormat }),
