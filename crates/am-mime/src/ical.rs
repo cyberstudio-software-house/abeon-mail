@@ -638,34 +638,73 @@ pub(crate) fn epoch_to_ical_utc(epoch: i64) -> String {
     format!("{:04}{:02}{:02}T{:02}{:02}{:02}Z", y, m, d, hh, mm, ss)
 }
 
+fn escape_text(value: &str) -> String {
+    let mut out = String::with_capacity(value.len());
+    for c in value.chars() {
+        match c {
+            '\\' => out.push_str("\\\\"),
+            ';' => out.push_str("\\;"),
+            ',' => out.push_str("\\,"),
+            '\n' => out.push_str("\\n"),
+            '\r' => {}
+            _ => out.push(c),
+        }
+    }
+    out
+}
+
+fn fold_line(line: &str) -> String {
+    if line.len() <= 75 {
+        return format!("{}\r\n", line);
+    }
+    let mut out = String::with_capacity(line.len() + line.len() / 70 + 2);
+    let mut start = 0;
+    let mut first = true;
+    while start < line.len() {
+        let limit = if first { 75 } else { 74 };
+        let mut end = (start + limit).min(line.len());
+        while end > start && !line.is_char_boundary(end) {
+            end -= 1;
+        }
+        if !first {
+            out.push(' ');
+        }
+        out.push_str(&line[start..end]);
+        out.push_str("\r\n");
+        start = end;
+        first = false;
+    }
+    out
+}
+
 pub fn build_reply_ics(
     invite: &am_core::meeting::MeetingInvite,
     status: am_core::meeting::RsvpStatus,
     attendee_email: &str,
 ) -> String {
     let mut s = String::new();
-    s.push_str("BEGIN:VCALENDAR\r\n");
-    s.push_str("PRODID:-//AbeonMail//EN\r\n");
-    s.push_str("VERSION:2.0\r\n");
-    s.push_str("METHOD:REPLY\r\n");
-    s.push_str("BEGIN:VEVENT\r\n");
+    s.push_str(&fold_line("BEGIN:VCALENDAR"));
+    s.push_str(&fold_line("PRODID:-//AbeonMail//EN"));
+    s.push_str(&fold_line("VERSION:2.0"));
+    s.push_str(&fold_line("METHOD:REPLY"));
+    s.push_str(&fold_line("BEGIN:VEVENT"));
     if let Some(uid) = &invite.uid {
-        s.push_str(&format!("UID:{}\r\n", uid));
+        s.push_str(&fold_line(&format!("UID:{}", uid)));
     }
     if let Some(org) = &invite.organizer {
-        s.push_str(&format!("ORGANIZER:mailto:{}\r\n", org));
+        s.push_str(&fold_line(&format!("ORGANIZER:mailto:{}", org)));
     }
-    s.push_str(&format!("ATTENDEE;PARTSTAT={}:mailto:{}\r\n", status.partstat(), attendee_email));
-    s.push_str(&format!("SUMMARY:{}\r\n", invite.title));
+    s.push_str(&fold_line(&format!("ATTENDEE;PARTSTAT={}:mailto:{}", status.partstat(), attendee_email)));
+    s.push_str(&fold_line(&format!("SUMMARY:{}", escape_text(&invite.title))));
     if let Some(start) = invite.start_epoch {
-        s.push_str(&format!("DTSTART:{}\r\n", epoch_to_ical_utc(start)));
+        s.push_str(&fold_line(&format!("DTSTART:{}", epoch_to_ical_utc(start))));
     }
     if let Some(end) = invite.end_epoch {
-        s.push_str(&format!("DTEND:{}\r\n", epoch_to_ical_utc(end)));
+        s.push_str(&fold_line(&format!("DTEND:{}", epoch_to_ical_utc(end))));
     }
-    s.push_str("SEQUENCE:0\r\n");
-    s.push_str("END:VEVENT\r\n");
-    s.push_str("END:VCALENDAR\r\n");
+    s.push_str(&fold_line("SEQUENCE:0"));
+    s.push_str(&fold_line("END:VEVENT"));
+    s.push_str(&fold_line("END:VCALENDAR"));
     s
 }
 
@@ -854,5 +893,36 @@ mod reply_tests {
     fn declined_maps_partstat() {
         let ics = build_reply_ics(&invite(), RsvpStatus::Declined, "me@x.com");
         assert!(ics.contains("PARTSTAT=DECLINED"));
+    }
+
+    #[test]
+    fn long_uid_is_folded_and_roundtrips() {
+        let mut inv = invite();
+        let long_uid = "040000008200E00074C5B7101A82E00800000000E01D5CED26FADB01000000000000000010000000F72EE0AE845079419EBA8B86A58964CC";
+        inv.uid = Some(long_uid.to_string());
+        let ics = build_reply_ics(&inv, RsvpStatus::Accepted, "me@x.com");
+        assert!(ics.split("\r\n").all(|l| l.len() <= 75), "a physical line exceeds 75 octets");
+        let uid = unfold(&ics)
+            .iter()
+            .filter_map(|l| parse_line(l))
+            .find(|c| c.name == "UID")
+            .unwrap();
+        assert_eq!(uid.value, long_uid);
+    }
+
+    #[test]
+    fn summary_special_chars_are_escaped_and_roundtrip() {
+        let mut inv = invite();
+        inv.title = "Plan, phase; review\\final".to_string();
+        let ics = build_reply_ics(&inv, RsvpStatus::Accepted, "me@x.com");
+        let summary = unfold(&ics)
+            .iter()
+            .filter_map(|l| parse_line(l))
+            .find(|c| c.name == "SUMMARY")
+            .unwrap();
+        assert!(summary.value.contains("\\,"));
+        assert!(summary.value.contains("\\;"));
+        assert!(summary.value.contains("\\\\"));
+        assert_eq!(summary.unescaped(), "Plan, phase; review\\final");
     }
 }
