@@ -8,7 +8,21 @@ pub fn run() {
 
     let builder = build_specta_builder();
 
-    tauri::Builder::default()
+    let mut tauri_builder = tauri::Builder::default();
+    #[cfg(desktop)]
+    {
+        tauri_builder = tauri_builder.plugin(tauri_plugin_single_instance::init(
+            |app, _args, _cwd| {
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.show();
+                    let _ = window.unminimize();
+                    let _ = window.set_focus();
+                }
+            },
+        ));
+    }
+
+    tauri_builder
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())

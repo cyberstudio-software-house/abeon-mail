@@ -35,3 +35,6 @@ am-mime = { path = "../crates/am-mime" }
 am-storage = { path = "../crates/am-storage" }
 am-sync = { path = "../crates/am-sync" }
 dotenvy = "0.15"
+
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+tauri-plugin-single-instance = "2"
