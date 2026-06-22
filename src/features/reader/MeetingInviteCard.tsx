@@ -11,6 +11,14 @@ const RSVP_OPTIONS: { status: RsvpStatus; label: string }[] = [
   { status: "declined", label: "Decline" },
 ];
 
+function isHttpsUrl(url: string): boolean {
+  try {
+    return new URL(url).protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
 export function MeetingInviteCard({ messageId }: { messageId: number }) {
   const { data } = useMeetingInvite(messageId);
   const respond = useRespondToInvite();
@@ -19,6 +27,8 @@ export function MeetingInviteCard({ messageId }: { messageId: number }) {
   if (!data || data.start_epoch == null) return null;
 
   const when = formatMeetingRange(data.start_epoch, data.end_epoch, data.all_day, timeFormat);
+  const joinUrl = data.join_url && isHttpsUrl(data.join_url) ? data.join_url : null;
+  const dialDigits = data.dial_in ? data.dial_in.replace(/[^0-9+]/g, "") : "";
 
   return (
     <div className="meeting-card">
@@ -69,20 +79,20 @@ export function MeetingInviteCard({ messageId }: { messageId: number }) {
               ))}
             </div>
           )}
-          {data.join_url && (
+          {joinUrl && (
             <button
               type="button"
               className="meeting-card__join"
-              onClick={() => commands.openExternalUrl(data.join_url!)}
+              onClick={() => commands.openExternalUrl(joinUrl)}
             >
               <Video size={16} /> Join meeting
             </button>
           )}
-          {data.dial_in && (
+          {dialDigits && (
             <button
               type="button"
               className="meeting-card__dialin"
-              onClick={() => commands.openExternalUrl(`tel:${data.dial_in!.replace(/[^0-9+]/g, "")}`)}
+              onClick={() => commands.openExternalUrl(`tel:${dialDigits}`)}
             >
               <Phone size={14} /> {data.dial_in}
             </button>

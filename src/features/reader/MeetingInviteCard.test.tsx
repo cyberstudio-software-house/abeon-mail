@@ -50,6 +50,12 @@ describe("MeetingInviteCard", () => {
     expect(screen.queryByRole("button", { name: /join/i })).toBeNull();
   });
 
+  it("a non-https join_url hides the join button", () => {
+    setInvite({ join_url: "javascript:alert(1)", provider: "other" });
+    render(<MeetingInviteCard messageId={1} />);
+    expect(screen.queryByRole("button", { name: /join/i })).toBeNull();
+  });
+
   it("renders nothing when there is no invite", () => {
     (globalThis as any).__invite = null;
     const { container } = render(<MeetingInviteCard messageId={1} />);
