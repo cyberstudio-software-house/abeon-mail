@@ -384,7 +384,17 @@ export function Composer() {
 
         {activeHtmlSignature && (
           <div className="composer-signature-preview">
-            <div className="composer-signature-preview__label">Signature preview</div>
+            <div className="composer-signature-preview__header">
+              <div className="composer-signature-preview__label">Signature preview</div>
+              <button
+                type="button"
+                className="signature-remove"
+                aria-label="Remove signature"
+                onClick={() => setActiveHtmlSignature(null)}
+              >
+                × Remove
+              </button>
+            </div>
             <SafeHtmlFrame
               html={activeHtmlSignature.html}
               title="signature-preview"

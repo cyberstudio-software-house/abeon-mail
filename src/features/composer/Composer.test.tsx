@@ -408,6 +408,34 @@ describe("Composer", () => {
     expect(frame.getAttribute("sandbox")).toBe("");
   });
 
+  it("removes the HTML signature when the user clicks Remove, omitting it from Send", async () => {
+    const { commands } = await import("../../ipc/bindings");
+    (commands.listSignatures as ReturnType<typeof vi.fn>).mockResolvedValue({
+      status: "ok",
+      data: [{ id: 9, name: "Fancy", html: "<table>HTML-SIG</table>", is_default: true, is_html: true }],
+    });
+
+    render(<Composer />, { wrapper: Wrapper });
+    await screen.findByRole("dialog");
+    await screen.findByTitle("signature-preview");
+
+    const removeButton = await screen.findByRole("button", { name: "Remove signature" });
+    fireEvent.click(removeButton);
+
+    await waitFor(() => {
+      expect(screen.queryByTitle("signature-preview")).toBeNull();
+    });
+
+    const sendButton = await screen.findByRole("button", { name: "Send" });
+    fireEvent.click(sendButton);
+
+    await waitFor(() => {
+      expect(commands.saveDraft).toHaveBeenCalled();
+    });
+    const message = (commands.saveDraft as ReturnType<typeof vi.fn>).mock.calls[0][2];
+    expect(message.html_body).not.toContain("HTML-SIG");
+  });
+
   const twoAccounts = [
     { id: 7, email: "first@example.com", display_name: "First", provider_type: "imap_password", color: null, position: 0 },
     { id: 9, email: "active@example.com", display_name: "Active", provider_type: "imap_password", color: null, position: 1 },
