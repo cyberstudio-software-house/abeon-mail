@@ -5,14 +5,30 @@ pub const GOOGLE_TOKEN_URI: &str = "https://oauth2.googleapis.com/token";
 pub const GOOGLE_USERINFO_URI: &str = "https://www.googleapis.com/oauth2/v3/userinfo";
 pub const GOOGLE_SCOPES: &str = "https://mail.google.com/ openid email";
 
+const BAKED_CLIENT_ID: Option<&str> = option_env!("ABEONMAIL_GOOGLE_CLIENT_ID");
+const BAKED_CLIENT_SECRET: Option<&str> = option_env!("ABEONMAIL_GOOGLE_CLIENT_SECRET");
+
+fn resolve_secret(runtime: Option<String>, baked: Option<&str>) -> Option<String> {
+    runtime
+        .filter(|v| !v.is_empty())
+        .or_else(|| baked.map(str::to_string))
+        .filter(|v| !v.is_empty())
+}
+
 pub fn google_client_id() -> Result<String, OAuthError> {
-    std::env::var("ABEONMAIL_GOOGLE_CLIENT_ID")
-        .map_err(|_| OAuthError::Config("ABEONMAIL_GOOGLE_CLIENT_ID not set".into()))
+    resolve_secret(
+        std::env::var("ABEONMAIL_GOOGLE_CLIENT_ID").ok(),
+        BAKED_CLIENT_ID,
+    )
+    .ok_or_else(|| OAuthError::Config("ABEONMAIL_GOOGLE_CLIENT_ID not set".into()))
 }
 
 pub fn google_client_secret() -> Result<String, OAuthError> {
-    std::env::var("ABEONMAIL_GOOGLE_CLIENT_SECRET")
-        .map_err(|_| OAuthError::Config("ABEONMAIL_GOOGLE_CLIENT_SECRET not set".into()))
+    resolve_secret(
+        std::env::var("ABEONMAIL_GOOGLE_CLIENT_SECRET").ok(),
+        BAKED_CLIENT_SECRET,
+    )
+    .ok_or_else(|| OAuthError::Config("ABEONMAIL_GOOGLE_CLIENT_SECRET not set".into()))
 }
 
 #[cfg(test)]
@@ -20,13 +36,31 @@ mod tests {
     use super::*;
 
     #[test]
-    fn google_client_id_reads_env_then_missing() {
-        std::env::set_var("ABEONMAIL_GOOGLE_CLIENT_ID", "test-client-id-123");
-        let id = google_client_id().unwrap();
-        assert_eq!(id, "test-client-id-123");
+    fn resolve_prefers_runtime_over_baked() {
+        assert_eq!(
+            resolve_secret(Some("runtime".into()), Some("baked")),
+            Some("runtime".to_string())
+        );
+    }
 
-        std::env::remove_var("ABEONMAIL_GOOGLE_CLIENT_ID");
-        let result = google_client_id();
-        assert!(matches!(result, Err(OAuthError::Config(_))));
+    #[test]
+    fn resolve_falls_back_to_baked_when_runtime_absent() {
+        assert_eq!(
+            resolve_secret(None, Some("baked")),
+            Some("baked".to_string())
+        );
+    }
+
+    #[test]
+    fn resolve_ignores_empty_runtime_and_uses_baked() {
+        assert_eq!(
+            resolve_secret(Some(String::new()), Some("baked")),
+            Some("baked".to_string())
+        );
+    }
+
+    #[test]
+    fn resolve_none_when_both_absent() {
+        assert_eq!(resolve_secret(None, None), None);
     }
 }

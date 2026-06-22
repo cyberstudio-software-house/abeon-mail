@@ -50,8 +50,8 @@ impl KeychainCredentialSource {
         let http = Arc::new(am_auth::oauth::client::ReqwestHttp::new());
         let token_manager =
             am_auth::oauth::manager::OAuthTokenManager::new(http as Arc<dyn am_auth::oauth::TokenHttp>);
-        let client_id = std::env::var("ABEONMAIL_GOOGLE_CLIENT_ID").ok();
-        let client_secret = std::env::var("ABEONMAIL_GOOGLE_CLIENT_SECRET").ok();
+        let client_id = am_auth::oauth::google::google_client_id().ok();
+        let client_secret = am_auth::oauth::google::google_client_secret().ok();
         Arc::new(Self { token_manager, client_id, client_secret })
     }
 
@@ -65,8 +65,8 @@ impl Default for KeychainCredentialSource {
         let http = Arc::new(am_auth::oauth::client::ReqwestHttp::new());
         let token_manager =
             am_auth::oauth::manager::OAuthTokenManager::new(http as Arc<dyn am_auth::oauth::TokenHttp>);
-        let client_id = std::env::var("ABEONMAIL_GOOGLE_CLIENT_ID").ok();
-        let client_secret = std::env::var("ABEONMAIL_GOOGLE_CLIENT_SECRET").ok();
+        let client_id = am_auth::oauth::google::google_client_id().ok();
+        let client_secret = am_auth::oauth::google::google_client_secret().ok();
         Self { token_manager, client_id, client_secret }
     }
 }
