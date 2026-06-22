@@ -1,7 +1,11 @@
 pub mod client;
+pub mod descriptor;
 pub mod google;
 pub mod manager;
+pub mod microsoft;
 pub mod pkce;
+
+pub use descriptor::{EmailSource, OAuthProvider};
 
 pub use client::{OAuthTokens, TokenHttp};
 

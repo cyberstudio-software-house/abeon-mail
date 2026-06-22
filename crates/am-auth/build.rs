@@ -1,8 +1,9 @@
 use std::path::{Path, PathBuf};
 
-const BAKED_VARS: [&str; 2] = [
+const BAKED_VARS: [&str; 3] = [
     "ABEONMAIL_GOOGLE_CLIENT_ID",
     "ABEONMAIL_GOOGLE_CLIENT_SECRET",
+    "ABEONMAIL_MICROSOFT_CLIENT_ID",
 ];
 
 fn main() {

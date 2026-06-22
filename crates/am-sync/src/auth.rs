@@ -91,7 +91,13 @@ impl CredentialSource for KeychainCredentialSource {
                 let now = crate::service::now_secs();
                 let token = self
                     .token_manager
-                    .valid_access_token(&account.email, client_id, client_secret, now)
+                    .valid_access_token(
+                        &account.email,
+                        am_auth::oauth::google::GOOGLE_TOKEN_URI,
+                        client_id,
+                        Some(client_secret),
+                        now,
+                    )
                     .await
                     .map_err(SyncError::from)?;
                 Ok(AccountAuth::XOauth2 {

@@ -24,8 +24,9 @@ impl OAuthTokenManager {
     pub async fn valid_access_token(
         &self,
         auth_ref: &str,
+        token_uri: &str,
         client_id: &str,
-        client_secret: &str,
+        client_secret: Option<&str>,
         now: i64,
     ) -> Result<String, OAuthError> {
         {
@@ -42,6 +43,7 @@ impl OAuthTokenManager {
 
         let new_tokens = crate::oauth::client::refresh_tokens(
             self.http.as_ref(),
+            token_uri,
             client_id,
             client_secret,
             &refresh_token,
@@ -63,6 +65,8 @@ mod tests {
     use crate::credentials::{delete_password, store_password};
     use crate::oauth::client::TokenHttp;
     use std::collections::VecDeque;
+
+    const TEST_TOKEN_URI: &str = "https://token.test/token";
 
     struct FakeHttp {
         calls: Mutex<u32>,
@@ -121,11 +125,15 @@ mod tests {
         let tokens = OAuthTokens {
             access_token: "CACHED_TOKEN".into(),
             refresh_token: Some("REF".into()),
+            id_token: None,
             expires_at: now + 3600,
         };
         mgr.seed("ref@manager.test", &tokens);
 
-        let result = mgr.valid_access_token("ref@manager.test", "client", "secret", now).await.unwrap();
+        let result = mgr
+            .valid_access_token("ref@manager.test", TEST_TOKEN_URI, "client", Some("secret"), now)
+            .await
+            .unwrap();
         assert_eq!(result, "CACHED_TOKEN");
         assert_eq!(http.call_count(), 0);
     }
@@ -147,11 +155,15 @@ mod tests {
         let old = OAuthTokens {
             access_token: "OLD".into(),
             refresh_token: None,
+            id_token: None,
             expires_at: now + 100,
         };
         mgr.seed(auth_ref, &old);
 
-        let result = mgr.valid_access_token(auth_ref, "client", "secret", now).await.unwrap();
+        let result = mgr
+            .valid_access_token(auth_ref, TEST_TOKEN_URI, "client", Some("secret"), now)
+            .await
+            .unwrap();
         assert_eq!(result, "NEW_TOKEN");
         assert_eq!(http.call_count(), 1);
 
@@ -175,11 +187,14 @@ mod tests {
         let old = OAuthTokens {
             access_token: "OLD".into(),
             refresh_token: None,
+            id_token: None,
             expires_at: now + 100,
         };
         mgr.seed(auth_ref, &old);
 
-        let result = mgr.valid_access_token(auth_ref, "client", "secret", now).await;
+        let result = mgr
+            .valid_access_token(auth_ref, TEST_TOKEN_URI, "client", Some("secret"), now)
+            .await;
         assert!(matches!(result, Err(OAuthError::InvalidGrant)));
 
         let _ = delete_password(auth_ref);

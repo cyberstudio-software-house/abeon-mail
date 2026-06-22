@@ -1185,6 +1185,7 @@ pub async fn begin_google_oauth(
 pub(crate) async fn run_google_oauth_flow(
     _app: &tauri::AppHandle,
 ) -> Result<(am_auth::oauth::client::OAuthTokens, String), String> {
+    let provider = am_auth::oauth::OAuthProvider::google();
     let client_id = am_auth::oauth::google::google_client_id()
         .map_err(|_| "Google client ID not configured".to_string())?;
     let client_secret = am_auth::oauth::google::google_client_secret()
@@ -1204,6 +1205,7 @@ pub(crate) async fn run_google_oauth_flow(
         .collect();
 
     let auth_url = am_auth::oauth::pkce::authorize_url(
+        &provider,
         &client_id,
         &redirect_uri,
         &pkce.challenge,
@@ -1214,10 +1216,11 @@ pub(crate) async fn run_google_oauth_flow(
         .map_err(|e| format!("Failed to open browser: {e}"))?;
 
     accept_redirect(
+        &provider,
         listener,
         &csrf_state,
         &client_id,
-        &client_secret,
+        Some(&client_secret),
         &pkce.verifier,
         &redirect_uri,
     )
@@ -1347,10 +1350,11 @@ pub fn delete_rule(state: tauri::State<'_, AppState>, rule_id: i64) -> Result<()
 }
 
 async fn accept_redirect(
+    provider: &am_auth::oauth::OAuthProvider,
     listener: TcpListener,
     expected_state: &str,
     client_id: &str,
-    client_secret: &str,
+    client_secret: Option<&str>,
     verifier: &str,
     redirect_uri: &str,
 ) -> Result<(am_auth::oauth::client::OAuthTokens, String), String> {
@@ -1393,6 +1397,7 @@ async fn accept_redirect(
     let http = am_auth::oauth::client::ReqwestHttp::new();
     let tokens = am_auth::oauth::client::exchange_code(
         &http,
+        provider.token_uri,
         client_id,
         client_secret,
         &code,
@@ -1402,7 +1407,7 @@ async fn accept_redirect(
     .await
     .map_err(|_| "Token exchange failed".to_string())?;
 
-    let email = am_auth::oauth::client::fetch_email(&http, &tokens.access_token)
+    let email = am_auth::oauth::descriptor::resolve_email(&http, provider, &tokens)
         .await
         .map_err(|_| "Failed to fetch account email".to_string())?;
 

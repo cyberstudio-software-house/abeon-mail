@@ -18,22 +18,24 @@ pub fn generate_pkce() -> Pkce {
 }
 
 pub fn authorize_url(
+    provider: &crate::oauth::OAuthProvider,
     client_id: &str,
     redirect_uri: &str,
     challenge: &str,
     state: &str,
 ) -> String {
-    use crate::oauth::google::{GOOGLE_AUTH_URI, GOOGLE_SCOPES};
-    let scope_enc = urlencoded(GOOGLE_SCOPES);
+    let auth_uri = provider.auth_uri;
+    let scope_enc = urlencoded(provider.scopes);
     let redirect_enc = urlencoded(redirect_uri);
     let challenge_enc = urlencoded(challenge);
     let state_enc = urlencoded(state);
     let client_id_enc = urlencoded(client_id);
+    let extra = provider.extra_auth_params;
     format!(
-        "{GOOGLE_AUTH_URI}?client_id={client_id_enc}&redirect_uri={redirect_enc}\
+        "{auth_uri}?client_id={client_id_enc}&redirect_uri={redirect_enc}\
          &response_type=code&scope={scope_enc}&state={state_enc}\
          &code_challenge={challenge_enc}&code_challenge_method=S256\
-         &access_type=offline&prompt=consent"
+         &{extra}"
     )
 }
 
@@ -74,7 +76,9 @@ mod tests {
 
     #[test]
     fn authorize_url_contains_required_params() {
-        let url = authorize_url("MY_CLIENT", "http://127.0.0.1:9999", "CHALLENGE_XYZ", "STATE_ABC");
+        let provider = crate::oauth::OAuthProvider::google();
+        let url = authorize_url(&provider, "MY_CLIENT", "http://127.0.0.1:9999", "CHALLENGE_XYZ", "STATE_ABC");
+        assert!(url.starts_with(crate::oauth::google::GOOGLE_AUTH_URI), "wrong auth endpoint");
         assert!(url.contains("client_id=MY_CLIENT"), "missing client_id");
         assert!(url.contains("response_type=code"), "missing response_type");
         assert!(url.contains("code_challenge=CHALLENGE_XYZ"), "missing code_challenge");
@@ -83,6 +87,16 @@ mod tests {
         assert!(url.contains("prompt=consent"), "missing prompt");
         assert!(url.contains("state=STATE_ABC"), "missing state");
         assert!(url.contains("redirect_uri="), "missing redirect_uri");
+    }
+
+    #[test]
+    fn authorize_url_uses_microsoft_provider_params() {
+        let provider = crate::oauth::OAuthProvider::microsoft();
+        let url = authorize_url(&provider, "MS_CLIENT", "http://127.0.0.1:9999", "CHAL", "STATE");
+        assert!(url.starts_with(crate::oauth::microsoft::MICROSOFT_AUTH_URI), "wrong auth endpoint");
+        assert!(url.contains("prompt=select_account"), "missing select_account prompt");
+        assert!(!url.contains("access_type=offline"), "google-only param leaked");
+        assert!(url.contains("IMAP.AccessAsUser.All"), "missing imap scope");
     }
 
     #[test]
