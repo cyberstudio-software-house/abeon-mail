@@ -21,7 +21,7 @@
 .message-row {
   display: flex;
   align-items: stretch;
-  padding: 0 var(--space-3);
+  padding: 0 var(--space-2);
   border-bottom: 1px solid var(--border-subtle);
   cursor: pointer;
   background: var(--bg-surface);
@@ -40,9 +40,9 @@
 .message-row__indicators {
   display: flex;
   align-items: center;
-  width: 12px;
+  width: 8px;
   flex-shrink: 0;
-  margin-right: var(--space-2);
+  margin-right: var(--space-1);
 }
 
 .message-row__unread-dot {
