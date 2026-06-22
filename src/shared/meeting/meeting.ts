@@ -1,4 +1,4 @@
-import type { MeetingProvider } from "../../ipc/bindings";
+import type { MeetingInvite, MeetingProvider } from "../../ipc/bindings";
 import type { TimeFormat } from "../general/general";
 import { hour12Option } from "../datetime/datetime";
 
@@ -17,6 +17,14 @@ export function providerLabel(provider: MeetingProvider): string {
   }
 }
 
+export function meetingBadgeLabel(
+  invite: Pick<MeetingInvite, "provider" | "join_url" | "dial_in">,
+): string {
+  if (invite.provider !== "other") return providerLabel(invite.provider);
+  if (invite.join_url || invite.dial_in) return "Online meeting";
+  return "Event";
+}
+
 export function formatMeetingRange(
   startEpoch: number,
   endEpoch: number | null,
@@ -31,6 +39,17 @@ export function formatMeetingRange(
     year: "numeric",
   });
   if (allDay) {
+    if (endEpoch != null) {
+      const lastDay = new Date((endEpoch - 86400) * 1000);
+      if (lastDay.getTime() > start.getTime()) {
+        const rangeFmt = new Intl.DateTimeFormat(undefined, {
+          day: "numeric",
+          month: "long",
+          year: "numeric",
+        });
+        return rangeFmt.formatRange(start, lastDay);
+      }
+    }
     return dateFmt.format(start);
   }
   const timeFmt = new Intl.DateTimeFormat(undefined, {

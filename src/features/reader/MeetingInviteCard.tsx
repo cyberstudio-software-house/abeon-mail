@@ -3,7 +3,7 @@ import { useMeetingInvite, useRespondToInvite } from "../../ipc/queries";
 import { commands } from "../../ipc/bindings";
 import type { RsvpStatus } from "../../ipc/bindings";
 import { useUiStore } from "../../app/store";
-import { formatMeetingRange, providerLabel } from "../../shared/meeting/meeting";
+import { formatMeetingRange, meetingBadgeLabel } from "../../shared/meeting/meeting";
 
 const RSVP_OPTIONS: { status: RsvpStatus; label: string }[] = [
   { status: "accepted", label: "Accept" },
@@ -41,7 +41,7 @@ export function MeetingInviteCard({ messageId }: { messageId: number }) {
         {data.cancelled && (
           <span className="meeting-card__badge meeting-card__badge--cancelled">Cancelled</span>
         )}
-        {!data.cancelled && <span className="meeting-card__badge">{providerLabel(data.provider)}</span>}
+        {!data.cancelled && <span className="meeting-card__badge">{meetingBadgeLabel(data)}</span>}
       </div>
 
       <dl className="meeting-card__meta">
