@@ -54,6 +54,26 @@ pub fn list_meta(db: &Database, message_id: i64) -> Result<Vec<Attachment>, Stor
     Ok(out)
 }
 
+pub fn all_contents(
+    db: &Database,
+    message_id: i64,
+) -> Result<Vec<(String, Vec<u8>)>, StorageError> {
+    let conn = db.conn();
+    let mut stmt = conn.prepare(
+        "SELECT filename, content FROM attachments
+         WHERE message_id = ?1 AND is_inline = 0 ORDER BY id ASC",
+    )?;
+    let rows = stmt.query_map(params![message_id], |r| {
+        let content: Option<Vec<u8>> = r.get(1)?;
+        Ok((r.get::<_, String>(0)?, content.unwrap_or_default()))
+    })?;
+    let mut out = Vec::new();
+    for r in rows {
+        out.push(r?);
+    }
+    Ok(out)
+}
+
 pub fn get_content(
     db: &Database,
     attachment_id: i64,

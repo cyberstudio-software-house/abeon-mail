@@ -15,30 +15,45 @@ export function AttachmentsBar({ messageId }: { messageId: number }) {
 
   return (
     <div className="attachments-bar">
-      {attachments.map((a) => (
-        <div key={a.id} className="attachment-tile">
+      {attachments.length > 1 && (
+        <div className="attachments-bar__header">
+          <span className="attachments-bar__count">{attachments.length} attachments</span>
           <button
             type="button"
-            className="attachment-tile__open"
-            aria-label={`Open ${a.filename}`}
-            onClick={() => commands.openAttachment(a.id)}
+            className="attachments-bar__save-all"
+            onClick={() => commands.saveAllAttachments(messageId)}
           >
-            <Paperclip size={18} className="attachment-tile__icon" />
-            <span className="attachment-tile__meta">
-              <span className="attachment-tile__name">{a.filename}</span>
-              <span className="attachment-tile__size">{formatSize(a.size)}</span>
-            </span>
-          </button>
-          <button
-            type="button"
-            className="attachment-tile__save"
-            aria-label={`Save ${a.filename}`}
-            onClick={() => commands.saveAttachment(a.id)}
-          >
-            <Download size={16} />
+            <Download size={14} />
+            Save all
           </button>
         </div>
-      ))}
+      )}
+      <div className="attachments-bar__tiles">
+        {attachments.map((a) => (
+          <div key={a.id} className="attachment-tile">
+            <button
+              type="button"
+              className="attachment-tile__open"
+              aria-label={`Open ${a.filename}`}
+              onClick={() => commands.openAttachment(a.id)}
+            >
+              <Paperclip size={18} className="attachment-tile__icon" />
+              <span className="attachment-tile__meta">
+                <span className="attachment-tile__name">{a.filename}</span>
+                <span className="attachment-tile__size">{formatSize(a.size)}</span>
+              </span>
+            </button>
+            <button
+              type="button"
+              className="attachment-tile__save"
+              aria-label={`Save ${a.filename}`}
+              onClick={() => commands.saveAttachment(a.id)}
+            >
+              <Download size={16} />
+            </button>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

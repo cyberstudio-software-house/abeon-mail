@@ -34,6 +34,7 @@ export const commands = {
 	messageRecipients: (messageId: number) => typedError<MessageRecipients, string>(__TAURI_INVOKE("message_recipients", { messageId })),
 	listAttachments: (messageId: number) => typedError<Attachment[], string>(__TAURI_INVOKE("list_attachments", { messageId })),
 	saveAttachment: (attachmentId: number) => typedError<boolean, string>(__TAURI_INVOKE("save_attachment", { attachmentId })),
+	saveAllAttachments: (messageId: number) => typedError<number, string>(__TAURI_INVOKE("save_all_attachments", { messageId })),
 	openAttachment: (attachmentId: number) => typedError<null, string>(__TAURI_INVOKE("open_attachment", { attachmentId })),
 	meetingInvite: (messageId: number) => typedError<{
 	title: string,

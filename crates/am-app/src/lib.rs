@@ -31,6 +31,7 @@ pub fn build_specta_builder() -> Builder<tauri::Wry> {
             commands::message_recipients,
             commands::list_attachments,
             commands::save_attachment,
+            commands::save_all_attachments,
             commands::open_attachment,
             commands::meeting_invite,
             commands::respond_to_invite,

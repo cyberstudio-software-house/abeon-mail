@@ -17,6 +17,7 @@ use am_core::{
     thread::ThreadSummary,
 };
 use am_storage::{accounts_repo, drafts_repo, folders_repo, labels_repo, messages_repo, notifications_repo, queue_repo, settings_repo, signatures_repo, smart_repo};
+use tauri::Manager;
 use tauri_plugin_dialog::DialogExt;
 
 use crate::state::AppState;
@@ -342,6 +343,72 @@ pub async fn save_attachment(
         .to_path_buf();
     std::fs::write(&path, &content).map_err(|e| e.to_string())?;
     Ok(true)
+}
+
+fn unique_path(dir: &std::path::Path, filename: &str) -> std::path::PathBuf {
+    let safe = filename.replace(['/', '\\'], "_");
+    let first = dir.join(&safe);
+    if !first.exists() {
+        return first;
+    }
+    let path = std::path::Path::new(&safe);
+    let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or(&safe);
+    let ext = path.extension().and_then(|s| s.to_str());
+    let mut n = 1u32;
+    loop {
+        let name = match ext {
+            Some(e) => format!("{stem} ({n}).{e}"),
+            None => format!("{stem} ({n})"),
+        };
+        let candidate = dir.join(name);
+        if !candidate.exists() {
+            return candidate;
+        }
+        n += 1;
+    }
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn save_all_attachments(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+    message_id: i64,
+) -> Result<i64, String> {
+    let items =
+        am_storage::attachments_repo::all_contents(&state.db, message_id).map_err(|e| e.to_string())?;
+    if items.is_empty() {
+        return Ok(0);
+    }
+
+    let start_dir = app.path().download_dir().ok();
+    let dialog = app.clone();
+    let chosen = tokio::task::spawn_blocking(move || {
+        let mut builder = dialog.dialog().file();
+        if let Some(dir) = start_dir {
+            builder = builder.set_directory(dir);
+        }
+        builder.blocking_pick_folder()
+    })
+    .await
+    .map_err(|_| "Folder dialog task failed".to_string())?;
+
+    let folder = match chosen {
+        None => return Ok(0),
+        Some(v) => v,
+    };
+    let dir = folder
+        .as_path()
+        .ok_or_else(|| "Invalid folder path".to_string())?
+        .to_path_buf();
+
+    let mut saved = 0i64;
+    for (filename, content) in items {
+        let path = unique_path(&dir, &filename);
+        std::fs::write(&path, &content).map_err(|e| e.to_string())?;
+        saved += 1;
+    }
+    Ok(saved)
 }
 
 #[tauri::command]
@@ -1330,6 +1397,35 @@ mod tests {
     use am_core::message::{MessageBody, NewMessageHeader};
     use am_storage::{accounts_repo, folders_repo, messages_repo, Database};
     use am_auth::credentials::store_password;
+
+    #[test]
+    fn unique_path_disambiguates_collisions() {
+        use std::fs;
+        let base = std::env::temp_dir().join(format!("am-uniq-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&base);
+        fs::create_dir_all(&base).unwrap();
+
+        let p1 = super::unique_path(&base, "report.pdf");
+        assert_eq!(p1, base.join("report.pdf"));
+        fs::write(&p1, b"x").unwrap();
+
+        let p2 = super::unique_path(&base, "report.pdf");
+        assert_eq!(p2, base.join("report (1).pdf"));
+        fs::write(&p2, b"x").unwrap();
+
+        let p3 = super::unique_path(&base, "report.pdf");
+        assert_eq!(p3, base.join("report (2).pdf"));
+
+        let sanitized = super::unique_path(&base, "sub/dir.txt");
+        assert_eq!(sanitized, base.join("sub_dir.txt"));
+
+        let no_ext = super::unique_path(&base, "LICENSE");
+        fs::write(&no_ext, b"x").unwrap();
+        let no_ext_2 = super::unique_path(&base, "LICENSE");
+        assert_eq!(no_ext_2, base.join("LICENSE (1)"));
+
+        let _ = fs::remove_dir_all(&base);
+    }
 
     fn install_in_mem_keyring() {
         use keyring::credential::{

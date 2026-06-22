@@ -581,11 +581,49 @@
 .attachments-bar {
   flex: 0 0 auto;
   display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px 16px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.attachments-bar__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.attachments-bar__count {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.attachments-bar__save-all {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.attachments-bar__save-all:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.attachments-bar__tiles {
+  display: flex;
   flex-wrap: wrap;
   gap: 10px;
-  margin-top: 14px;
-  padding-top: 14px;
-  border-top: 1px solid var(--border-subtle);
 }
 
 .attachment-tile {
