@@ -30,6 +30,7 @@ exports.SendHorizontal = Icon;
 exports.Paperclip = Icon;
 exports.Tag = Icon;
 exports.Plus = Icon;
+exports.RefreshCw = Icon;
 exports.Check = Icon;
 exports.Calendar = Icon;
 exports.Video = Icon;

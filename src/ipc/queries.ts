@@ -256,6 +256,18 @@ export function useEnqueueSend() {
   });
 }
 
+export function useSyncNow() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => commands.syncNow().then(unwrap),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["folders"] });
+      queryClient.invalidateQueries({ queryKey: ["threads"] });
+      queryClient.invalidateQueries({ queryKey: ["sendErrors"] });
+    },
+  });
+}
+
 export function useSendErrors() {
   return useQuery<SendError[]>({
     queryKey: ["sendErrors"],

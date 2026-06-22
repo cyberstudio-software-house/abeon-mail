@@ -16,6 +16,7 @@ import {
   Trash2,
   Folder as FolderIconLucide,
   Plus,
+  RefreshCw,
 } from "lucide-react";
 import {
   useAccounts,
@@ -30,6 +31,7 @@ import {
   useRenameFolder,
   useDeleteFolder,
   useCreateSubfolder,
+  useSyncNow,
 } from "../../ipc/queries";
 import { useUiStore } from "../../app/store";
 import { Avatar } from "../../shared/appearance/Avatar";
@@ -205,6 +207,9 @@ export function MailboxRail() {
   const renameFolder = useRenameFolder();
   const deleteFolder = useDeleteFolder();
   const createSubfolder = useCreateSubfolder();
+  const syncNow = useSyncNow();
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [dialog, setDialog] = useState<
     { kind: "rename" | "create" | "delete"; folder: Folder } | null
   >(null);
@@ -266,6 +271,19 @@ export function MailboxRail() {
     setSelectedFolderId(folderId);
   }
 
+  function handleRefresh() {
+    syncNow.mutate();
+    setIsRefreshing(true);
+    if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
+    refreshTimerRef.current = setTimeout(() => setIsRefreshing(false), 1200);
+  }
+
+  useEffect(() => {
+    return () => {
+      if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
+    };
+  }, []);
+
   function buildFolderMenuItems(folder: Folder): ContextMenuItem[] {
     const type = folder.folder_type;
     const items: ContextMenuItem[] = [];
@@ -312,14 +330,26 @@ export function MailboxRail() {
           <img className="rail__logo" src="/brand/logo-icon.svg" alt="" width={32} height={32} />
           <Wordmark className="rail__wordmark" />
         </div>
-        {headerAccount && (
-          <Avatar
-            seed={headerAccount.email}
-            label={headerAccount.display_name || headerAccount.email}
-            size={30}
-            variant="account"
-          />
-        )}
+        <div className="rail__header-actions">
+          <button
+            type="button"
+            className={`rail__refresh${isRefreshing ? " rail__refresh--spinning" : ""}`}
+            onClick={handleRefresh}
+            disabled={isRefreshing}
+            aria-label="Sprawdź nowe wiadomości"
+            title="Sprawdź nowe wiadomości"
+          >
+            <RefreshCw size={16} />
+          </button>
+          {headerAccount && (
+            <Avatar
+              seed={headerAccount.email}
+              label={headerAccount.display_name || headerAccount.email}
+              size={30}
+              variant="account"
+            />
+          )}
+        </div>
       </header>
 
       <div className="rail__search">

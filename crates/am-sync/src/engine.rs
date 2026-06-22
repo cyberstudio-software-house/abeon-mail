@@ -4,6 +4,7 @@ use std::time::Duration;
 
 use am_protocols::imap::{IdleOutcome, ImapSession};
 use am_storage::{accounts_repo, folders_repo, Database};
+use tokio::sync::Notify;
 use tokio_util::sync::CancellationToken;
 
 use crate::auth::CredentialSource;
@@ -35,6 +36,7 @@ pub struct SyncEngine {
     sink: Arc<dyn SyncEventSink>,
     creds: Arc<dyn CredentialSource>,
     pub workers: Mutex<HashMap<i64, CancellationToken>>,
+    wakeups: Mutex<HashMap<i64, Arc<Notify>>>,
 }
 
 impl SyncEngine {
@@ -48,6 +50,7 @@ impl SyncEngine {
             sink,
             creds,
             workers: Mutex::new(HashMap::new()),
+            wakeups: Mutex::new(HashMap::new()),
         });
         if let Ok(accounts) = accounts_repo::list_accounts(&engine.db) {
             for account in accounts {
@@ -60,6 +63,7 @@ impl SyncEngine {
 
     pub fn spawn_account(self: &Arc<Self>, account_id: i64) {
         let token = CancellationToken::new();
+        let notify = Arc::new(Notify::new());
         {
             let mut guard = self.workers.lock().unwrap();
             if guard.contains_key(&account_id) {
@@ -67,6 +71,7 @@ impl SyncEngine {
             }
             guard.insert(account_id, token.clone());
         }
+        self.wakeups.lock().unwrap().insert(account_id, Arc::clone(&notify));
         self.spawn_prefetch(account_id, token.clone());
         let db = Arc::clone(&self.db);
         let sink = Arc::clone(&self.sink);
@@ -128,7 +133,7 @@ impl SyncEngine {
                                 return;
                             }
                         }
-                        let idled = idle_inbox(&db, account_id, &inbox.remote_path, creds.as_ref(), token.clone()).await;
+                        let idled = idle_inbox(&db, account_id, &inbox.remote_path, creds.as_ref(), token.clone(), Arc::clone(&notify)).await;
                         if matches!(idled, Ok(true)) {
                             continue;
                         }
@@ -136,6 +141,7 @@ impl SyncEngine {
                 }
                 tokio::select! {
                     _ = tokio::time::sleep(POLL_INTERVAL) => {},
+                    _ = notify.notified() => {},
                     _ = token.cancelled() => break,
                 }
             }
@@ -180,11 +186,19 @@ impl SyncEngine {
         });
     }
 
+    pub fn sync_now(&self) {
+        let guard = self.wakeups.lock().unwrap();
+        for notify in guard.values() {
+            notify.notify_one();
+        }
+    }
+
     pub fn stop_account(&self, account_id: i64) {
         let mut guard = self.workers.lock().unwrap();
         if let Some(token) = guard.remove(&account_id) {
             token.cancel();
         }
+        self.wakeups.lock().unwrap().remove(&account_id);
     }
 
     pub fn shutdown(&self) {
@@ -192,6 +206,7 @@ impl SyncEngine {
         for (_, token) in guard.drain() {
             token.cancel();
         }
+        self.wakeups.lock().unwrap().clear();
     }
 }
 
@@ -201,6 +216,7 @@ async fn idle_inbox(
     remote_path: &str,
     creds: &dyn CredentialSource,
     token: CancellationToken,
+    notify: Arc<Notify>,
 ) -> Result<bool, ()> {
     let account = accounts_repo::get_account(db, account_id).map_err(|_| ())?;
     let endpoints = load_endpoints_pub(db, account_id).map_err(|_| ())?;
@@ -223,6 +239,9 @@ async fn idle_inbox(
                 }
                 Err(_) => Err(()),
             }
+        }
+        _ = notify.notified() => {
+            Ok(true)
         }
         _ = token.cancelled() => {
             Err(())

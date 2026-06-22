@@ -67,6 +67,7 @@ export const commands = {
 	listThreadMessages: (threadId: number) => typedError<MessageHeader[], string>(__TAURI_INVOKE("list_thread_messages", { threadId })),
 	threadForMessage: (messageId: number) => typedError<number, string>(__TAURI_INVOKE("thread_for_message", { messageId })),
 	enqueueSend: (draftId: number) => typedError<null, string>(__TAURI_INVOKE("enqueue_send", { draftId })),
+	syncNow: () => typedError<null, string>(__TAURI_INVOKE("sync_now")),
 	listSendErrors: () => typedError<SendError[], string>(__TAURI_INVOKE("list_send_errors")),
 	retrySend: (id: number) => typedError<null, string>(__TAURI_INVOKE("retry_send", { id })),
 	dismissSendError: (id: number) => typedError<null, string>(__TAURI_INVOKE("dismiss_send_error", { id })),

@@ -26,6 +26,7 @@ vi.mock("../ipc/queries", () => ({
   useRenameFolder: () => ({ mutate: vi.fn() }),
   useDeleteFolder: () => ({ mutate: vi.fn() }),
   useCreateSubfolder: () => ({ mutate: vi.fn() }),
+  useSyncNow: () => ({ mutate: vi.fn() }),
   useThreads: () => ({ data: [], isLoading: false, isError: false, error: null }),
   useSmartFolder: () => ({ data: undefined, isLoading: false, isError: false, error: null }),
   useSearch: () => ({ data: [], isLoading: false }),

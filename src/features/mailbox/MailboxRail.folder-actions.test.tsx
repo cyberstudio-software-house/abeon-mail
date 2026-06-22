@@ -33,6 +33,7 @@ vi.mock("../../ipc/queries", () => ({
   useRenameFolder: () => ({ mutate: renameFolder }),
   useDeleteFolder: () => ({ mutate: deleteFolder }),
   useCreateSubfolder: () => ({ mutate: createSubfolder }),
+  useSyncNow: () => ({ mutate: vi.fn() }),
 }));
 
 vi.mock("../../app/store", () => ({ useUiStore: vi.fn() }));

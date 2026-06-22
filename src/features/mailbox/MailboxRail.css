@@ -35,6 +35,42 @@
   flex-shrink: 0;
   color: var(--text-on-rail);
 }
+.rail__header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.rail__refresh {
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--rail-border);
+  border-radius: 9px;
+  background: transparent;
+  color: var(--rail-item);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.rail__refresh:hover:not(:disabled) {
+  color: var(--text-on-rail);
+}
+.rail__refresh:disabled {
+  cursor: default;
+}
+.rail__refresh--spinning svg {
+  animation: rail-refresh-spin 0.8s linear infinite;
+}
+@keyframes rail-refresh-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
 .rail__search {
   margin: 4px 14px 12px;
   height: 38px;

@@ -775,6 +775,15 @@ pub fn enqueue_send(state: tauri::State<'_, AppState>, draft_id: i64) -> Result<
 
 #[tauri::command]
 #[specta::specta]
+pub fn sync_now(state: tauri::State<'_, AppState>) -> Result<(), String> {
+    if let Some(engine) = state.engine.lock().unwrap().as_ref() {
+        engine.sync_now();
+    }
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
 pub fn list_send_errors(state: tauri::State<'_, AppState>) -> Result<Vec<SendError>, String> {
     let accounts = accounts_repo::list_accounts(&state.db).map_err(|e| e.to_string())?;
     let mut out = Vec::new();
