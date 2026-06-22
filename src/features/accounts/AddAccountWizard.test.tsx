@@ -23,6 +23,7 @@ const fixedAccount = {
 let mockResolveMutateAsync: ReturnType<typeof vi.fn>;
 let mockAddMutateAsync: ReturnType<typeof vi.fn>;
 let mockBeginGoogleOauthMutateAsync: ReturnType<typeof vi.fn>;
+let mockBeginMicrosoftOauthMutateAsync: ReturnType<typeof vi.fn>;
 
 vi.mock("../../ipc/queries", () => ({
   useResolveEndpoints: () => ({
@@ -43,6 +44,12 @@ vi.mock("../../ipc/queries", () => ({
     error: null,
     data: undefined,
   }),
+  useBeginMicrosoftOauth: () => ({
+    mutateAsync: mockBeginMicrosoftOauthMutateAsync,
+    isPending: false,
+    error: null,
+    data: undefined,
+  }),
 }));
 
 import { AddAccountWizard } from "./AddAccountWizard";
@@ -52,6 +59,7 @@ describe("AddAccountWizard", () => {
     mockResolveMutateAsync = vi.fn().mockResolvedValue(fixedEndpoints);
     mockAddMutateAsync = vi.fn().mockResolvedValue(fixedAccount);
     mockBeginGoogleOauthMutateAsync = vi.fn().mockResolvedValue(fixedAccount);
+    mockBeginMicrosoftOauthMutateAsync = vi.fn().mockResolvedValue(fixedAccount);
   });
 
   afterEach(() => {
@@ -124,6 +132,27 @@ describe("AddAccountWizard", () => {
 
     await waitFor(() => {
       expect(mockBeginGoogleOauthMutateAsync).toHaveBeenCalledTimes(1);
+    });
+
+    await waitFor(() => {
+      expect(onAdded).toHaveBeenCalledWith(7);
+    });
+  });
+
+  it("Sign in with Microsoft button invokes beginMicrosoftOauth", async () => {
+    const user = userEvent.setup();
+    const onAdded = vi.fn();
+    const onClose = vi.fn();
+
+    render(<AddAccountWizard onClose={onClose} onAdded={onAdded} />);
+
+    const microsoftBtn = screen.getByRole("button", { name: /sign in with microsoft/i });
+    expect(microsoftBtn).toBeTruthy();
+
+    await user.click(microsoftBtn);
+
+    await waitFor(() => {
+      expect(mockBeginMicrosoftOauthMutateAsync).toHaveBeenCalledTimes(1);
     });
 
     await waitFor(() => {

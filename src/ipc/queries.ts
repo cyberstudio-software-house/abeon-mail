@@ -263,6 +263,17 @@ export function useBeginGoogleOauth() {
   });
 }
 
+export function useBeginMicrosoftOauth() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => commands.beginMicrosoftOauth().then(unwrap),
+    onSuccess: (account: Account) => {
+      queryClient.invalidateQueries({ queryKey: ["accounts"] });
+      queryClient.invalidateQueries({ queryKey: ["folders", account.id] });
+    },
+  });
+}
+
 export function useStartReply() {
   return useMutation({
     mutationFn: ({ messageId, mode }: { messageId: number; mode: string }) =>

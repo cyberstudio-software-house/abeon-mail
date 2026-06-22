@@ -166,11 +166,12 @@
   padding: 24px 44px;
   display: flex;
   flex-direction: column;
-  align-items: stretch;
+  align-items: center;
 }
 
 .reader__inner {
   width: 100%;
+  max-width: 840px;
   flex: 0 0 auto;
   display: flex;
   flex-direction: column;
