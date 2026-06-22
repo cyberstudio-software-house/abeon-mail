@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Reply, ReplyAll, Forward, Star, Archive, Clock, Trash2, MoreHorizontal, SendHorizontal, Tag, Mail, MailOpen } from "lucide-react";
+import { Reply, ReplyAll, Forward, Star, Archive, Clock, Trash2, MoreHorizontal, Tag, Mail, MailOpen } from "lucide-react";
 import { useThreadMessages, useStartReply, useSetFlag, useLabelsForMessages, useSetSeen, useArchive, useDelete, useAccounts, useMessageRecipients } from "../../ipc/queries";
 import type { MessageHeader } from "../../ipc/bindings";
 import { useUiStore } from "../../app/store";
@@ -194,7 +194,6 @@ export function ConversationView({ threadId }: { threadId: number }) {
   if (!messages || messages.length === 0) return <p className="empty-state">No messages</p>;
 
   const last = messages[messages.length - 1];
-  const senderName = last.from_name || last.from_address;
   const anyUnread = messages.some((m) => !m.seen);
   const effectiveActiveId = activeId ?? lastId;
   const orderedMessages = threadOrder === "descending" ? [...messages].reverse() : messages;
@@ -365,26 +364,6 @@ export function ConversationView({ threadId }: { threadId: number }) {
             })}
           </div>
         </div>
-      </div>
-
-      <div className="reader__reply">
-        <button
-          type="button"
-          className="reader__reply-trigger"
-          aria-label={`Reply to ${senderName}…`}
-          onClick={() => handleReply(last.id, "reply")}
-        >
-          Reply to {senderName}…
-        </button>
-        <button
-          type="button"
-          className="reader__send"
-          aria-label="Send"
-          onClick={() => handleReply(last.id, "reply")}
-        >
-          <SendHorizontal size={16} />
-          Send
-        </button>
       </div>
     </div>
   );

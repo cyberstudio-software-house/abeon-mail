@@ -354,20 +354,6 @@ describe("ConversationView", () => {
     expect(useUiStore.getState().snoozePickerTargetIds).toEqual([1, 2]);
   });
 
-  it("bottom reply trigger starts a reply", async () => {
-    const { commands } = await import("../../ipc/bindings");
-    render(<ConversationView threadId={1} />, { wrapper: Wrapper });
-
-    await screen.findAllByText("B");
-
-    const trigger = await screen.findByRole("button", { name: /Reply to/ });
-    fireEvent.click(trigger);
-
-    await waitFor(() => {
-      expect(commands.startReply).toHaveBeenCalledWith(2, "reply");
-    });
-  });
-
   it("shows label chips and opens picker when Label button is clicked", async () => {
     useUiStore.setState({ labelPickerOpen: false, labelPickerTargetIds: [] });
     render(<ConversationView threadId={1} />, { wrapper: Wrapper });

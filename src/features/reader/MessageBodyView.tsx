@@ -41,6 +41,7 @@ export function MessageBodyView({ messageId }: { messageId: number }) {
           html={rendered.html}
           sandbox={sandboxForLevel(level)}
           interceptLinks={interceptLinksForLevel(level)}
+          autoResize
         />
       </div>
     );
