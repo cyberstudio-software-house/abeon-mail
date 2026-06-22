@@ -43,6 +43,7 @@ pub struct KeychainCredentialSource {
     token_manager: am_auth::oauth::manager::OAuthTokenManager,
     client_id: Option<String>,
     client_secret: Option<String>,
+    microsoft_client_id: Option<String>,
 }
 
 impl KeychainCredentialSource {
@@ -52,11 +53,25 @@ impl KeychainCredentialSource {
             am_auth::oauth::manager::OAuthTokenManager::new(http as Arc<dyn am_auth::oauth::TokenHttp>);
         let client_id = am_auth::oauth::google::google_client_id().ok();
         let client_secret = am_auth::oauth::google::google_client_secret().ok();
-        Arc::new(Self { token_manager, client_id, client_secret })
+        let microsoft_client_id = am_auth::oauth::microsoft::microsoft_client_id().ok();
+        Arc::new(Self { token_manager, client_id, client_secret, microsoft_client_id })
     }
 
     pub fn token_manager(&self) -> &am_auth::oauth::manager::OAuthTokenManager {
         &self.token_manager
+    }
+
+    #[cfg(test)]
+    fn for_test(
+        token_manager: am_auth::oauth::manager::OAuthTokenManager,
+        microsoft_client_id: Option<String>,
+    ) -> Self {
+        Self {
+            token_manager,
+            client_id: None,
+            client_secret: None,
+            microsoft_client_id,
+        }
     }
 }
 
@@ -67,7 +82,8 @@ impl Default for KeychainCredentialSource {
             am_auth::oauth::manager::OAuthTokenManager::new(http as Arc<dyn am_auth::oauth::TokenHttp>);
         let client_id = am_auth::oauth::google::google_client_id().ok();
         let client_secret = am_auth::oauth::google::google_client_secret().ok();
-        Self { token_manager, client_id, client_secret }
+        let microsoft_client_id = am_auth::oauth::microsoft::microsoft_client_id().ok();
+        Self { token_manager, client_id, client_secret, microsoft_client_id }
     }
 }
 
@@ -98,6 +114,20 @@ impl CredentialSource for KeychainCredentialSource {
                         Some(client_secret),
                         now,
                     )
+                    .await
+                    .map_err(SyncError::from)?;
+                Ok(AccountAuth::XOauth2 {
+                    user: account.email.clone(),
+                    access_token: token,
+                })
+            }
+            ProviderType::MicrosoftOauth => {
+                let client_id = self.microsoft_client_id.as_deref().ok_or(SyncError::Auth)?;
+                let provider = am_auth::oauth::OAuthProvider::microsoft();
+                let now = crate::service::now_secs();
+                let token = self
+                    .token_manager
+                    .valid_access_token(&account.email, provider.token_uri, client_id, None, now)
                     .await
                     .map_err(SyncError::from)?;
                 Ok(AccountAuth::XOauth2 {
@@ -151,6 +181,66 @@ mod tests {
         let account = fake_account(ProviderType::ImapPassword);
         let auth = creds.auth_for(&account).await.unwrap();
         assert!(matches!(auth, AccountAuth::Password(_)));
+    }
+
+    struct UnusedHttp;
+
+    #[async_trait::async_trait]
+    impl am_auth::oauth::client::TokenHttp for UnusedHttp {
+        async fn post_form(
+            &self,
+            _u: &str,
+            _f: &[(&str, &str)],
+        ) -> Result<(u16, String), am_auth::oauth::OAuthError> {
+            Err(am_auth::oauth::OAuthError::Network("no network in test".into()))
+        }
+        async fn get_bearer(
+            &self,
+            _u: &str,
+            _t: &str,
+        ) -> Result<(u16, String), am_auth::oauth::OAuthError> {
+            Err(am_auth::oauth::OAuthError::Network("no network in test".into()))
+        }
+    }
+
+    fn seeded_manager(email: &str, access_token: &str) -> am_auth::oauth::manager::OAuthTokenManager {
+        let http = Arc::new(UnusedHttp) as Arc<dyn am_auth::oauth::client::TokenHttp>;
+        let mgr = am_auth::oauth::manager::OAuthTokenManager::new(http);
+        let now = crate::service::now_secs();
+        mgr.seed(
+            email,
+            &am_auth::oauth::client::OAuthTokens {
+                access_token: access_token.into(),
+                refresh_token: None,
+                id_token: None,
+                expires_at: now + 3600,
+            },
+        );
+        mgr
+    }
+
+    #[tokio::test]
+    async fn microsoft_account_returns_cached_xoauth2_token() {
+        let mgr = seeded_manager("test@example.com", "MS_ACCESS");
+        let src = KeychainCredentialSource::for_test(mgr, Some("ms-client-id".into()));
+        let account = fake_account(ProviderType::MicrosoftOauth);
+        let auth = src.auth_for(&account).await.unwrap();
+        match auth {
+            AccountAuth::XOauth2 { user, access_token } => {
+                assert_eq!(user, "test@example.com");
+                assert_eq!(access_token, "MS_ACCESS");
+            }
+            _ => panic!("expected XOauth2 for a Microsoft account"),
+        }
+    }
+
+    #[tokio::test]
+    async fn microsoft_account_without_client_id_errors() {
+        let mgr = seeded_manager("test@example.com", "MS_ACCESS");
+        let src = KeychainCredentialSource::for_test(mgr, None);
+        let account = fake_account(ProviderType::MicrosoftOauth);
+        let result = src.auth_for(&account).await;
+        assert!(matches!(result, Err(SyncError::Auth)));
     }
 
     #[tokio::test]

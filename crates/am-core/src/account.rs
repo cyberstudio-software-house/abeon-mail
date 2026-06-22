@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 pub enum ProviderType {
     ImapPassword,
     GoogleOauth,
+    MicrosoftOauth,
 }
 
 #[derive(Serialize, Deserialize, specta::Type, Clone, Debug, PartialEq)]
@@ -31,6 +32,7 @@ impl ProviderType {
         match self {
             ProviderType::ImapPassword => "imap_password",
             ProviderType::GoogleOauth => "google_oauth",
+            ProviderType::MicrosoftOauth => "microsoft_oauth",
         }
     }
 
@@ -38,6 +40,7 @@ impl ProviderType {
         match value {
             "imap_password" => Some(ProviderType::ImapPassword),
             "google_oauth" => Some(ProviderType::GoogleOauth),
+            "microsoft_oauth" => Some(ProviderType::MicrosoftOauth),
             _ => None,
         }
     }
@@ -82,5 +85,16 @@ mod tests {
             Some(ProviderType::GoogleOauth)
         );
         assert_eq!(ProviderType::from_db_str("bogus"), None);
+    }
+
+    #[test]
+    fn provider_type_microsoft_oauth_round_trips() {
+        assert_eq!(ProviderType::MicrosoftOauth.as_db_str(), "microsoft_oauth");
+        assert_eq!(
+            ProviderType::from_db_str("microsoft_oauth"),
+            Some(ProviderType::MicrosoftOauth)
+        );
+        let json = serde_json::to_string(&ProviderType::MicrosoftOauth).unwrap();
+        assert_eq!(json, "\"microsoft_oauth\"");
     }
 }
