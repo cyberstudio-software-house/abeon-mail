@@ -22,18 +22,18 @@ export function SafeHtmlFrame({
     const frame = frameRef.current;
     if (!frame) return;
 
-    function handleClick(event: MouseEvent) {
+    const handleClick = (event: MouseEvent) => {
       const anchor = (event.target as Element | null)?.closest?.("a[href]");
       if (!anchor) return;
       const href = anchor.getAttribute("href") ?? "";
       if (!isExternalLink(href)) return;
       event.preventDefault();
       void commands.openExternalUrl(href);
-    }
+    };
 
-    function attach() {
+    const attach = () => {
       frame.contentDocument?.addEventListener("click", handleClick);
-    }
+    };
 
     frame.addEventListener("load", attach);
     attach();
