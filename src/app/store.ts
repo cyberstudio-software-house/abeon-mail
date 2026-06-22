@@ -307,8 +307,8 @@ export const useUiStore = create<UiState>((set) => ({
   selectRow: (id) =>
     set((s) =>
       s.selectMode === "thread"
-        ? { selectedThreadId: id, selectedRowIds: [id], selectionAnchorId: id }
-        : { selectedMessageId: id, selectedRowIds: [id], selectionAnchorId: id }
+        ? { selectedThreadId: id, selectedMessageId: null, selectedRowIds: [id], selectionAnchorId: id }
+        : { selectedMessageId: id, selectedThreadId: null, selectedRowIds: [id], selectionAnchorId: id }
     ),
   toggleRow: (id) =>
     set((s) => {
@@ -316,8 +316,8 @@ export const useUiStore = create<UiState>((set) => ({
       const next = has ? s.selectedRowIds.filter((x) => x !== id) : [...s.selectedRowIds, id];
       if (next.length === 1) {
         return s.selectMode === "thread"
-          ? { selectedRowIds: next, selectionAnchorId: next[0], selectedThreadId: next[0] }
-          : { selectedRowIds: next, selectionAnchorId: next[0], selectedMessageId: next[0] };
+          ? { selectedRowIds: next, selectionAnchorId: next[0], selectedThreadId: next[0], selectedMessageId: null }
+          : { selectedRowIds: next, selectionAnchorId: next[0], selectedMessageId: next[0], selectedThreadId: null };
       }
       if (next.length === 0) {
         return { selectedRowIds: next, selectionAnchorId: null, selectedThreadId: null, selectedMessageId: null };
@@ -337,8 +337,8 @@ export const useUiStore = create<UiState>((set) => ({
       const range = ids.slice(lo, hi + 1);
       if (range.length === 1) {
         return s.selectMode === "thread"
-          ? { selectedRowIds: range, selectedThreadId: range[0] }
-          : { selectedRowIds: range, selectedMessageId: range[0] };
+          ? { selectedRowIds: range, selectedThreadId: range[0], selectedMessageId: null }
+          : { selectedRowIds: range, selectedMessageId: range[0], selectedThreadId: null };
       }
       return { selectedRowIds: range };
     }),
@@ -349,8 +349,8 @@ export const useUiStore = create<UiState>((set) => ({
         return { selectedRowIds: [], selectionAnchorId: null, selectedThreadId: null, selectedMessageId: null };
       }
       return s.selectMode === "thread"
-        ? { selectedThreadId: next, selectedRowIds: [next], selectionAnchorId: next }
-        : { selectedMessageId: next, selectedRowIds: [next], selectionAnchorId: next };
+        ? { selectedThreadId: next, selectedMessageId: null, selectedRowIds: [next], selectionAnchorId: next }
+        : { selectedMessageId: next, selectedThreadId: null, selectedRowIds: [next], selectionAnchorId: next };
     }),
   openLabelPicker: (ids) => set({ labelPickerOpen: true, labelPickerTargetIds: ids }),
   closeLabelPicker: () => set({ labelPickerOpen: false, labelPickerTargetIds: [] }),

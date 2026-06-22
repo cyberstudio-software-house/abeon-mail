@@ -65,6 +65,40 @@ describe("selection model", () => {
   });
 });
 
+describe("reader mutual exclusion (search bug)", () => {
+  it("selectRow in message mode clears a stale selectedThreadId", () => {
+    useUiStore.setState({ selectMode: "message", selectedThreadId: 99 });
+    useUiStore.getState().selectRow(3);
+    const s = useUiStore.getState();
+    expect(s.selectedMessageId).toBe(3);
+    expect(s.selectedThreadId).toBeNull();
+  });
+
+  it("selectRow in thread mode clears a stale selectedMessageId", () => {
+    useUiStore.setState({ selectMode: "thread", selectedMessageId: 99 });
+    useUiStore.getState().selectRow(3);
+    const s = useUiStore.getState();
+    expect(s.selectedThreadId).toBe(3);
+    expect(s.selectedMessageId).toBeNull();
+  });
+
+  it("toggleRow down to one in message mode clears a stale selectedThreadId", () => {
+    useUiStore.setState({ selectMode: "message", selectedThreadId: 99, selectedRowIds: [2, 4] });
+    useUiStore.getState().toggleRow(2);
+    const s = useUiStore.getState();
+    expect(s.selectedMessageId).toBe(4);
+    expect(s.selectedThreadId).toBeNull();
+  });
+
+  it("advanceSelectionAfter in message mode clears a stale selectedThreadId", () => {
+    useUiStore.setState({ selectMode: "message", selectedThreadId: 99, selectedRowIds: [3] });
+    useUiStore.getState().advanceSelectionAfter([3]);
+    const s = useUiStore.getState();
+    expect(s.selectedMessageId).toBe(4);
+    expect(s.selectedThreadId).toBeNull();
+  });
+});
+
 describe("folder picker state", () => {
   it("openFolderPicker sets target and account; close resets", () => {
     useUiStore.getState().openFolderPicker([3, 4], 9);
