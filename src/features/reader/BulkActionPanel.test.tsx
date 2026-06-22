@@ -22,7 +22,10 @@ beforeEach(() => {
   mutateDelete.mockClear();
   useUiStore.setState({
     selectMode: "message",
+    visibleMessageIds: [10, 20, 30],
     selectedRowIds: [10, 20],
+    selectedThreadId: null,
+    selectedMessageId: null,
     rowAccounts: { 10: 1, 20: 1 },
     undoToast: null,
   });
@@ -40,10 +43,11 @@ describe("BulkActionPanel", () => {
     await waitFor(() => expect(mutateSeen).toHaveBeenCalledWith({ ids: [10, 20], value: true }));
   });
 
-  it("archive resolves ids and calls archive", async () => {
+  it("archive resolves ids, calls archive and advances to the next survivor", async () => {
     render(<BulkActionPanel />);
     fireEvent.click(screen.getByRole("button", { name: /archive/i }));
     await waitFor(() => expect(mutateArchive).toHaveBeenCalledWith({ messageIds: [10, 20] }));
+    await waitFor(() => expect(useUiStore.getState().selectedMessageId).toBe(30));
   });
 
   it("disables move-to-folder when selection spans multiple accounts", () => {

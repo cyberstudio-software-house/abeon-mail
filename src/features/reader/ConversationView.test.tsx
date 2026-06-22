@@ -302,8 +302,15 @@ describe("ConversationView", () => {
     expect(btn.getAttribute("aria-disabled")).not.toBe("true");
   });
 
-  it("clicking Archive calls archive mutate with thread message ids and navigates back", async () => {
-    useUiStore.setState({ selectedThreadId: 1, undoToast: null });
+  it("clicking Archive calls archive mutate with thread message ids and advances to the next", async () => {
+    useUiStore.setState({
+      selectMode: "thread",
+      visibleMessageIds: [1, 2, 3],
+      selectedRowIds: [1],
+      selectedThreadId: 1,
+      selectedMessageId: null,
+      undoToast: null,
+    });
     render(<ConversationView threadId={1} />, { wrapper: Wrapper });
 
     await screen.findAllByText("B");
@@ -312,11 +319,18 @@ describe("ConversationView", () => {
 
     expect(archiveMutate).toHaveBeenCalledWith({ messageIds: [1, 2] });
     expect(useUiStore.getState().undoToast).toEqual({ kind: "archive", messageIds: [1, 2] });
-    expect(useUiStore.getState().selectedThreadId).toBeNull();
+    expect(useUiStore.getState().selectedThreadId).toBe(2);
   });
 
-  it("clicking Delete calls delete mutate with thread message ids and navigates back", async () => {
-    useUiStore.setState({ selectedThreadId: 1, undoToast: null });
+  it("clicking Delete calls delete mutate with thread message ids and advances to the next", async () => {
+    useUiStore.setState({
+      selectMode: "thread",
+      visibleMessageIds: [1, 2, 3],
+      selectedRowIds: [1],
+      selectedThreadId: 1,
+      selectedMessageId: null,
+      undoToast: null,
+    });
     render(<ConversationView threadId={1} />, { wrapper: Wrapper });
 
     await screen.findAllByText("B");
@@ -325,7 +339,7 @@ describe("ConversationView", () => {
 
     expect(deleteMutate).toHaveBeenCalledWith({ messageIds: [1, 2] });
     expect(useUiStore.getState().undoToast).toEqual({ kind: "delete", messageIds: [1, 2] });
-    expect(useUiStore.getState().selectedThreadId).toBeNull();
+    expect(useUiStore.getState().selectedThreadId).toBe(2);
   });
 
   it("Snooze button opens the picker for all messages in the conversation", async () => {

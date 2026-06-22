@@ -29,7 +29,14 @@ describe("SnoozePicker", () => {
     expect(container.firstChild).toBeNull();
   });
 
-  it("clicking a preset snoozes the target ids with a future timestamp", () => {
+  it("clicking a preset snoozes the target ids and advances to the next", () => {
+    useUiStore.setState({
+      selectMode: "message",
+      visibleMessageIds: [4, 5, 6],
+      selectedRowIds: [5],
+      selectedThreadId: null,
+      selectedMessageId: 5,
+    });
     useUiStore.getState().openSnoozePicker([5]);
     renderPicker();
     fireEvent.click(screen.getByText("Later today"));
@@ -38,6 +45,7 @@ describe("SnoozePicker", () => {
     expect(arg.messageIds).toEqual([5]);
     expect(arg.wakeAt).toBeGreaterThan(Math.floor(Date.now() / 1000));
     expect(useUiStore.getState().snoozePickerOpen).toBe(false);
+    expect(useUiStore.getState().selectedMessageId).toBe(6);
   });
 
   it("does nothing when there are no target ids", () => {

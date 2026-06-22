@@ -7,7 +7,7 @@ export function BulkActionPanel() {
   const selectedRowIds = useUiStore((s) => s.selectedRowIds);
   const rowAccounts = useUiStore((s) => s.rowAccounts);
   const clearSelection = useUiStore((s) => s.clearSelection);
-  const setSelectedThreadId = useUiStore((s) => s.setSelectedThreadId);
+  const advanceSelectionAfter = useUiStore((s) => s.advanceSelectionAfter);
   const showUndoToast = useUiStore((s) => s.showUndoToast);
   const openLabelPicker = useUiStore((s) => s.openLabelPicker);
   const openSnoozePicker = useUiStore((s) => s.openSnoozePicker);
@@ -36,12 +36,12 @@ export function BulkActionPanel() {
   }
 
   function move(kind: "archive" | "delete") {
+    const removedRowIds = selectedRowIds;
     void withIds((ids) => {
       if (kind === "archive") archive.mutate({ messageIds: ids });
       else del.mutate({ messageIds: ids });
       showUndoToast(kind, ids);
-      clearSelection();
-      setSelectedThreadId(null);
+      advanceSelectionAfter(removedRowIds);
     });
   }
 

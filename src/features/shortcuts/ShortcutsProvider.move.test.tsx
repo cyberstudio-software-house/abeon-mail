@@ -29,22 +29,35 @@ describe("archive/delete shortcuts", () => {
   beforeEach(() => {
     archiveMutate.mockReset();
     deleteMutate.mockReset();
-    useUiStore.setState({ selectedRowIds: [], selectedThreadId: 42, undoToast: null });
+    useUiStore.setState({
+      selectMode: "thread",
+      visibleMessageIds: [42, 43, 44],
+      selectedRowIds: [],
+      selectedThreadId: 42,
+      selectedMessageId: null,
+      undoToast: null,
+    });
   });
 
-  it("e archives the whole thread in reader and shows undo", () => {
+  it("e archives the whole thread in reader and advances to the next", () => {
     setup();
     window.dispatchEvent(new KeyboardEvent("keydown", { key: "e", bubbles: true }));
     expect(archiveMutate).toHaveBeenCalledWith({ messageIds: [100, 101] });
     expect(useUiStore.getState().undoToast).toEqual({ kind: "archive", messageIds: [100, 101] });
-    expect(useUiStore.getState().selectedThreadId).toBeNull();
+    expect(useUiStore.getState().selectedThreadId).toBe(43);
   });
 
-  it("# deletes the active selection in list", async () => {
-    useUiStore.setState({ selectMode: "message", selectedRowIds: [7, 8], selectedThreadId: null });
+  it("# deletes the active selection in list and advances to the next", async () => {
+    useUiStore.setState({
+      selectMode: "message",
+      visibleMessageIds: [6, 7, 8, 9],
+      selectedRowIds: [7, 8],
+      selectedThreadId: null,
+    });
     setup();
     window.dispatchEvent(new KeyboardEvent("keydown", { key: "#", bubbles: true }));
     await waitFor(() => expect(deleteMutate).toHaveBeenCalledWith({ messageIds: [7, 8] }));
     expect(useUiStore.getState().undoToast).toEqual({ kind: "delete", messageIds: [7, 8] });
+    await waitFor(() => expect(useUiStore.getState().selectedMessageId).toBe(9));
   });
 });

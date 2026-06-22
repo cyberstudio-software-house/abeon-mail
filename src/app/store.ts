@@ -19,6 +19,7 @@ import {
   DEFAULT_SNOOZE_CONFIG,
   type SnoozeConfig,
 } from "../shared/snooze/snooze";
+import { selectNextAfterRemoval } from "../shared/selection/selectNextAfterRemoval";
 
 export type { Density };
 export type { TimeFormat };
@@ -78,6 +79,7 @@ export type UiState = {
   selectRow: (id: number) => void;
   toggleRow: (id: number) => void;
   selectRangeTo: (id: number) => void;
+  advanceSelectionAfter: (removedRowIds: number[]) => void;
   labelPickerOpen: boolean;
   labelPickerTargetIds: number[];
   snoozePickerOpen: boolean;
@@ -339,6 +341,16 @@ export const useUiStore = create<UiState>((set) => ({
           : { selectedRowIds: range, selectedMessageId: range[0] };
       }
       return { selectedRowIds: range };
+    }),
+  advanceSelectionAfter: (removedRowIds) =>
+    set((s) => {
+      const next = selectNextAfterRemoval(s.visibleMessageIds, removedRowIds);
+      if (next == null) {
+        return { selectedRowIds: [], selectionAnchorId: null, selectedThreadId: null, selectedMessageId: null };
+      }
+      return s.selectMode === "thread"
+        ? { selectedThreadId: next, selectedRowIds: [next], selectionAnchorId: next }
+        : { selectedMessageId: next, selectedRowIds: [next], selectionAnchorId: next };
     }),
   openLabelPicker: (ids) => set({ labelPickerOpen: true, labelPickerTargetIds: ids }),
   closeLabelPicker: () => set({ labelPickerOpen: false, labelPickerTargetIds: [] }),

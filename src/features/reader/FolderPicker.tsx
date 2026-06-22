@@ -10,8 +10,6 @@ export function FolderPicker() {
   const accountId = useUiStore((s) => s.folderPickerAccountId);
   const close = useUiStore((s) => s.closeFolderPicker);
   const showUndoToast = useUiStore((s) => s.showUndoToast);
-  const clearSelection = useUiStore((s) => s.clearSelection);
-  const setSelectedThreadId = useUiStore((s) => s.setSelectedThreadId);
   const move = useMoveToFolder();
   const { data: folders } = useFolders(accountId);
 
@@ -23,8 +21,8 @@ export function FolderPicker() {
     if (targetIds.length === 0) return;
     move.mutate({ messageIds: targetIds, targetFolderId: folderId });
     showUndoToast("move", targetIds);
-    clearSelection();
-    setSelectedThreadId(null);
+    const s = useUiStore.getState();
+    s.advanceSelectionAfter(s.selectMode === "message" ? targetIds : s.selectedRowIds);
     close();
   }
 

@@ -111,13 +111,13 @@ export function ShortcutsProvider({ children }: { children: ReactNode }) {
     (kind: "archive" | "delete") => {
       const s = useUiStore.getState();
       if (s.selectedRowIds.length >= 1) {
+        const removedRowIds = s.selectedRowIds;
         void resolveSelectedMessageIds().then((ids) => {
           if (ids.length === 0) return;
           if (kind === "archive") archive.mutate({ messageIds: ids });
           else del.mutate({ messageIds: ids });
           s.showUndoToast(kind, ids);
-          s.clearSelection();
-          s.setSelectedThreadId(null);
+          s.advanceSelectionAfter(removedRowIds);
         });
         return;
       }
@@ -128,7 +128,7 @@ export function ShortcutsProvider({ children }: { children: ReactNode }) {
         if (kind === "archive") archive.mutate({ messageIds: ids });
         else del.mutate({ messageIds: ids });
         s.showUndoToast(kind, ids);
-        s.setSelectedThreadId(null);
+        s.advanceSelectionAfter([s.selectedThreadId]);
       }
     },
     [archive, del, queryClient]

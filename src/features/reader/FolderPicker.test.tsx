@@ -21,6 +21,11 @@ beforeEach(() => {
     folderPickerOpen: true,
     folderPickerTargetIds: [10, 20],
     folderPickerAccountId: 9,
+    selectMode: "message",
+    visibleMessageIds: [10, 20, 30],
+    selectedRowIds: [10, 20],
+    selectedThreadId: null,
+    selectedMessageId: null,
   });
 });
 
@@ -35,5 +40,12 @@ describe("FolderPicker", () => {
     render(<FolderPicker />);
     fireEvent.click(screen.getByText("Work"));
     expect(mockMutate).toHaveBeenCalledWith({ messageIds: [10, 20], targetFolderId: 1 });
+  });
+
+  it("moving advances the selection to the next survivor", () => {
+    render(<FolderPicker />);
+    fireEvent.click(screen.getByText("Work"));
+    expect(useUiStore.getState().selectedMessageId).toBe(30);
+    expect(useUiStore.getState().folderPickerOpen).toBe(false);
   });
 });

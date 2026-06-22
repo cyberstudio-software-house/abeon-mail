@@ -24,6 +24,8 @@ export function SnoozePicker() {
       return;
     }
     snooze.mutate({ messageIds: targetIds, wakeAt });
+    const s = useUiStore.getState();
+    s.advanceSelectionAfter(s.selectMode === "message" ? targetIds : s.selectedRowIds);
     closeSnoozePicker();
   }
 

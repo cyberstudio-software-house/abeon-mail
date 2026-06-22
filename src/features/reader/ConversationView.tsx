@@ -95,7 +95,6 @@ export function ConversationView({ threadId }: { threadId: number }) {
   const archive = useArchive();
   const del = useDelete();
   const showUndoToast = useUiStore((s) => s.showUndoToast);
-  const setSelectedThreadId = useUiStore((s) => s.setSelectedThreadId);
   const setReplyTargetId = useUiStore((s) => s.setReplyTargetId);
   const lastId = messages && messages.length > 0 ? messages[messages.length - 1].id : null;
   const labelPairs = useLabelsForMessages(lastId ? [lastId] : []);
@@ -182,7 +181,8 @@ export function ConversationView({ threadId }: { threadId: number }) {
     if (kind === "archive") archive.mutate({ messageIds: ids });
     else del.mutate({ messageIds: ids });
     showUndoToast(kind, ids);
-    setSelectedThreadId(null);
+    const s = useUiStore.getState();
+    s.advanceSelectionAfter(s.selectMode === "message" ? ids : s.selectedRowIds);
   }
 
   async function handleReply(mode: "reply" | "reply_all" | "forward") {

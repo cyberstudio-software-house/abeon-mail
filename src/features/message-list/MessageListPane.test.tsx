@@ -211,6 +211,7 @@ function setupStore(
       selectRow: vi.fn(),
       toggleRow: vi.fn(),
       selectRangeTo: vi.fn(),
+      advanceSelectionAfter: vi.fn(),
       labelPickerOpen: false,
       labelPickerTargetIds: [],
       snoozePickerOpen: false,
