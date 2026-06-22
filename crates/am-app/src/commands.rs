@@ -366,6 +366,80 @@ pub async fn open_attachment(
 
 #[tauri::command]
 #[specta::specta]
+pub fn meeting_invite(
+    state: tauri::State<'_, AppState>,
+    message_id: i64,
+) -> Result<Option<am_core::meeting::MeetingInvite>, String> {
+    let bytes = match am_storage::attachments_repo::calendar_content(&state.db, message_id)
+        .map_err(|e| e.to_string())?
+    {
+        Some(b) => b,
+        None => return Ok(None),
+    };
+    let mut invite = match am_mime::ical::parse_invite(&bytes) {
+        Some(i) => i,
+        None => return Ok(None),
+    };
+    invite.response =
+        am_storage::meeting_responses_repo::get_response(&state.db, message_id).map_err(|e| e.to_string())?;
+    if let Ok(email) = am_storage::messages_repo::get_account_email_for_message(&state.db, message_id) {
+        invite.attendee_email = Some(email);
+    }
+    invite.can_rsvp = !invite.cancelled
+        && invite.uid.is_some()
+        && invite.organizer.is_some()
+        && invite.attendee_email.is_some();
+    Ok(Some(invite))
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn respond_to_invite(
+    state: tauri::State<'_, AppState>,
+    message_id: i64,
+    status: am_core::meeting::RsvpStatus,
+) -> Result<(), String> {
+    let bytes = am_storage::attachments_repo::calendar_content(&state.db, message_id)
+        .map_err(|e| e.to_string())?
+        .ok_or("No calendar attachment")?;
+    let invite = am_mime::ical::parse_invite(&bytes).ok_or("Not a meeting invite")?;
+    let organizer = invite.organizer.clone().ok_or("Invite has no organizer")?;
+    let account_email = am_storage::messages_repo::get_account_email_for_message(&state.db, message_id)
+        .map_err(|e| e.to_string())?;
+    let account_id = am_storage::messages_repo::account_id_for_message(&state.db, message_id)
+        .map_err(|e| e.to_string())?;
+    let ics = am_mime::ical::build_reply_ics(&invite, status, &account_email);
+    let reply = am_core::meeting::InviteReply {
+        from_address: account_email.clone(),
+        from_name: None,
+        to: organizer,
+        subject: format!("{}: {}", status.verb(), invite.title),
+        text_body: format!("{} has responded: {}.", account_email, status.verb()),
+        ics,
+    };
+    am_sync::send::enqueue_invite_reply(&state.db, account_id, &reply).map_err(|e| e.to_string())?;
+    am_storage::meeting_responses_repo::set_response(
+        &state.db,
+        message_id,
+        status,
+        am_sync::service::now_secs(),
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn open_external_url(url: String) -> Result<(), String> {
+    let lower = url.to_ascii_lowercase();
+    if !(lower.starts_with("https://") || lower.starts_with("tel:")) {
+        return Err("Unsupported URL scheme".into());
+    }
+    tauri_plugin_opener::open_url(&url, None::<&str>).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+#[specta::specta]
 pub fn set_message_flags(
     state: tauri::State<'_, AppState>,
     message_id: i64,

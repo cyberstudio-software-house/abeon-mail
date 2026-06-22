@@ -510,6 +510,32 @@ pub fn ids_by_uids(db: &Database, folder_id: i64, uids: &[i64]) -> Result<Vec<i6
     Ok(out)
 }
 
+pub fn account_id_for_message(db: &Database, message_id: i64) -> Result<i64, StorageError> {
+    let conn = db.conn();
+    conn.query_row(
+        "SELECT f.account_id FROM messages m JOIN folders f ON m.folder_id = f.id WHERE m.id = ?1",
+        params![message_id],
+        |r| r.get(0),
+    )
+    .map_err(|e| match e {
+        rusqlite::Error::QueryReturnedNoRows => StorageError::NotFound,
+        other => StorageError::Sqlite(other),
+    })
+}
+
+pub fn get_account_email_for_message(db: &Database, message_id: i64) -> Result<String, StorageError> {
+    let conn = db.conn();
+    conn.query_row(
+        "SELECT a.email FROM messages m JOIN folders f ON m.folder_id = f.id JOIN accounts a ON f.account_id = a.id WHERE m.id = ?1",
+        params![message_id],
+        |r| r.get(0),
+    )
+    .map_err(|e| match e {
+        rusqlite::Error::QueryReturnedNoRows => StorageError::NotFound,
+        other => StorageError::Sqlite(other),
+    })
+}
+
 pub fn rule_message(db: &Database, message_id: i64) -> Result<am_core::rule::RuleMessage, StorageError> {
     let conn = db.conn();
     conn.query_row(
@@ -571,6 +597,28 @@ mod rule_helpers_tests {
         assert_eq!(view.from_address, "a@b.c");
         assert_eq!(view.from_name.as_deref(), Some("AB"));
         assert!(view.has_attachments);
+    }
+
+    #[test]
+    fn account_accessors_resolve_id_and_email() {
+        let db = Database::open_in_memory().unwrap();
+        let acc = insert_account(&db, &NewAccount {
+            email: "owner@e.com".into(), display_name: "Owner".into(),
+            provider_type: ProviderType::ImapPassword, color: None,
+        }).unwrap();
+        let folder = upsert_folder(&db, acc.id, "INBOX", "Inbox", FolderType::Inbox).unwrap().id;
+        insert_headers(&db, folder, &[header(1)]).unwrap();
+        let msg_id = ids_by_uids(&db, folder, &[1]).unwrap()[0];
+
+        assert_eq!(account_id_for_message(&db, msg_id).unwrap(), acc.id);
+        assert_eq!(get_account_email_for_message(&db, msg_id).unwrap(), "owner@e.com");
+    }
+
+    #[test]
+    fn account_accessors_not_found() {
+        let db = Database::open_in_memory().unwrap();
+        assert!(matches!(account_id_for_message(&db, 999).unwrap_err(), StorageError::NotFound));
+        assert!(matches!(get_account_email_for_message(&db, 999).unwrap_err(), StorageError::NotFound));
     }
 }
 

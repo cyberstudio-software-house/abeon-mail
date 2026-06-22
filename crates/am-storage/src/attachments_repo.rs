@@ -93,6 +93,25 @@ pub fn inline_parts(
     Ok(out)
 }
 
+pub fn calendar_content(db: &Database, message_id: i64) -> Result<Option<Vec<u8>>, StorageError> {
+    let conn = db.conn();
+    let row: Option<Vec<u8>> = conn
+        .query_row(
+            "SELECT content FROM attachments
+             WHERE message_id = ?1 AND content IS NOT NULL
+               AND (lower(mime_type) LIKE 'text/calendar%' OR lower(filename) LIKE '%.ics')
+             ORDER BY id ASC LIMIT 1",
+            params![message_id],
+            |r| r.get(0),
+        )
+        .map(Some)
+        .or_else(|e| match e {
+            rusqlite::Error::QueryReturnedNoRows => Ok(None),
+            other => Err(other),
+        })?;
+    Ok(row)
+}
+
 pub fn needs_refresh(db: &Database, message_id: i64) -> Result<bool, StorageError> {
     let conn = db.conn();
     let count: i64 = conn.query_row(
@@ -129,9 +148,13 @@ mod tests {
     }
 
     fn att(name: &str, inline: bool, cid: Option<&str>, content: &[u8]) -> NewAttachment {
+        att_mime(name, "application/octet-stream", inline, cid, content)
+    }
+
+    fn att_mime(name: &str, mime: &str, inline: bool, cid: Option<&str>, content: &[u8]) -> NewAttachment {
         NewAttachment {
             filename: name.into(),
-            mime_type: "application/octet-stream".into(),
+            mime_type: mime.into(),
             size: content.len() as i64,
             content_id: cid.map(|s| s.into()),
             is_inline: inline,
@@ -191,6 +214,42 @@ mod tests {
         // re-extraction replaces the rows with content-bearing ones
         replace_for_message(&db, msg_id, &[att("doc.pdf", false, None, b"PDFDATA")]).unwrap();
         assert!(!needs_refresh(&db, msg_id).unwrap());
+    }
+
+    #[test]
+    fn calendar_content_returns_text_calendar_bytes() {
+        let db = Database::open_in_memory().unwrap();
+        let msg_id = seed_message(&db);
+        replace_for_message(&db, msg_id, &[
+            att("doc.pdf", false, None, b"PDFDATA"),
+            att_mime("invite.ics", "text/calendar; method=REQUEST", false, None, b"BEGIN:VCALENDAR"),
+        ]).unwrap();
+
+        let bytes = calendar_content(&db, msg_id).unwrap();
+        assert_eq!(bytes.as_deref(), Some(&b"BEGIN:VCALENDAR"[..]));
+    }
+
+    #[test]
+    fn calendar_content_matches_ics_filename_without_calendar_mime() {
+        let db = Database::open_in_memory().unwrap();
+        let msg_id = seed_message(&db);
+        replace_for_message(&db, msg_id, &[
+            att("meeting.ics", false, None, b"ICSBYTES"),
+        ]).unwrap();
+
+        let bytes = calendar_content(&db, msg_id).unwrap();
+        assert_eq!(bytes.as_deref(), Some(&b"ICSBYTES"[..]));
+    }
+
+    #[test]
+    fn calendar_content_returns_none_for_pdf_only() {
+        let db = Database::open_in_memory().unwrap();
+        let msg_id = seed_message(&db);
+        replace_for_message(&db, msg_id, &[
+            att_mime("doc.pdf", "application/pdf", false, None, b"PDFDATA"),
+        ]).unwrap();
+
+        assert_eq!(calendar_content(&db, msg_id).unwrap(), None);
     }
 
     #[test]

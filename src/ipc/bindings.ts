@@ -35,6 +35,26 @@ export const commands = {
 	listAttachments: (messageId: number) => typedError<Attachment[], string>(__TAURI_INVOKE("list_attachments", { messageId })),
 	saveAttachment: (attachmentId: number) => typedError<boolean, string>(__TAURI_INVOKE("save_attachment", { attachmentId })),
 	openAttachment: (attachmentId: number) => typedError<null, string>(__TAURI_INVOKE("open_attachment", { attachmentId })),
+	meetingInvite: (messageId: number) => typedError<{
+	title: string,
+	organizer: string | null,
+	organizer_name: string | null,
+	location: string | null,
+	start_epoch: number | null,
+	end_epoch: number | null,
+	all_day: boolean,
+	join_url: string | null,
+	provider: MeetingProvider,
+	dial_in: string | null,
+	method: MeetingMethod,
+	cancelled: boolean,
+	uid: string | null,
+	attendee_email: string | null,
+	response: RsvpStatus | null,
+	can_rsvp: boolean,
+} | null, string>(__TAURI_INVOKE("meeting_invite", { messageId })),
+	respondToInvite: (messageId: number, status: RsvpStatus) => typedError<null, string>(__TAURI_INVOKE("respond_to_invite", { messageId, status })),
+	openExternalUrl: (url: string) => typedError<null, string>(__TAURI_INVOKE("open_external_url", { url })),
 	setMessageFlags: (messageId: number, flag: MessageFlag, value: boolean) => typedError<null, string>(__TAURI_INVOKE("set_message_flags", { messageId, flag, value })),
 	archiveMessages: (messageIds: number[]) => typedError<null, string>(__TAURI_INVOKE("archive_messages", { messageIds })),
 	deleteMessages: (messageIds: number[]) => typedError<null, string>(__TAURI_INVOKE("delete_messages", { messageIds })),
@@ -158,6 +178,29 @@ export type MailboxChanged = {
 
 export type MatchType = "all" | "any";
 
+export type MeetingInvite = {
+	title: string,
+	organizer: string | null,
+	organizer_name: string | null,
+	location: string | null,
+	start_epoch: number | null,
+	end_epoch: number | null,
+	all_day: boolean,
+	join_url: string | null,
+	provider: MeetingProvider,
+	dial_in: string | null,
+	method: MeetingMethod,
+	cancelled: boolean,
+	uid: string | null,
+	attendee_email: string | null,
+	response: RsvpStatus | null,
+	can_rsvp: boolean,
+};
+
+export type MeetingMethod = "request" | "cancel" | "reply" | "other";
+
+export type MeetingProvider = "teams" | "google_meet" | "zoom" | "webex" | "other";
+
 export type MessageBody = {
 	message_id: number,
 	text_plain: string | null,
@@ -230,6 +273,8 @@ export type RenderedMessage = {
 	blocked_remote_content: boolean,
 	remote_loaded: boolean,
 };
+
+export type RsvpStatus = "accepted" | "tentative" | "declined";
 
 export type Rule = {
 	id: number,
