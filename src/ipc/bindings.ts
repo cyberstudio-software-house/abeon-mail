@@ -117,6 +117,7 @@ export const events = {
 	newMessages: makeEvent<NewMessages>("new-messages"),
 	prefetchProgress: makeEvent<PrefetchProgress>("prefetch-progress"),
 	sendFailed: makeEvent<SendFailed>("send-failed"),
+	sendSucceeded: makeEvent<SendSucceeded>("send-succeeded"),
 	snoozeWoke: makeEvent<SnoozeWoke>("snooze-woke"),
 	syncProgress: makeEvent<SyncProgress>("sync-progress"),
 };
@@ -340,6 +341,10 @@ export type SendError = {
 export type SendFailed = {
 	account_id: number,
 	error: string,
+};
+
+export type SendSucceeded = {
+	account_id: number,
 };
 
 export type Signature = {

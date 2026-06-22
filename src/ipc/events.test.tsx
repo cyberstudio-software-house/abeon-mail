@@ -8,6 +8,8 @@ import { useSyncEvents } from "./events";
 const h = vi.hoisted(() => ({
   newMessagesCb: null as ((e: { payload: { account_id: number; folder_id: number; count: number } }) => void) | null,
   prefetchProgressCb: null as ((e: { payload: { account_id: number; done: number; total: number } }) => void) | null,
+  sendSucceededCb: null as ((e: { payload: { account_id: number } }) => void) | null,
+  sendFailedCb: null as ((e: { payload: { account_id: number; error: string } }) => void) | null,
   sendNotification: vi.fn(),
   isFocused: vi.fn(),
   isPermissionGranted: vi.fn(),
@@ -37,7 +39,18 @@ vi.mock("./bindings", () => ({
         return Promise.resolve(() => {});
       }),
     },
-    sendFailed: { listen: vi.fn().mockResolvedValue(() => {}) },
+    sendFailed: {
+      listen: vi.fn((cb) => {
+        h.sendFailedCb = cb;
+        return Promise.resolve(() => {});
+      }),
+    },
+    sendSucceeded: {
+      listen: vi.fn((cb) => {
+        h.sendSucceededCb = cb;
+        return Promise.resolve(() => {});
+      }),
+    },
   },
 }));
 
@@ -60,6 +73,9 @@ describe("useSyncEvents notifications", () => {
     vi.clearAllMocks();
     h.newMessagesCb = null;
     h.prefetchProgressCb = null;
+    h.sendSucceededCb = null;
+    h.sendFailedCb = null;
+    useUiStore.setState({ sendingCount: 0, lastSentAt: null, sendWatchdogs: [] });
     h.isFocused.mockResolvedValue(false);
     h.isPermissionGranted.mockResolvedValue(true);
     h.buildNewMailNotification.mockResolvedValue({ status: "ok", data: { title: "Alice", body: "Hi" } });
@@ -104,5 +120,22 @@ describe("useSyncEvents notifications", () => {
     await waitFor(() =>
       expect(useUiStore.getState().prefetchProgress[1]).toEqual({ done: 4, total: 10 }),
     );
+  });
+
+  it("decrements the sending count on send-succeeded", async () => {
+    useUiStore.setState({ sendingCount: 2, lastSentAt: null, sendWatchdogs: [] });
+    renderHook(() => useSyncEvents(), { wrapper });
+    await waitFor(() => expect(h.sendSucceededCb).not.toBeNull());
+    h.sendSucceededCb!({ payload: { account_id: 1 } });
+    expect(useUiStore.getState().sendingCount).toBe(1);
+  });
+
+  it("decrements the sending count on send-failed", async () => {
+    useUiStore.setState({ sendingCount: 1, lastSentAt: null, sendWatchdogs: [] });
+    h.isPermissionGranted.mockResolvedValue(false);
+    renderHook(() => useSyncEvents(), { wrapper });
+    await waitFor(() => expect(h.sendFailedCb).not.toBeNull());
+    h.sendFailedCb!({ payload: { account_id: 1, error: "boom" } });
+    expect(useUiStore.getState().sendingCount).toBe(0);
   });
 });

@@ -6,6 +6,7 @@ import { ReaderPane } from "../features/reader/ReaderPane";
 import { Composer } from "../features/composer/Composer";
 import { SettingsOverlay } from "../features/settings/SettingsOverlay";
 import { SendErrorsBanner } from "../features/send-errors/SendErrorsBanner";
+import { SendingIndicator } from "../features/send-status/SendingIndicator";
 import { useUiStore } from "./store";
 import { useStartupView } from "../features/startup/useStartupView";
 
@@ -25,6 +26,7 @@ export function AppShell() {
       {settingsOpen && <SettingsOverlay />}
       {composerOpen && <Composer />}
       <SendErrorsBanner />
+      <SendingIndicator />
     </div>
   );
 }

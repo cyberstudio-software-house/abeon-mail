@@ -184,6 +184,7 @@ export function Composer() {
       });
       draftIdRef.current = savedId;
       await enqueueSendMutation.mutateAsync(savedId);
+      useUiStore.getState().markSendStarted();
       closeComposer();
     } catch (err) {
       setSendError(err instanceof Error ? err.message : String(err));

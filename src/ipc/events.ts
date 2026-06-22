@@ -65,6 +65,7 @@ export function useSyncEvents() {
     });
 
     const sendFailedPromise = events.sendFailed.listen(async (event) => {
+      useUiStore.getState().markSendFailed();
       queryClient.invalidateQueries({ queryKey: ["sendErrors"] });
       if (await isPermissionGranted()) {
         sendNotification({
@@ -72,6 +73,10 @@ export function useSyncEvents() {
           body: event.payload.error,
         });
       }
+    });
+
+    const sendSucceededPromise = events.sendSucceeded.listen(() => {
+      useUiStore.getState().markSendSucceeded();
     });
 
     return () => {
@@ -82,6 +87,7 @@ export function useSyncEvents() {
       snoozeWokePromise.then((unlisten) => unlisten());
       prefetchPromise.then((unlisten) => unlisten());
       sendFailedPromise.then((unlisten) => unlisten());
+      sendSucceededPromise.then((unlisten) => unlisten());
     };
   }, [queryClient]);
 }

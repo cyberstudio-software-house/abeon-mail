@@ -35,3 +35,4 @@ exports.Check = Icon;
 exports.Calendar = Icon;
 exports.Video = Icon;
 exports.Phone = Icon;
+exports.Loader2 = Icon;

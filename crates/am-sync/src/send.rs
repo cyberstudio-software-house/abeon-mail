@@ -234,6 +234,7 @@ pub async fn drain_outbox(db: &Database, account_id: i64, creds: &dyn Credential
                 }
                 drafts_repo::delete_draft(db, draft_id)?;
                 queue_repo::mark_done(db, op.id)?;
+                sink.emit(SyncEvent::SendSucceeded { account_id });
             }
             Err(e) => {
                 let error = e.to_string();

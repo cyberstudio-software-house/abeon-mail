@@ -125,6 +125,17 @@ async fn create_sent_mailbox(imap_port: u16) {
         .expect("logout after mailbox creation failed");
 }
 
+#[derive(Default)]
+struct CollectingSink {
+    events: std::sync::Mutex<Vec<am_sync::events::SyncEvent>>,
+}
+
+impl am_sync::events::SyncEventSink for CollectingSink {
+    fn emit(&self, event: am_sync::events::SyncEvent) {
+        self.events.lock().unwrap().push(event);
+    }
+}
+
 #[tokio::test]
 async fn enqueue_and_drain_sends_and_appends_to_sent() {
     if !docker_available() {
@@ -209,10 +220,19 @@ async fn enqueue_and_drain_sends_and_appends_to_sent() {
     assert_eq!(queue_before.len(), 1, "expected 1 queued op before drain");
 
     let creds = am_sync::auth::KeychainCredentialSource::new();
-    let sink = am_sync::events::NoopSink;
+    let sink = CollectingSink::default();
     drain_outbox(&db, account.id, creds.as_ref(), &sink, now_secs())
         .await
         .expect("drain_outbox failed");
+
+    assert!(
+        sink.events
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|e| matches!(e, am_sync::events::SyncEvent::SendSucceeded { account_id } if *account_id == account.id)),
+        "drain_outbox should emit SendSucceeded for the account"
+    );
 
     let queue_after =
         queue_repo::list_due(&db, account.id, now_secs()).expect("list_due after failed");
