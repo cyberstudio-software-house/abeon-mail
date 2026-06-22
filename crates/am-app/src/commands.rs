@@ -1182,6 +1182,44 @@ pub async fn begin_google_oauth(
     Ok(account)
 }
 
+#[tauri::command]
+#[specta::specta]
+pub async fn begin_microsoft_oauth(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+) -> Result<Account, String> {
+    let (tokens, email) = run_microsoft_oauth_flow(&app).await?;
+
+    let refresh_token = tokens
+        .refresh_token
+        .clone()
+        .ok_or_else(|| "No refresh token in Microsoft response".to_string())?;
+    am_auth::credentials::store_password(&email, &refresh_token)
+        .map_err(|_| "Keychain unavailable".to_string())?;
+
+    let db = Arc::clone(&state.db);
+    let endpoints_json = serde_json::to_string(&am_auth::endpoints::microsoft())
+        .map_err(|e| e.to_string())?;
+
+    let new_account = am_core::account::NewAccount {
+        email: email.clone(),
+        display_name: email.clone(),
+        provider_type: am_core::account::ProviderType::MicrosoftOauth,
+        color: None,
+    };
+    let account =
+        am_storage::accounts_repo::insert_account_with_settings(&db, &new_account, &email, &endpoints_json)
+            .map_err(|e| e.to_string())?;
+
+    state.creds.token_manager().seed(&email, &tokens);
+
+    if let Some(engine) = state.engine.lock().unwrap().as_ref() {
+        engine.spawn_account(account.id);
+    }
+
+    Ok(account)
+}
+
 pub(crate) async fn run_google_oauth_flow(
     _app: &tauri::AppHandle,
 ) -> Result<(am_auth::oauth::client::OAuthTokens, String), String> {
@@ -1190,7 +1228,23 @@ pub(crate) async fn run_google_oauth_flow(
         .map_err(|_| "Google client ID not configured".to_string())?;
     let client_secret = am_auth::oauth::google::google_client_secret()
         .map_err(|_| "Google client secret not configured".to_string())?;
+    run_oauth_flow(&provider, &client_id, Some(&client_secret)).await
+}
 
+pub(crate) async fn run_microsoft_oauth_flow(
+    _app: &tauri::AppHandle,
+) -> Result<(am_auth::oauth::client::OAuthTokens, String), String> {
+    let provider = am_auth::oauth::OAuthProvider::microsoft();
+    let client_id = am_auth::oauth::microsoft::microsoft_client_id()
+        .map_err(|_| "Microsoft client ID not configured".to_string())?;
+    run_oauth_flow(&provider, &client_id, None).await
+}
+
+async fn run_oauth_flow(
+    provider: &am_auth::oauth::OAuthProvider,
+    client_id: &str,
+    client_secret: Option<&str>,
+) -> Result<(am_auth::oauth::client::OAuthTokens, String), String> {
     let listener = TcpListener::bind("127.0.0.1:0")
         .await
         .map_err(|e| format!("Failed to bind loopback: {e}"))?;
@@ -1205,8 +1259,8 @@ pub(crate) async fn run_google_oauth_flow(
         .collect();
 
     let auth_url = am_auth::oauth::pkce::authorize_url(
-        &provider,
-        &client_id,
+        provider,
+        client_id,
         &redirect_uri,
         &pkce.challenge,
         &csrf_state,
@@ -1216,11 +1270,11 @@ pub(crate) async fn run_google_oauth_flow(
         .map_err(|e| format!("Failed to open browser: {e}"))?;
 
     accept_redirect(
-        &provider,
+        provider,
         listener,
         &csrf_state,
-        &client_id,
-        Some(&client_secret),
+        client_id,
+        client_secret,
         &pkce.verifier,
         &redirect_uri,
     )

@@ -11,6 +11,17 @@ pub struct Endpoints {
     pub smtp_tls: bool,
 }
 
+pub fn microsoft() -> Endpoints {
+    Endpoints {
+        imap_host: "outlook.office365.com".into(),
+        imap_port: 993,
+        imap_tls: true,
+        smtp_host: "smtp.office365.com".into(),
+        smtp_port: 587,
+        smtp_tls: true,
+    }
+}
+
 pub fn resolve(email: &str) -> Endpoints {
     let domain = email
         .split('@')
@@ -35,14 +46,7 @@ pub fn resolve(email: &str) -> Endpoints {
             smtp_port: 587,
             smtp_tls: true,
         },
-        "outlook.com" | "hotmail.com" | "live.com" => Endpoints {
-            imap_host: "outlook.office365.com".into(),
-            imap_port: 993,
-            imap_tls: true,
-            smtp_host: "smtp.office365.com".into(),
-            smtp_port: 587,
-            smtp_tls: true,
-        },
+        "outlook.com" | "hotmail.com" | "live.com" => microsoft(),
         _ => Endpoints {
             imap_host: format!("imap.{domain}"),
             imap_port: 993,
@@ -67,6 +71,23 @@ mod tests {
         assert_eq!(ep.smtp_host, "smtp.gmail.com");
         assert_eq!(ep.smtp_port, 465);
         assert!(ep.smtp_tls);
+    }
+
+    #[test]
+    fn microsoft_endpoints_use_office365() {
+        let ep = microsoft();
+        assert_eq!(ep.imap_host, "outlook.office365.com");
+        assert_eq!(ep.imap_port, 993);
+        assert!(ep.imap_tls);
+        assert_eq!(ep.smtp_host, "smtp.office365.com");
+        assert_eq!(ep.smtp_port, 587);
+        assert!(ep.smtp_tls);
+    }
+
+    #[test]
+    fn resolve_outlook_matches_microsoft_helper() {
+        assert_eq!(resolve("user@outlook.com"), microsoft());
+        assert_eq!(resolve("user@hotmail.com"), microsoft());
     }
 
     #[test]

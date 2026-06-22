@@ -19,6 +19,7 @@ pub fn build_specta_builder() -> Builder<tauri::Wry> {
             commands::update_account,
             commands::begin_reauth,
             commands::begin_google_oauth,
+            commands::begin_microsoft_oauth,
             commands::list_folders,
             commands::mark_folder_read,
             commands::rename_folder,

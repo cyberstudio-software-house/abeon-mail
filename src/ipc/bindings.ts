@@ -22,6 +22,7 @@ export const commands = {
 } | null, password: string | null) => typedError<Account, string>(__TAURI_INVOKE("update_account", { accountId, displayName, color, endpoints, password })),
 	beginReauth: (accountId: number) => typedError<null, string>(__TAURI_INVOKE("begin_reauth", { accountId })),
 	beginGoogleOauth: () => typedError<Account, string>(__TAURI_INVOKE("begin_google_oauth")),
+	beginMicrosoftOauth: () => typedError<Account, string>(__TAURI_INVOKE("begin_microsoft_oauth")),
 	listFolders: (accountId: number) => typedError<Folder[], string>(__TAURI_INVOKE("list_folders", { accountId })),
 	markFolderRead: (folderId: number) => typedError<null, string>(__TAURI_INVOKE("mark_folder_read", { folderId })),
 	renameFolder: (folderId: number, newName: string) => typedError<null, string>(__TAURI_INVOKE("rename_folder", { folderId, newName })),
@@ -281,7 +282,7 @@ export type PrefetchProgress = {
 	total: number,
 };
 
-export type ProviderType = "imap_password" | "google_oauth";
+export type ProviderType = "imap_password" | "google_oauth" | "microsoft_oauth";
 
 export type RenderedMessage = {
 	html: string | null,
