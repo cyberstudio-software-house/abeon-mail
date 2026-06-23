@@ -12,11 +12,26 @@ use crate::events::SyncEventSink;
 use crate::service::{self, imap_config_pub, load_endpoints_pub};
 
 pub const POLL_INTERVAL: Duration = Duration::from_secs(300);
-pub const IDLE_TIMEOUT: Duration = Duration::from_secs(1500);
+pub const IDLE_REFRESH: Duration = Duration::from_secs(240);
+pub const IDLE_ERROR_BACKOFF: Duration = Duration::from_secs(15);
 pub const WAKE_SWEEP_INTERVAL: Duration = Duration::from_secs(60);
 pub const PREFETCH_IDLE_INTERVAL: Duration = Duration::from_secs(60);
 pub const PREFETCH_WORK_PAUSE: Duration = Duration::from_secs(2);
 const INBOX_PATH: &str = "INBOX";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IdleOutcomeKind {
+    Changed,
+    Refreshed,
+    Unsupported,
+}
+
+fn should_resync_after_idle(outcome: &Result<IdleOutcomeKind, ()>) -> bool {
+    matches!(
+        outcome,
+        Ok(IdleOutcomeKind::Changed) | Ok(IdleOutcomeKind::Refreshed)
+    )
+}
 
 pub fn run_wake_sweep_at(db: &Database, sink: &dyn SyncEventSink, now: i64) {
     match am_storage::snooze_repo::wake_due(db, now) {
@@ -96,6 +111,7 @@ impl SyncEngine {
                 let _ = crate::send::drain_outbox(&db, account_id, creds.as_ref(), sink.as_ref(), now).await;
                 let _ = crate::send::drain_invite_replies(&db, account_id, creds.as_ref(), sink.as_ref(), now).await;
                 let _ = crate::send::drain_draft_sync(&db, account_id, creds.as_ref(), now).await;
+                let mut backoff = POLL_INTERVAL;
                 if let Ok(folders) = folders_repo::list_folders(&db, account_id) {
                     for folder in &folders {
                         if !folder.remote_path.eq_ignore_ascii_case(INBOX_PATH) {
@@ -134,13 +150,16 @@ impl SyncEngine {
                             }
                         }
                         let idled = idle_inbox(&db, account_id, &inbox.remote_path, creds.as_ref(), token.clone(), Arc::clone(&notify)).await;
-                        if matches!(idled, Ok(true)) {
+                        if should_resync_after_idle(&idled) {
                             continue;
+                        }
+                        if idled.is_err() {
+                            backoff = IDLE_ERROR_BACKOFF;
                         }
                     }
                 }
                 tokio::select! {
-                    _ = tokio::time::sleep(POLL_INTERVAL) => {},
+                    _ = tokio::time::sleep(backoff) => {},
                     _ = notify.notified() => {},
                     _ = token.cancelled() => break,
                 }
@@ -217,7 +236,7 @@ async fn idle_inbox(
     creds: &dyn CredentialSource,
     token: CancellationToken,
     notify: Arc<Notify>,
-) -> Result<bool, ()> {
+) -> Result<IdleOutcomeKind, ()> {
     let account = accounts_repo::get_account(db, account_id).map_err(|_| ())?;
     let endpoints = load_endpoints_pub(db, account_id).map_err(|_| ())?;
     let auth = creds.auth_for(&account).await.map_err(|_| ())?;
@@ -226,22 +245,25 @@ async fn idle_inbox(
     let caps = session.server_caps().await.map_err(|_| ())?;
     if !caps.idle {
         let _ = session.logout().await;
-        return Ok(false);
+        return Ok(IdleOutcomeKind::Unsupported);
     }
     session.select(remote_path).await.map_err(|_| ())?;
-    let idle_fut = session.idle_wait(IDLE_TIMEOUT);
+    let idle_fut = session.idle_wait(IDLE_REFRESH);
     tokio::select! {
         result = idle_fut => {
             match result {
                 Ok((session_after, outcome)) => {
                     let _ = session_after.logout().await;
-                    Ok(matches!(outcome, IdleOutcome::Changed))
+                    match outcome {
+                        IdleOutcome::Changed => Ok(IdleOutcomeKind::Changed),
+                        IdleOutcome::TimedOut => Ok(IdleOutcomeKind::Refreshed),
+                    }
                 }
                 Err(_) => Err(()),
             }
         }
         _ = notify.notified() => {
-            Ok(true)
+            Ok(IdleOutcomeKind::Changed)
         }
         _ = token.cancelled() => {
             Err(())
@@ -274,6 +296,26 @@ mod tests {
         let msgs = am_storage::messages_repo::list_by_folder(db, folder.id, 10, 0, 0).unwrap();
         let id = msgs[0].id;
         snooze_repo::snooze_messages(db, &[id], 1000).unwrap();
+    }
+
+    #[test]
+    fn idle_change_triggers_resync() {
+        assert!(should_resync_after_idle(&Ok(IdleOutcomeKind::Changed)));
+    }
+
+    #[test]
+    fn idle_refresh_triggers_resync() {
+        assert!(should_resync_after_idle(&Ok(IdleOutcomeKind::Refreshed)));
+    }
+
+    #[test]
+    fn idle_unsupported_falls_back_to_poll() {
+        assert!(!should_resync_after_idle(&Ok(IdleOutcomeKind::Unsupported)));
+    }
+
+    #[test]
+    fn idle_error_falls_back_to_poll() {
+        assert!(!should_resync_after_idle(&Err(())));
     }
 
     #[test]

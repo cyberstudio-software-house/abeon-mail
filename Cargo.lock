@@ -160,6 +160,7 @@ dependencies = [
  "futures",
  "lettre",
  "rustls",
+ "socket2",
  "testcontainers",
  "thiserror 1.0.69",
  "tokio",

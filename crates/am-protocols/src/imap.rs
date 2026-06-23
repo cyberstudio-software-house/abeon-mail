@@ -4,13 +4,26 @@ use std::time::Duration;
 use async_imap::types::{Fetch, Flag, Name, NameAttribute};
 use async_imap::{Client, Session};
 use futures::TryStreamExt;
+use socket2::{SockRef, TcpKeepalive};
 use tokio::net::TcpStream;
+use tokio::time::timeout;
 use tokio_rustls::client::TlsStream;
 use tokio_rustls::rustls::pki_types::ServerName;
 use tokio_rustls::rustls::{ClientConfig, RootCertStore};
 use tokio_rustls::TlsConnector;
 
 use crate::error::ProtocolError;
+
+pub const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
+const KEEPALIVE_IDLE: Duration = Duration::from_secs(60);
+const KEEPALIVE_INTERVAL: Duration = Duration::from_secs(20);
+
+fn enable_keepalive(stream: &TcpStream) {
+    let keepalive = TcpKeepalive::new()
+        .with_time(KEEPALIVE_IDLE)
+        .with_interval(KEEPALIVE_INTERVAL);
+    let _ = SockRef::from(stream).set_tcp_keepalive(&keepalive);
+}
 
 #[derive(Clone)]
 pub enum ImapAuth {
@@ -133,9 +146,28 @@ impl ImapSession {
         config: &ImapConfig,
         auth: &ImapAuth,
     ) -> Result<ImapSession, ProtocolError> {
+        Self::connect_with_timeout(config, auth, CONNECT_TIMEOUT).await
+    }
+
+    pub async fn connect_with_timeout(
+        config: &ImapConfig,
+        auth: &ImapAuth,
+        connect_timeout: Duration,
+    ) -> Result<ImapSession, ProtocolError> {
+        match timeout(connect_timeout, Self::connect_inner(config, auth)).await {
+            Ok(result) => result,
+            Err(_) => Err(ProtocolError::Connect("connection timed out".into())),
+        }
+    }
+
+    async fn connect_inner(
+        config: &ImapConfig,
+        auth: &ImapAuth,
+    ) -> Result<ImapSession, ProtocolError> {
         let tcp = TcpStream::connect((config.host.as_str(), config.port))
             .await
             .map_err(|e| ProtocolError::Connect(e.to_string()))?;
+        enable_keepalive(&tcp);
 
         if config.tls {
             let connector = build_tls_connector()?;
@@ -718,5 +750,46 @@ mod tests {
     #[test]
     fn parse_references_empty_when_none() {
         assert!(parse_references("   ").is_empty());
+    }
+
+    #[tokio::test]
+    async fn connect_times_out_on_unresponsive_server() {
+        use std::time::Instant;
+        use tokio::net::TcpListener;
+
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let _server = tokio::spawn(async move {
+            if let Ok((sock, _)) = listener.accept().await {
+                let held = sock;
+                tokio::time::sleep(Duration::from_secs(3600)).await;
+                drop(held);
+            }
+        });
+
+        let config = ImapConfig {
+            host: "127.0.0.1".into(),
+            port: addr.port(),
+            tls: false,
+            username: "u@example.com".into(),
+        };
+        let auth = ImapAuth::Password("pw".into());
+
+        let start = Instant::now();
+        let outcome = tokio::time::timeout(
+            Duration::from_secs(5),
+            ImapSession::connect_with_timeout(&config, &auth, Duration::from_millis(300)),
+        )
+        .await;
+
+        assert!(
+            outcome.is_ok(),
+            "connect zawisł ponad 5s — wewnętrzny timeout nie zadziałał ({:?})",
+            start.elapsed()
+        );
+        assert!(
+            outcome.unwrap().is_err(),
+            "connect na nieodpowiadającym serwerze powinien zwrócić błąd"
+        );
     }
 }
