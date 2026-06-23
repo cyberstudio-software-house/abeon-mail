@@ -44,3 +44,66 @@ export function splitTextHistory(text: string): QuoteSplit {
   if (collapsed.trim().length === 0) return { collapsed: full, full, hasHistory: false };
   return { collapsed, full, hasHistory: true };
 }
+
+const QUOTE_SELECTORS = [
+  ".gmail_quote",
+  ".gmail_quote_container",
+  "#appendonsend",
+  "#divRplyFwdMsg",
+  'blockquote[type="cite"]',
+  ".moz-cite-prefix",
+  ".yahoo_quoted",
+  "#yahoo_quoted",
+  ".protonmail_quote",
+].join(",");
+
+function findHtmlBoundary(body: HTMLElement): Element | null {
+  const selectorMatch = body.querySelector(QUOTE_SELECTORS);
+  let attributionMatch: Element | null = null;
+  for (const element of Array.from(body.querySelectorAll("*"))) {
+    if (isAttributionText(element.textContent ?? "")) {
+      attributionMatch = element;
+      break;
+    }
+  }
+  if (selectorMatch && attributionMatch) {
+    const position = selectorMatch.compareDocumentPosition(attributionMatch);
+    return position & Node.DOCUMENT_POSITION_PRECEDING ? attributionMatch : selectorMatch;
+  }
+  return selectorMatch ?? attributionMatch;
+}
+
+function cutFromBoundary(boundary: Element, body: HTMLElement): void {
+  let node: Node | null = boundary;
+  while (node && node !== body) {
+    let sibling = node.nextSibling;
+    while (sibling) {
+      const next = sibling.nextSibling;
+      sibling.parentNode?.removeChild(sibling);
+      sibling = next;
+    }
+    node = node.parentNode;
+  }
+  boundary.parentNode?.removeChild(boundary);
+}
+
+function isMeaningfullyEmpty(body: HTMLElement): boolean {
+  const hasText = (body.textContent ?? "").replace(/\s+/g, "").length > 0;
+  const hasMedia = body.querySelector("img,table,hr,video,iframe") !== null;
+  return !hasText && !hasMedia;
+}
+
+export function splitHtmlHistory(html: string): QuoteSplit {
+  const full = html;
+  try {
+    const doc = new DOMParser().parseFromString(html, "text/html");
+    const body = doc.body;
+    const boundary = findHtmlBoundary(body);
+    if (!boundary) return { collapsed: full, full, hasHistory: false };
+    cutFromBoundary(boundary, body);
+    if (isMeaningfullyEmpty(body)) return { collapsed: full, full, hasHistory: false };
+    return { collapsed: body.innerHTML, full, hasHistory: true };
+  } catch {
+    return { collapsed: full, full, hasHistory: false };
+  }
+}

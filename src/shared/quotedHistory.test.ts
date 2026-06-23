@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { splitTextHistory, isAttributionText } from "./quotedHistory";
+import { splitTextHistory, isAttributionText, splitHtmlHistory } from "./quotedHistory";
 
 describe("isAttributionText", () => {
   it("matches English 'On … wrote:'", () => {
@@ -52,5 +52,78 @@ describe("splitTextHistory", () => {
     const r = splitTextHistory(text);
     expect(r.hasHistory).toBe(false);
     expect(r.collapsed).toBe(text);
+  });
+});
+
+describe("splitHtmlHistory", () => {
+  it("collapses a Gmail gmail_quote container", () => {
+    const html =
+      "<div>My reply.</div>" +
+      '<div class="gmail_quote"><div class="gmail_attr">On Mon wrote:</div>' +
+      "<blockquote>old</blockquote></div>";
+    const r = splitHtmlHistory(html);
+    expect(r.hasHistory).toBe(true);
+    expect(r.collapsed).toContain("My reply.");
+    expect(r.collapsed).not.toContain("gmail_quote");
+    expect(r.collapsed).not.toContain("old");
+    expect(r.full).toBe(html);
+  });
+
+  it("collapses an Outlook reply divider", () => {
+    const html =
+      "<div>Reply here</div>" +
+      '<div id="divRplyFwdMsg"><b>From:</b> a@x.com</div><div>quoted body</div>';
+    const r = splitHtmlHistory(html);
+    expect(r.hasHistory).toBe(true);
+    expect(r.collapsed).toContain("Reply here");
+    expect(r.collapsed).not.toContain("quoted body");
+  });
+
+  it("collapses an Apple Mail blockquote[type=cite]", () => {
+    const html = '<div>Sure.</div><blockquote type="cite">old thread</blockquote>';
+    const r = splitHtmlHistory(html);
+    expect(r.hasHistory).toBe(true);
+    expect(r.collapsed).toContain("Sure.");
+    expect(r.collapsed).not.toContain("old thread");
+  });
+
+  it("collapses via attribution fallback when no known class is present", () => {
+    const html =
+      "<p>New message</p><p>W dniu 23.06.2026 o 10:00, Jan pisze:</p>" +
+      "<p>poprzednia treść</p>";
+    const r = splitHtmlHistory(html);
+    expect(r.hasHistory).toBe(true);
+    expect(r.collapsed).toContain("New message");
+    expect(r.collapsed).not.toContain("poprzednia treść");
+  });
+
+  it("returns no history when there is no quote", () => {
+    const html = "<p>Standalone message, nothing quoted.</p>";
+    const r = splitHtmlHistory(html);
+    expect(r.hasHistory).toBe(false);
+    expect(r.collapsed).toBe(html);
+  });
+
+  it("keeps an image-only reply (does not treat it as empty)", () => {
+    const html =
+      '<div><img src="cid:logo"></div>' +
+      '<blockquote type="cite">old thread</blockquote>';
+    const r = splitHtmlHistory(html);
+    expect(r.hasHistory).toBe(true);
+    expect(r.collapsed).toContain("<img");
+  });
+
+  it("does not collapse when the whole body is a quote (empty reply guard)", () => {
+    const html = '<blockquote type="cite">entire body is quoted</blockquote>';
+    const r = splitHtmlHistory(html);
+    expect(r.hasHistory).toBe(false);
+    expect(r.collapsed).toBe(html);
+  });
+
+  it("falls back to full content on unparseable input without throwing", () => {
+    const html = "<<< not really html >>>";
+    const r = splitHtmlHistory(html);
+    expect(r.hasHistory).toBe(false);
+    expect(r.full).toBe(html);
   });
 });
