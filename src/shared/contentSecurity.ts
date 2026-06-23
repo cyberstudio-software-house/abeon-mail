@@ -41,7 +41,7 @@ export function autoloadRemoteForLevel(level: ContentSecurityLevel): boolean {
 
 export function isExternalLink(href: string): boolean {
   const lower = href.trim().toLowerCase();
-  return lower.startsWith("https://") || lower.startsWith("tel:");
+  return lower.startsWith("https://") || lower.startsWith("http://") || lower.startsWith("tel:");
 }
 
 export function parseContentSecurityLevel(value: string | undefined): ContentSecurityLevel {

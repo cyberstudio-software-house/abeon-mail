@@ -37,11 +37,12 @@ describe("contentSecurity", () => {
     expect(autoloadRemoteForLevel("open")).toBe(true);
   });
 
-  it("recognizes only https and tel links as external", () => {
+  it("recognizes http, https and tel links as external", () => {
     expect(isExternalLink("https://example.com")).toBe(true);
     expect(isExternalLink("HTTPS://EXAMPLE.COM")).toBe(true);
+    expect(isExternalLink("http://insecure.test")).toBe(true);
+    expect(isExternalLink("HTTP://INSECURE.TEST")).toBe(true);
     expect(isExternalLink("tel:+48123")).toBe(true);
-    expect(isExternalLink("http://insecure.test")).toBe(false);
     expect(isExternalLink("mailto:a@b.c")).toBe(false);
     expect(isExternalLink("javascript:alert(1)")).toBe(false);
     expect(isExternalLink("/relative")).toBe(false);

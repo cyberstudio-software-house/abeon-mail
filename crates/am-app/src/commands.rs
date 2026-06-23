@@ -495,11 +495,15 @@ pub fn respond_to_invite(
     Ok(())
 }
 
+fn is_supported_external_url(url: &str) -> bool {
+    let lower = url.to_ascii_lowercase();
+    lower.starts_with("https://") || lower.starts_with("http://") || lower.starts_with("tel:")
+}
+
 #[tauri::command]
 #[specta::specta]
 pub fn open_external_url(url: String) -> Result<(), String> {
-    let lower = url.to_ascii_lowercase();
-    if !(lower.starts_with("https://") || lower.starts_with("tel:")) {
+    if !is_supported_external_url(&url) {
         return Err("Unsupported URL scheme".into());
     }
     tauri_plugin_opener::open_url(&url, None::<&str>).map_err(|e| e.to_string())
@@ -1503,6 +1507,19 @@ mod tests {
         assert_eq!(no_ext_2, base.join("LICENSE (1)"));
 
         let _ = fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn supported_external_url_allows_web_and_tel_only() {
+        assert!(super::is_supported_external_url("https://example.com"));
+        assert!(super::is_supported_external_url("HTTPS://EXAMPLE.COM"));
+        assert!(super::is_supported_external_url("http://insecure.test"));
+        assert!(super::is_supported_external_url("HTTP://INSECURE.TEST"));
+        assert!(super::is_supported_external_url("tel:+48123"));
+        assert!(!super::is_supported_external_url("mailto:a@b.c"));
+        assert!(!super::is_supported_external_url("javascript:alert(1)"));
+        assert!(!super::is_supported_external_url("/relative"));
+        assert!(!super::is_supported_external_url(""));
     }
 
     fn install_in_mem_keyring() {

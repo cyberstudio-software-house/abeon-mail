@@ -62,10 +62,23 @@ describe("SafeHtmlFrame", () => {
     expect(commands.openExternalUrl).toHaveBeenCalledWith("https://example.com/x");
   });
 
-  it("ignores non-https/tel links", async () => {
+  it("opens http links in the system browser when interceptLinks is on", async () => {
     render(
       <SafeHtmlFrame
         html={'<a href="http://insecure.test/x">link</a>'}
+        sandbox="allow-same-origin"
+        interceptLinks
+      />
+    );
+    const { frame, anchor } = await getAnchor();
+    clickInFrame(frame, anchor);
+    expect(commands.openExternalUrl).toHaveBeenCalledWith("http://insecure.test/x");
+  });
+
+  it("ignores unsupported schemes such as mailto", async () => {
+    render(
+      <SafeHtmlFrame
+        html={'<a href="mailto:a@b.c">link</a>'}
         sandbox="allow-same-origin"
         interceptLinks
       />
