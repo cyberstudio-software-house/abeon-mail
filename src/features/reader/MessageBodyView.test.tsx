@@ -107,3 +107,84 @@ describe("MessageBodyView — HTML body path", () => {
     expect(screen.getByTitle("message-content").getAttribute("sandbox")).not.toContain("allow-scripts");
   });
 });
+
+describe("MessageBodyView — quoted history collapse", () => {
+  afterEach(() => {
+    cleanup();
+    vi.clearAllMocks();
+  });
+
+  it("collapses HTML history by default and expands on click", async () => {
+    (commands.getSettings as ReturnType<typeof vi.fn>).mockResolvedValue({
+      status: "ok",
+      data: [["reader.contentSecurity", "balanced"]],
+    });
+    (commands.renderMessageHtml as ReturnType<typeof vi.fn>).mockResolvedValue({
+      status: "ok",
+      data: {
+        html:
+          "<div>Visible reply</div>" +
+          '<div class="gmail_quote"><div class="gmail_attr">On Mon wrote:</div>' +
+          "<blockquote>hidden history</blockquote></div>",
+        blocked_remote_content: false,
+        remote_loaded: false,
+      },
+    });
+
+    render(<MessageBodyView messageId={7} />, { wrapper: Wrapper });
+
+    const frame = await screen.findByTitle("message-content");
+    expect(frame.getAttribute("srcdoc")).toContain("Visible reply");
+    expect(frame.getAttribute("srcdoc")).not.toContain("hidden history");
+
+    fireEvent.click(screen.getByRole("button", { name: "Pokaż cytowaną historię" }));
+
+    await waitFor(() =>
+      expect(screen.getByTitle("message-content").getAttribute("srcdoc")).toContain("hidden history")
+    );
+  });
+
+  it("shows no toggle when the HTML has no quoted history", async () => {
+    (commands.getSettings as ReturnType<typeof vi.fn>).mockResolvedValue({
+      status: "ok",
+      data: [["reader.contentSecurity", "balanced"]],
+    });
+    (commands.renderMessageHtml as ReturnType<typeof vi.fn>).mockResolvedValue({
+      status: "ok",
+      data: { html: "<p>No quotes here</p>", blocked_remote_content: false, remote_loaded: false },
+    });
+
+    render(<MessageBodyView messageId={8} />, { wrapper: Wrapper });
+
+    await screen.findByTitle("message-content");
+    expect(screen.queryByRole("button", { name: /cytowaną historię/ })).toBeNull();
+  });
+
+  it("collapses plain-text history by default and expands on click", async () => {
+    (commands.getSettings as ReturnType<typeof vi.fn>).mockResolvedValue({
+      status: "ok",
+      data: [["reader.contentSecurity", "balanced"]],
+    });
+    (commands.renderMessageHtml as ReturnType<typeof vi.fn>).mockResolvedValue({
+      status: "ok",
+      data: { html: null, blocked_remote_content: false, remote_loaded: false },
+    });
+    (commands.getMessageBody as ReturnType<typeof vi.fn>).mockResolvedValue({
+      status: "ok",
+      data: {
+        message_id: 9,
+        text_plain: "Visible reply text\n\n> hidden quoted line",
+        text_html: null,
+      },
+    });
+
+    render(<MessageBodyView messageId={9} />, { wrapper: Wrapper });
+
+    await screen.findByText((t) => t.includes("Visible reply text"));
+    expect(screen.queryByText((t) => t.includes("hidden quoted line"))).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Pokaż cytowaną historię" }));
+
+    await screen.findByText((t) => t.includes("hidden quoted line"));
+  });
+});
