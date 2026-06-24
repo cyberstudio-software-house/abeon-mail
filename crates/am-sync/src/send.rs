@@ -152,6 +152,17 @@ pub fn list_send_errors(db: &Database, account_id: i64) -> Result<Vec<am_core::o
     Ok(out)
 }
 
+fn mark_original_answered(db: &Database, account_id: i64, in_reply_to: Option<&str>) -> Result<(), SyncError> {
+    let mid = match in_reply_to {
+        Some(m) if !m.trim().is_empty() => m,
+        _ => return Ok(()),
+    };
+    if let Some(original_id) = am_storage::messages_repo::find_id_by_message_id_hdr(db, account_id, mid)? {
+        crate::service::enqueue_flag(db, original_id, am_core::message::MessageFlag::Answered, true)?;
+    }
+    Ok(())
+}
+
 fn smtp_config(endpoints: &am_auth::endpoints::Endpoints, username: &str) -> SmtpConfig {
     SmtpConfig {
         host: endpoints.smtp_host.clone(),
@@ -213,6 +224,7 @@ pub async fn drain_outbox(db: &Database, account_id: i64, creds: &dyn Credential
             Ok(()) => {
                 queue_repo::mark_done(db, op.id)?;
                 sink.emit(SyncEvent::SendSucceeded { account_id });
+                let _ = mark_original_answered(db, account_id, msg.in_reply_to.as_deref());
 
                 let all_folders = folders_repo::list_folders(db, account_id)?;
                 if let Some(sent) = all_folders.iter().find(|f| f.folder_type == FolderType::Sent) {
@@ -265,6 +277,36 @@ mod tests {
         )
         .unwrap()
         .id
+    }
+
+    #[test]
+    fn mark_original_answered_sets_flag_and_enqueues_op() {
+        use am_storage::{folders_repo, messages_repo};
+        use am_core::folder::FolderType;
+        use am_core::message::NewMessageHeader;
+        let db = Database::open_in_memory().unwrap();
+        let account_id = seed_account(&db);
+        let folder = folders_repo::upsert_folder(&db, account_id, "INBOX", "Inbox", FolderType::Inbox).unwrap();
+        messages_repo::insert_headers(&db, folder.id, &[NewMessageHeader {
+            uid: 1, message_id_hdr: Some("<orig@x>".into()), in_reply_to: None, references_hdr: None,
+            from_address: "boss@e.com".into(), from_name: None, subject: "Q".into(), date: 100,
+            seen: true, flagged: false, answered: false, has_attachments: false, size: 0, snippet: String::new(),
+        }]).unwrap();
+        let orig_id = messages_repo::find_id_by_message_id_hdr(&db, account_id, "<orig@x>").unwrap().unwrap();
+
+        mark_original_answered(&db, account_id, Some("<orig@x>")).unwrap();
+
+        assert!(messages_repo::get_header(&db, orig_id).unwrap().answered);
+        let due = queue_repo::list_due(&db, account_id, now_secs() + 1).unwrap();
+        assert!(due.iter().any(|o| o.op_type == "set_flag" && o.payload.contains("\"flag\":\"answered\"")));
+    }
+
+    #[test]
+    fn mark_original_answered_noop_when_no_in_reply_to() {
+        let db = Database::open_in_memory().unwrap();
+        let account_id = seed_account(&db);
+        mark_original_answered(&db, account_id, None).unwrap();
+        assert!(queue_repo::list_due(&db, account_id, now_secs() + 1).unwrap().is_empty());
     }
 
     #[test]
