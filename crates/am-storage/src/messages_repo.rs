@@ -819,6 +819,16 @@ mod tests {
     }
 
     #[test]
+    fn set_flags_by_uid_writes_answered() {
+        let db = Database::open_in_memory().unwrap();
+        let folder_id = setup(&db);
+        insert_headers(&db, folder_id, &[make_header(11, 1)]).unwrap();
+        set_flags_by_uid(&db, folder_id, 11, true, false, true).unwrap();
+        let msg = list_by_folder(&db, folder_id, 1, 0, i64::MAX).unwrap().into_iter().next().unwrap();
+        assert!(get_header(&db, msg.id).unwrap().answered);
+    }
+
+    #[test]
     fn insert_and_read_answered_roundtrips() {
         let db = Database::open_in_memory().unwrap();
         let account = crate::accounts_repo::insert_account(&db, &am_core::account::NewAccount {

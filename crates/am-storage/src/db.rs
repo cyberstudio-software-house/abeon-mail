@@ -188,7 +188,7 @@ mod tests {
     }
 
     #[test]
-    fn migration_v16_adds_answered_column() {
+    fn messages_table_has_answered_column() {
         let db = Database::open_in_memory().unwrap();
         let conn = db.conn();
         let count: i64 = conn

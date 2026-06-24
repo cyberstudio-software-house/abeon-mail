@@ -389,7 +389,7 @@ mod tests {
         }
         recompute(&db, tid).unwrap();
         let s = list_for_folder(&db, folder.id, 10, 0, i64::MAX).unwrap();
-        assert!(s[0].answered, "odpowiedziano na ostatnią przychodzącą");
+        assert!(s[0].answered, "answered the latest incoming message");
 
         crate::messages_repo::insert_headers(&db, folder.id, &[
             am_core::message::NewMessageHeader { uid: 2, message_id_hdr: Some("<in2@x>".into()), in_reply_to: None, references_hdr: None,
@@ -401,6 +401,6 @@ mod tests {
         }
         recompute(&db, tid).unwrap();
         let s2 = list_for_folder(&db, folder.id, 10, 0, i64::MAX).unwrap();
-        assert!(!s2[0].answered, "nowa nieodpowiedziana przychodząca gasi wskaźnik");
+        assert!(!s2[0].answered, "a fresh unanswered incoming message clears the indicator");
     }
 }
