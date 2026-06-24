@@ -139,7 +139,7 @@ mod tests {
         NewMessageHeader {
             uid, message_id_hdr: Some(format!("<m{uid}@x>")), in_reply_to: None, references_hdr: None,
             from_address: "a@b.c".into(), from_name: None, subject: format!("S{uid}"), date: 1000,
-            seen: true, flagged: false, has_attachments: false, size: 0, snippet: String::new(),
+            seen: true, flagged: false, answered: false, has_attachments: false, size: 0, snippet: String::new(),
         }
     }
 

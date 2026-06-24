@@ -186,4 +186,18 @@ mod tests {
             .unwrap();
         assert_eq!(count, 1);
     }
+
+    #[test]
+    fn migration_v16_adds_answered_column() {
+        let db = Database::open_in_memory().unwrap();
+        let conn = db.conn();
+        let count: i64 = conn
+            .query_row(
+                "SELECT count(*) FROM pragma_table_info('messages') WHERE name='answered'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1);
+    }
 }

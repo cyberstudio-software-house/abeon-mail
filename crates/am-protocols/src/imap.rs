@@ -60,6 +60,7 @@ pub struct FetchedHeader {
     pub date: i64,
     pub seen: bool,
     pub flagged: bool,
+    pub answered: bool,
     pub size: i64,
     pub in_reply_to: Option<String>,
     pub references: Vec<String>,
@@ -93,6 +94,7 @@ pub struct FlagState {
     pub uid: i64,
     pub seen: bool,
     pub flagged: bool,
+    pub answered: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -503,14 +505,16 @@ impl ImapSession {
 fn flag_state(fetch: &Fetch) -> FlagState {
     let mut seen = false;
     let mut flagged = false;
+    let mut answered = false;
     for flag in fetch.flags() {
         match flag {
             Flag::Seen => seen = true,
             Flag::Flagged => flagged = true,
+            Flag::Answered => answered = true,
             _ => {}
         }
     }
-    FlagState { uid: fetch.uid.unwrap_or(0) as i64, seen, flagged }
+    FlagState { uid: fetch.uid.unwrap_or(0) as i64, seen, flagged, answered }
 }
 
 async fn read_greeting<T>(client: &mut Client<T>) -> Result<(), ProtocolError>
@@ -597,10 +601,12 @@ fn map_header(fetch: &Fetch) -> FetchedHeader {
 
     let mut seen = false;
     let mut flagged = false;
+    let mut answered = false;
     for flag in fetch.flags() {
         match flag {
             Flag::Seen => seen = true,
             Flag::Flagged => flagged = true,
+            Flag::Answered => answered = true,
             _ => {}
         }
     }
@@ -659,6 +665,7 @@ fn map_header(fetch: &Fetch) -> FetchedHeader {
         date,
         seen,
         flagged,
+        answered,
         size,
         in_reply_to,
         references,
@@ -694,6 +701,12 @@ fn parse_envelope_date(value: &str) -> Option<i64> {
 mod tests {
     use super::*;
     use base64::{engine::general_purpose::STANDARD, Engine};
+
+    #[test]
+    fn flag_state_has_answered_field() {
+        let fs = FlagState { uid: 1, seen: false, flagged: false, answered: true };
+        assert!(fs.answered);
+    }
 
     #[test]
     fn xoauth2_sasl_is_raw_and_encodes_as_expected() {

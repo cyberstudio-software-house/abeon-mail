@@ -15,6 +15,7 @@ fn flag_column(flag: MessageFlag) -> &'static str {
     match flag {
         MessageFlag::Seen => "seen",
         MessageFlag::Flagged => "flagged",
+        MessageFlag::Answered => "answered",
     }
 }
 
@@ -40,13 +41,27 @@ pub fn set_deleted(db: &Database, message_id: i64, value: bool) -> Result<(), St
     Ok(())
 }
 
-pub fn set_flags_by_uid(db: &Database, folder_id: i64, uid: i64, seen: bool, flagged: bool) -> Result<(), StorageError> {
+pub fn set_flags_by_uid(db: &Database, folder_id: i64, uid: i64, seen: bool, flagged: bool, answered: bool) -> Result<(), StorageError> {
     let conn = db.conn();
     conn.execute(
-        "UPDATE messages SET seen = ?3, flagged = ?4 WHERE folder_id = ?1 AND uid = ?2",
-        params![folder_id, uid, seen as i64, flagged as i64],
+        "UPDATE messages SET seen = ?3, flagged = ?4, answered = ?5 WHERE folder_id = ?1 AND uid = ?2",
+        params![folder_id, uid, seen as i64, flagged as i64, answered as i64],
     )?;
     Ok(())
+}
+
+pub fn find_id_by_message_id_hdr(db: &Database, account_id: i64, message_id_hdr: &str) -> Result<Option<i64>, StorageError> {
+    let conn = db.conn();
+    let result = conn.query_row(
+        "SELECT id FROM messages WHERE account_id = ?1 AND message_id_hdr = ?2 AND draft = 0 ORDER BY id ASC LIMIT 1",
+        params![account_id, message_id_hdr],
+        |row| row.get::<_, i64>(0),
+    );
+    match result {
+        Ok(id) => Ok(Some(id)),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(e) => Err(StorageError::Sqlite(e)),
+    }
 }
 
 pub fn list_uids(db: &Database, folder_id: i64) -> Result<Vec<i64>, StorageError> {
@@ -163,7 +178,7 @@ pub fn locate(db: &Database, message_id: i64) -> Result<MessageLocator, StorageE
     })
 }
 
-fn row_to_header(row: &rusqlite::Row) -> rusqlite::Result<(i64, i64, i64, String, String, Option<String>, i64, i64, i64, i64, String)> {
+fn row_to_header(row: &rusqlite::Row) -> rusqlite::Result<(i64, i64, i64, String, String, Option<String>, i64, i64, i64, i64, String, i64)> {
     Ok((
         row.get::<_, i64>(0)?,
         row.get::<_, i64>(1)?,
@@ -176,11 +191,12 @@ fn row_to_header(row: &rusqlite::Row) -> rusqlite::Result<(i64, i64, i64, String
         row.get::<_, i64>(8)?,
         row.get::<_, i64>(9)?,
         row.get::<_, String>(10)?,
+        row.get::<_, i64>(11)?,
     ))
 }
 
 fn tuple_to_header(
-    (id, account_id, folder_id, subject, from_address, from_name, date, seen, flagged, has_attachments, snippet): (i64, i64, i64, String, String, Option<String>, i64, i64, i64, i64, String),
+    (id, account_id, folder_id, subject, from_address, from_name, date, seen, flagged, has_attachments, snippet, answered): (i64, i64, i64, String, String, Option<String>, i64, i64, i64, i64, String, i64),
 ) -> MessageHeader {
     MessageHeader {
         id,
@@ -194,6 +210,7 @@ fn tuple_to_header(
         flagged: flagged != 0,
         has_attachments: has_attachments != 0,
         snippet,
+        answered: answered != 0,
     }
 }
 
@@ -222,8 +239,8 @@ pub fn insert_headers(
     {
         let mut stmt = tx.prepare(
             "INSERT OR IGNORE INTO messages
-             (account_id, folder_id, uid, message_id_hdr, in_reply_to, references_hdr, from_address, from_name, subject, date, seen, flagged, has_attachments, size, snippet)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
+             (account_id, folder_id, uid, message_id_hdr, in_reply_to, references_hdr, from_address, from_name, subject, date, seen, flagged, has_attachments, size, snippet, answered)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
         )?;
         for h in headers {
             let inserted = stmt.execute(params![
@@ -241,7 +258,8 @@ pub fn insert_headers(
                 h.flagged as i64,
                 h.has_attachments as i64,
                 h.size,
-                h.snippet
+                h.snippet,
+                h.answered as i64
             ])?;
             if inserted == 1 {
                 inserted_ids.push(tx.last_insert_rowid());
@@ -259,7 +277,7 @@ pub fn insert_headers(
 pub fn list_by_thread(db: &Database, thread_id: i64) -> Result<Vec<MessageHeader>, StorageError> {
     let conn = db.conn();
     let mut stmt = conn.prepare(
-        "SELECT id, account_id, folder_id, subject, from_address, from_name, date, seen, flagged, has_attachments, snippet
+        "SELECT id, account_id, folder_id, subject, from_address, from_name, date, seen, flagged, has_attachments, snippet, answered
          FROM messages
          WHERE thread_id = ?1 AND draft = 0 AND deleted = 0
            AND id IN (
@@ -284,7 +302,7 @@ pub fn list_by_folder(
 ) -> Result<Vec<MessageHeader>, StorageError> {
     let conn = db.conn();
     let mut stmt = conn.prepare(
-        "SELECT id, account_id, folder_id, subject, from_address, from_name, date, seen, flagged, has_attachments, snippet
+        "SELECT id, account_id, folder_id, subject, from_address, from_name, date, seen, flagged, has_attachments, snippet, answered
          FROM messages WHERE folder_id = ?1 AND draft = 0 AND deleted = 0
            AND (snooze_wake_at IS NULL OR snooze_wake_at <= ?4)
          ORDER BY date DESC LIMIT ?2 OFFSET ?3",
@@ -300,7 +318,7 @@ pub fn list_by_folder(
 pub fn get_header(db: &Database, id: i64) -> Result<MessageHeader, StorageError> {
     let conn = db.conn();
     conn.query_row(
-        "SELECT id, account_id, folder_id, subject, from_address, from_name, date, seen, flagged, has_attachments, snippet
+        "SELECT id, account_id, folder_id, subject, from_address, from_name, date, seen, flagged, has_attachments, snippet, answered
          FROM messages WHERE id = ?1",
         params![id],
         row_to_header,
@@ -576,7 +594,7 @@ mod rule_helpers_tests {
         NewMessageHeader {
             uid, message_id_hdr: None, in_reply_to: None, references_hdr: None,
             from_address: "a@b.c".into(), from_name: Some("AB".into()), subject: format!("S{uid}"),
-            date: 1000, seen: false, flagged: false, has_attachments: true, size: 0, snippet: String::new(),
+            date: 1000, seen: false, flagged: false, answered: false, has_attachments: true, size: 0, snippet: String::new(),
         }
     }
 
@@ -655,6 +673,7 @@ mod tests {
             date,
             seen: false,
             flagged: false,
+            answered: false,
             has_attachments: false,
             size: 1024,
             snippet: "Preview text".into(),
@@ -794,9 +813,27 @@ mod tests {
         let db = Database::open_in_memory().unwrap();
         let folder_id = setup(&db);
         insert_headers(&db, folder_id, &[make_header(9, 1)]).unwrap();
-        set_flags_by_uid(&db, folder_id, 9, true, true).unwrap();
+        set_flags_by_uid(&db, folder_id, 9, true, true, false).unwrap();
         let msg = list_by_folder(&db, folder_id, 1, 0, i64::MAX).unwrap().into_iter().next().unwrap();
         assert!(msg.seen && msg.flagged);
+    }
+
+    #[test]
+    fn insert_and_read_answered_roundtrips() {
+        let db = Database::open_in_memory().unwrap();
+        let account = crate::accounts_repo::insert_account(&db, &am_core::account::NewAccount {
+            email: "a@e.com".into(), display_name: "A".into(),
+            provider_type: am_core::account::ProviderType::ImapPassword, color: None,
+        }).unwrap();
+        let folder = crate::folders_repo::upsert_folder(&db, account.id, "INBOX", "Inbox", am_core::folder::FolderType::Inbox).unwrap();
+        insert_headers(&db, folder.id, &[NewMessageHeader {
+            uid: 1, message_id_hdr: Some("<a@x>".into()), in_reply_to: None, references_hdr: None,
+            from_address: "x@e.com".into(), from_name: None, subject: "Hi".into(), date: 100,
+            seen: true, flagged: false, answered: true, has_attachments: false, size: 0, snippet: String::new(),
+        }]).unwrap();
+        let headers = list_by_folder(&db, folder.id, 10, 0, i64::MAX).unwrap();
+        assert_eq!(headers.len(), 1);
+        assert!(headers[0].answered);
     }
 
     #[test]
@@ -825,6 +862,7 @@ mod tests {
             date: 1000,
             seen: false,
             flagged: false,
+            answered: false,
             has_attachments: false,
             size: 512,
             snippet: "preview".into(),
@@ -1078,7 +1116,7 @@ mod tests {
         let h = |uid: i64, msgid: &str| NewMessageHeader {
             uid, message_id_hdr: Some(msgid.into()), in_reply_to: None, references_hdr: None,
             from_address: "s@e.com".into(), from_name: None, subject: "S".into(), date: uid,
-            seen: false, flagged: false, has_attachments: false, size: 1, snippet: "x".into(),
+            seen: false, flagged: false, answered: false, has_attachments: false, size: 1, snippet: "x".into(),
         };
         insert_headers(&db, folder.id, &[h(1, "<a@e>"), h(2, "<b@e>")]).unwrap();
         let ids: Vec<i64> = list_by_folder(&db, folder.id, 50, 0, i64::MAX).unwrap().iter().map(|m| m.id).collect();
@@ -1138,7 +1176,7 @@ mod tests {
         let h = |uid: i64| NewMessageHeader {
             uid, message_id_hdr: Some(format!("<m{uid}@e>")), in_reply_to: None, references_hdr: None,
             from_address: "s@e.com".into(), from_name: None, subject: "S".into(), date: uid,
-            seen: false, flagged: false, has_attachments: false, size: 1, snippet: String::new(),
+            seen: false, flagged: false, answered: false, has_attachments: false, size: 1, snippet: String::new(),
         };
         insert_headers(&db, folder.id, &[h(1), h(2)]).unwrap();
 
@@ -1172,7 +1210,7 @@ mod tests {
         let h = |uid: i64| NewMessageHeader {
             uid, message_id_hdr: Some(format!("<m{uid}@e>")), in_reply_to: None, references_hdr: None,
             from_address: "s@e.com".into(), from_name: None, subject: "S".into(), date: uid,
-            seen: false, flagged: false, has_attachments: false, size: 1, snippet: String::new(),
+            seen: false, flagged: false, answered: false, has_attachments: false, size: 1, snippet: String::new(),
         };
         insert_headers(&db, folder.id, &[h(1), h(2)]).unwrap();
         assert_eq!(count_active_by_folder(&db, folder.id).unwrap(), 2);

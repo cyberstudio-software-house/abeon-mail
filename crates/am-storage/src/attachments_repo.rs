@@ -162,7 +162,7 @@ mod tests {
         insert_headers(db, folder.id, &[NewMessageHeader {
             uid: 1, message_id_hdr: None, in_reply_to: None, references_hdr: None,
             from_address: "a@b.com".into(), from_name: None, subject: "s".into(),
-            date: 1, seen: false, flagged: false, has_attachments: false, size: 0, snippet: "".into(),
+            date: 1, seen: false, flagged: false, answered: false, has_attachments: false, size: 0, snippet: "".into(),
         }]).unwrap();
         list_by_folder(db, folder.id, 1, 0, i64::MAX).unwrap().into_iter().next().unwrap().id
     }

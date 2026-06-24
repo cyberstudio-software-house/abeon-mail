@@ -146,6 +146,7 @@ mod tests {
             date: 1000 + uid,
             seen: false,
             flagged: false,
+            answered: false,
             has_attachments,
             size: 512,
             snippet: "preview".into(),

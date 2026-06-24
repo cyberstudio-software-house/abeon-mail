@@ -1621,6 +1621,7 @@ mod tests {
             date: 1000,
             seen: false,
             flagged: false,
+            answered: false,
             has_attachments: false,
             size: 100,
             snippet: "".into(),
@@ -1746,6 +1747,7 @@ mod tests {
             date: 1000,
             seen: false,
             flagged: false,
+            answered: false,
             has_attachments: false,
             size: 100,
             snippet: "".into(),
@@ -1833,6 +1835,7 @@ mod tests {
             date: 1000,
             seen: false,
             flagged: false,
+            answered: false,
             has_attachments: false,
             size: 100,
             snippet: "".into(),
@@ -1856,7 +1859,7 @@ mod tests {
         am_storage::messages_repo::insert_headers(&db, folder.id, &[am_core::message::NewMessageHeader {
             uid: 1, message_id_hdr: Some("<c1@x>".into()), in_reply_to: None, references_hdr: None,
             from_address: "a@b.c".into(), from_name: None, subject: "S".into(), date: 100,
-            seen: true, flagged: false, has_attachments: false, size: 0, snippet: String::new(),
+            seen: true, flagged: false, answered: false, has_attachments: false, size: 0, snippet: String::new(),
         }]).unwrap();
         let msgs = messages_repo::list_by_folder(&db, folder.id, 10, 0, i64::MAX).unwrap();
         let id = msgs[0].id;

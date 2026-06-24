@@ -12,4 +12,5 @@ pub struct ThreadSummary {
     pub snippet: String,
     pub has_attachments: bool,
     pub flagged: bool,
+    pub answered: bool,
 }

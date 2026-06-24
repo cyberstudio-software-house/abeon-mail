@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 pub enum MessageFlag {
     Seen,
     Flagged,
+    Answered,
 }
 
 #[derive(Serialize, Deserialize, specta::Type, Clone, Debug, PartialEq)]
@@ -18,6 +19,7 @@ pub struct MessageHeader {
     pub date: i64,
     pub seen: bool,
     pub flagged: bool,
+    pub answered: bool,
     pub has_attachments: bool,
     pub snippet: String,
 }
@@ -34,6 +36,7 @@ pub struct NewMessageHeader {
     pub date: i64,
     pub seen: bool,
     pub flagged: bool,
+    pub answered: bool,
     pub has_attachments: bool,
     pub size: i64,
     pub snippet: String,
@@ -89,6 +92,7 @@ mod tests {
             date: 1234567890,
             seen: false,
             flagged: false,
+            answered: false,
             has_attachments: false,
             snippet: "Test snippet".into(),
         };

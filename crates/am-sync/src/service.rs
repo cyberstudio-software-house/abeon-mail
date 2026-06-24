@@ -203,6 +203,7 @@ fn header_from_fetch(fetched: &FetchedHeader) -> NewMessageHeader {
         date: fetched.date,
         seen: fetched.seen,
         flagged: fetched.flagged,
+        answered: fetched.answered,
         has_attachments: false,
         size: fetched.size,
         snippet: String::new(),
@@ -590,12 +591,12 @@ pub async fn incremental_sync_folder(
     if let Some(modseq) = markers.highestmodseq.filter(|_| caps.condstore) {
         let changes = session.fetch_flag_changes(modseq).await?;
         for c in changes {
-            messages_repo::set_flags_by_uid(db, folder_id, c.uid, c.seen, c.flagged)?;
+            messages_repo::set_flags_by_uid(db, folder_id, c.uid, c.seen, c.flagged, c.answered)?;
         }
     } else {
         let flags = session.fetch_all_flags().await?;
         for c in flags {
-            messages_repo::set_flags_by_uid(db, folder_id, c.uid, c.seen, c.flagged)?;
+            messages_repo::set_flags_by_uid(db, folder_id, c.uid, c.seen, c.flagged, c.answered)?;
         }
         let server_uids = session.search_all_uids().await?;
         let server_set: std::collections::HashSet<i64> = server_uids.into_iter().collect();
@@ -774,6 +775,7 @@ fn flag_label(flag: MessageFlag) -> &'static str {
     match flag {
         MessageFlag::Seen => "seen",
         MessageFlag::Flagged => "flagged",
+        MessageFlag::Answered => "answered",
     }
 }
 
@@ -781,6 +783,7 @@ fn imap_flag(flag: MessageFlag) -> &'static str {
     match flag {
         MessageFlag::Seen => "\\Seen",
         MessageFlag::Flagged => "\\Flagged",
+        MessageFlag::Answered => "\\Answered",
     }
 }
 
@@ -975,6 +978,7 @@ pub async fn drain_queue(db: &Database, account_id: i64, creds: &dyn CredentialS
         let flag = match parsed["flag"].as_str() {
             Some("seen") => MessageFlag::Seen,
             Some("flagged") => MessageFlag::Flagged,
+            Some("answered") => MessageFlag::Answered,
             _ => { queue_repo::mark_done(db, op.id)?; continue; }
         };
         let value = parsed["value"].as_bool().unwrap_or(false);
@@ -1117,7 +1121,7 @@ mod move_tests {
         NewMessageHeader {
             uid, message_id_hdr: Some(format!("<m{uid}@e>")), in_reply_to: None, references_hdr: None,
             from_address: "s@e.com".into(), from_name: None, subject: "S".into(), date: uid,
-            seen: false, flagged: false, has_attachments: false, size: 1, snippet: "x".into(),
+            seen: false, flagged: false, answered: false, has_attachments: false, size: 1, snippet: "x".into(),
         }
     }
 
@@ -1224,7 +1228,7 @@ mod rules_engine_tests {
         NewMessageHeader {
             uid, message_id_hdr: None, in_reply_to: None, references_hdr: None,
             from_address: from.into(), from_name: None, subject: subject.into(),
-            date: 1000, seen: false, flagged: false, has_attachments: false, size: 0, snippet: String::new(),
+            date: 1000, seen: false, flagged: false, answered: false, has_attachments: false, size: 0, snippet: String::new(),
         }
     }
 
@@ -1392,6 +1396,7 @@ mod tests {
             date: 123,
             seen: true,
             flagged: false,
+            answered: false,
             size: 42,
             in_reply_to: None,
             references: vec![],
@@ -1416,6 +1421,7 @@ mod tests {
             date: 123,
             seen: false,
             flagged: false,
+            answered: false,
             size: 10,
             in_reply_to: Some("<parent@example.com>".into()),
             references: vec!["<a@x>".into(), "<b@y>".into()],
@@ -1446,7 +1452,7 @@ mod tests {
         messages_repo::insert_headers(&db, folder.id, &[NewMessageHeader {
             uid: 1, message_id_hdr: Some("<m1@e>".into()), in_reply_to: None, references_hdr: None,
             from_address: "s@e.com".into(), from_name: None, subject: "S".into(), date: 1,
-            seen: false, flagged: false, has_attachments: false, size: 1, snippet: String::new(),
+            seen: false, flagged: false, answered: false, has_attachments: false, size: 1, snippet: String::new(),
         }]).unwrap();
         let id = messages_repo::list_by_folder(&db, folder.id, 10, 0, i64::MAX).unwrap()[0].id;
 

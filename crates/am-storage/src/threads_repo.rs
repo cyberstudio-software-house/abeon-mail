@@ -64,6 +64,11 @@ pub fn list_for_folder(db: &Database, folder_id: i64, limit: i64, offset: i64, n
                 group_concat(DISTINCT COALESCE(m.from_name, m.from_address)),
                 (SELECT snippet FROM messages WHERE thread_id = t.id ORDER BY date DESC LIMIT 1),
                 (SELECT subject FROM messages WHERE thread_id = t.id ORDER BY date DESC LIMIT 1)
+                ,
+                (SELECT m2.answered FROM messages m2
+                  WHERE m2.thread_id = t.id AND m2.draft = 0 AND m2.deleted = 0
+                    AND m2.from_address <> (SELECT a.email FROM accounts a WHERE a.id = t.account_id)
+                  ORDER BY m2.date DESC LIMIT 1)
          FROM threads t
          JOIN messages m ON m.thread_id = t.id
          WHERE t.id IN (SELECT DISTINCT thread_id FROM messages
@@ -91,6 +96,7 @@ pub fn list_for_folder(db: &Database, folder_id: i64, limit: i64, offset: i64, n
             snippet: row.get::<_, Option<String>>(9)?.unwrap_or_default(),
             has_attachments: row.get::<_, i64>(6)? != 0,
             flagged: row.get::<_, i64>(7)? != 0,
+            answered: row.get::<_, Option<i64>>(11)?.unwrap_or(0) != 0,
         })
     })?;
     let mut out = Vec::new();
@@ -142,6 +148,7 @@ mod tests {
             date,
             seen: false,
             flagged: false,
+            answered: false,
             has_attachments: false,
             size: 512,
             snippet: String::new(),
@@ -229,10 +236,10 @@ mod tests {
         crate::messages_repo::insert_headers(&db, folder.id, &[
             am_core::message::NewMessageHeader { uid: 1, message_id_hdr: Some("<a@x>".into()), in_reply_to: None, references_hdr: None,
                 from_address: "x@e.com".into(), from_name: Some("X".into()), subject: "Hi".into(), date: 100,
-                seen: true, flagged: false, has_attachments: false, size: 0, snippet: "first".into() },
+                seen: true, flagged: false, answered: false, has_attachments: false, size: 0, snippet: "first".into() },
             am_core::message::NewMessageHeader { uid: 2, message_id_hdr: Some("<b@x>".into()), in_reply_to: Some("<a@x>".into()), references_hdr: Some("<a@x>".into()),
                 from_address: "y@e.com".into(), from_name: Some("Y".into()), subject: "Re: Hi".into(), date: 200,
-                seen: false, flagged: true, has_attachments: false, size: 0, snippet: "second".into() },
+                seen: false, flagged: true, answered: false, has_attachments: false, size: 0, snippet: "second".into() },
         ]).unwrap();
         let tid = create(&db, account.id, "hi", 100).unwrap();
         for h in crate::messages_repo::list_by_folder(&db, folder.id, 10, 0, i64::MAX).unwrap() {
@@ -258,7 +265,7 @@ mod tests {
         crate::messages_repo::insert_headers(&db, folder.id, &[
             am_core::message::NewMessageHeader { uid: 1, message_id_hdr: Some("<a@x>".into()), in_reply_to: None, references_hdr: None,
                 from_address: "x@e.com".into(), from_name: Some("X".into()), subject: "Hi".into(), date: 100,
-                seen: true, flagged: false, has_attachments: false, size: 0, snippet: "only".into() },
+                seen: true, flagged: false, answered: false, has_attachments: false, size: 0, snippet: "only".into() },
         ]).unwrap();
         let tid = create(&db, account.id, "hi", 100).unwrap();
         for h in crate::messages_repo::list_by_folder(&db, folder.id, 10, 0, i64::MAX).unwrap() {
@@ -285,12 +292,12 @@ mod tests {
         crate::messages_repo::insert_headers(&db, inbox.id, &[
             am_core::message::NewMessageHeader { uid: 1, message_id_hdr: Some("<dup@x>".into()), in_reply_to: None, references_hdr: None,
                 from_address: "x@e.com".into(), from_name: None, subject: "Hi".into(), date: 100,
-                seen: true, flagged: false, has_attachments: false, size: 0, snippet: "".into() },
+                seen: true, flagged: false, answered: false, has_attachments: false, size: 0, snippet: "".into() },
         ]).unwrap();
         crate::messages_repo::insert_headers(&db, allmail.id, &[
             am_core::message::NewMessageHeader { uid: 2, message_id_hdr: Some("<dup@x>".into()), in_reply_to: None, references_hdr: None,
                 from_address: "x@e.com".into(), from_name: None, subject: "Hi".into(), date: 100,
-                seen: false, flagged: false, has_attachments: false, size: 0, snippet: "".into() },
+                seen: false, flagged: false, answered: false, has_attachments: false, size: 0, snippet: "".into() },
         ]).unwrap();
         let tid = create(&db, account.id, "hi", 100).unwrap();
         for f in [inbox.id, allmail.id] {
@@ -361,5 +368,39 @@ mod tests {
         let ids = vec!["<root@example.com>".to_string()];
         let found = find_by_message_ids(&db, account_id, &ids).unwrap();
         assert_eq!(found, Some(thread_id));
+    }
+
+    #[test]
+    fn list_for_folder_answered_reflects_latest_incoming() {
+        let db = Database::open_in_memory().unwrap();
+        let account = crate::accounts_repo::insert_account(&db, &am_core::account::NewAccount {
+            email: "me@e.com".into(), display_name: "Me".into(),
+            provider_type: am_core::account::ProviderType::ImapPassword, color: None,
+        }).unwrap();
+        let folder = crate::folders_repo::upsert_folder(&db, account.id, "INBOX", "Inbox", am_core::folder::FolderType::Inbox).unwrap();
+        crate::messages_repo::insert_headers(&db, folder.id, &[
+            am_core::message::NewMessageHeader { uid: 1, message_id_hdr: Some("<in1@x>".into()), in_reply_to: None, references_hdr: None,
+                from_address: "boss@e.com".into(), from_name: None, subject: "Q".into(), date: 100,
+                seen: true, flagged: false, answered: true, has_attachments: false, size: 0, snippet: "".into() },
+        ]).unwrap();
+        let tid = create(&db, account.id, "q", 100).unwrap();
+        for h in crate::messages_repo::list_by_folder(&db, folder.id, 10, 0, i64::MAX).unwrap() {
+            crate::messages_repo::assign_thread(&db, h.id, tid).unwrap();
+        }
+        recompute(&db, tid).unwrap();
+        let s = list_for_folder(&db, folder.id, 10, 0, i64::MAX).unwrap();
+        assert!(s[0].answered, "odpowiedziano na ostatnią przychodzącą");
+
+        crate::messages_repo::insert_headers(&db, folder.id, &[
+            am_core::message::NewMessageHeader { uid: 2, message_id_hdr: Some("<in2@x>".into()), in_reply_to: None, references_hdr: None,
+                from_address: "boss@e.com".into(), from_name: None, subject: "Re: Q".into(), date: 300,
+                seen: false, flagged: false, answered: false, has_attachments: false, size: 0, snippet: "".into() },
+        ]).unwrap();
+        for h in crate::messages_repo::list_by_folder(&db, folder.id, 10, 0, i64::MAX).unwrap() {
+            crate::messages_repo::assign_thread(&db, h.id, tid).unwrap();
+        }
+        recompute(&db, tid).unwrap();
+        let s2 = list_for_folder(&db, folder.id, 10, 0, i64::MAX).unwrap();
+        assert!(!s2[0].answered, "nowa nieodpowiedziana przychodząca gasi wskaźnik");
     }
 }

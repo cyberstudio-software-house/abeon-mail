@@ -173,6 +173,7 @@ mod tests {
             date,
             seen: false,
             flagged: false,
+            answered: false,
             has_attachments: false,
             size: 100,
             snippet: "preview".into(),

@@ -80,6 +80,7 @@ mod tests {
             date: 1000,
             seen: false,
             flagged: false,
+            answered: false,
             has_attachments: false,
             size: 0,
             snippet: String::new(),

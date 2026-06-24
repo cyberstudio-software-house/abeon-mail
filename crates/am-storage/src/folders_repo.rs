@@ -341,6 +341,7 @@ mod tests {
                 date: 1,
                 seen: false,
                 flagged: false,
+                answered: false,
                 has_attachments: false,
                 size: 1024,
                 snippet: "Preview text".into(),
@@ -359,7 +360,7 @@ mod tests {
         let h = |uid: i64, msgid: &str| NewMessageHeader {
             uid, message_id_hdr: Some(msgid.into()), in_reply_to: None, references_hdr: None,
             from_address: "s@e.com".into(), from_name: None, subject: "S".into(), date: uid,
-            seen: false, flagged: false, has_attachments: false, size: 1, snippet: "x".into(),
+            seen: false, flagged: false, answered: false, has_attachments: false, size: 1, snippet: "x".into(),
         };
         crate::messages_repo::insert_headers(&db, folder.id, &[h(1, "<a@e>"), h(2, "<b@e>")]).unwrap();
         assert_eq!(recount_unread(&db, folder.id).unwrap(), 2);
@@ -378,7 +379,7 @@ mod tests {
         let h = |uid: i64, msgid: &str| NewMessageHeader {
             uid, message_id_hdr: Some(msgid.into()), in_reply_to: None, references_hdr: None,
             from_address: "s@e.com".into(), from_name: None, subject: "S".into(), date: uid,
-            seen: false, flagged: false, has_attachments: false, size: 1, snippet: "x".into(),
+            seen: false, flagged: false, answered: false, has_attachments: false, size: 1, snippet: "x".into(),
         };
         crate::messages_repo::insert_headers(&db, drafts.id, &[h(1, "<a@e>"), h(2, "<b@e>")]).unwrap();
         db.conn().execute("UPDATE messages SET draft = 1 WHERE folder_id = ?1", params![drafts.id]).unwrap();
@@ -398,7 +399,7 @@ mod tests {
         let h = |uid: i64, msgid: &str| NewMessageHeader {
             uid, message_id_hdr: Some(msgid.into()), in_reply_to: None, references_hdr: None,
             from_address: "s@e.com".into(), from_name: None, subject: "S".into(), date: uid,
-            seen: false, flagged: false, has_attachments: false, size: 1, snippet: "x".into(),
+            seen: false, flagged: false, answered: false, has_attachments: false, size: 1, snippet: "x".into(),
         };
         crate::messages_repo::insert_headers(&db, folder.id, &[h(1, "<a@e>"), h(2, "<b@e>")]).unwrap();
         let ids: Vec<i64> = crate::messages_repo::list_by_folder(&db, folder.id, 50, 0, i64::MAX)
