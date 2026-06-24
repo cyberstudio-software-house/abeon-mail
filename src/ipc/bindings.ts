@@ -224,7 +224,7 @@ export type MessageBody = {
 	text_html: string | null,
 };
 
-export type MessageFlag = "seen" | "flagged";
+export type MessageFlag = "seen" | "flagged" | "answered";
 
 export type MessageHeader = {
 	id: number,
@@ -236,6 +236,7 @@ export type MessageHeader = {
 	date: number,
 	seen: boolean,
 	flagged: boolean,
+	answered: boolean,
 	has_attachments: boolean,
 	snippet: string,
 };
@@ -397,6 +398,7 @@ export type ThreadSummary = {
 	snippet: string,
 	has_attachments: boolean,
 	flagged: boolean,
+	answered: boolean,
 };
 
 /* Tauri Specta runtime */

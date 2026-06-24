@@ -63,6 +63,7 @@ const sampleThreads: ThreadSummary[] = [
     snippet: "Hello there",
     has_attachments: false,
     flagged: false,
+    answered: false,
   },
   {
     thread_id: 2,
@@ -75,6 +76,7 @@ const sampleThreads: ThreadSummary[] = [
     snippet: "Second snippet",
     has_attachments: true,
     flagged: true,
+    answered: false,
   },
 ];
 
@@ -90,6 +92,7 @@ const groupedThreads: ThreadSummary[] = [
     snippet: "Today snippet",
     has_attachments: false,
     flagged: false,
+    answered: false,
   },
   {
     thread_id: 11,
@@ -102,6 +105,7 @@ const groupedThreads: ThreadSummary[] = [
     snippet: "Yesterday snippet",
     has_attachments: false,
     flagged: false,
+    answered: false,
   },
   {
     thread_id: 12,
@@ -114,6 +118,7 @@ const groupedThreads: ThreadSummary[] = [
     snippet: "Earlier snippet",
     has_attachments: false,
     flagged: false,
+    answered: false,
   },
 ];
 
@@ -665,5 +670,45 @@ describe("MessageListPane", () => {
     renderPane();
 
     expect(screen.getByTestId("snooze-wake").textContent?.length).toBeGreaterThan(0);
+  });
+
+  it("shows answered indicator when thread.answered is true", () => {
+    setupStore(10);
+    mockUseThreads.mockReturnValue({
+      data: [{ ...sampleThreads[0], answered: true }],
+      isLoading: false,
+      isError: false,
+      error: null,
+    } as unknown as ReturnType<typeof useThreads>);
+    mockUseSmartFolder.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isError: false,
+      error: null,
+    } as unknown as ReturnType<typeof useSmartFolder>);
+
+    renderPane();
+
+    expect(screen.getByTitle("Odpowiedziano")).toBeTruthy();
+  });
+
+  it("hides answered indicator when thread.answered is false", () => {
+    setupStore(10);
+    mockUseThreads.mockReturnValue({
+      data: [{ ...sampleThreads[0], answered: false }],
+      isLoading: false,
+      isError: false,
+      error: null,
+    } as unknown as ReturnType<typeof useThreads>);
+    mockUseSmartFolder.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isError: false,
+      error: null,
+    } as unknown as ReturnType<typeof useSmartFolder>);
+
+    renderPane();
+
+    expect(screen.queryByTitle("Odpowiedziano")).toBeNull();
   });
 });

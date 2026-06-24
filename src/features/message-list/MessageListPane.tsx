@@ -1,6 +1,6 @@
 import { useRef, useMemo, useEffect, type MouseEvent as ReactMouseEvent } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { PencilLine, ChevronDown } from "lucide-react";
+import { PencilLine, ChevronDown, Reply } from "lucide-react";
 import { useThreads, useFolders, useSmartFolder, useSearch, useLabelsForMessages, useMessagesByLabel, useLabels } from "../../ipc/queries";
 import { DraftsList } from "./DraftsList";
 import { formatListDate, formatWakeTime } from "../../shared/datetime/datetime";
@@ -60,6 +60,11 @@ function ThreadRow({
         <div className="message-row__meta">
           <span className="message-row__subject">{thread.subject}</span>
           <div className="message-row__badges">
+            {thread.answered && (
+              <span className="message-row__answered" title="Odpowiedziano" aria-label="Odpowiedziano">
+                <Reply size={14} />
+              </span>
+            )}
             {thread.flagged && (
               <span className="message-row__flag" aria-label="flagged">
                 ⚑
