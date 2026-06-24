@@ -229,6 +229,12 @@ impl SyncEngine {
         }
     }
 
+    pub fn wake_account(&self, account_id: i64) {
+        if let Some(notify) = self.wakeups.lock().unwrap().get(&account_id) {
+            notify.notify_one();
+        }
+    }
+
     pub fn wake_prefetch(&self, account_id: i64) {
         if let Some(notify) = self.prefetch_wakeups.lock().unwrap().get(&account_id) {
             notify.notify_one();
@@ -439,6 +445,23 @@ mod tests {
         engine.shutdown();
 
         assert!(engine.prefetch_wakeups.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn wake_account_signals_main_worker() {
+        let db = Arc::new(Database::open_in_memory().unwrap());
+        let sink = Arc::new(NoopSink);
+        let creds: Arc<dyn crate::auth::CredentialSource> = Arc::new(FakeCreds);
+        let engine = SyncEngine::start(Arc::clone(&db), sink, creds);
+
+        let notify = Arc::new(Notify::new());
+        engine.wakeups.lock().unwrap().insert(42, Arc::clone(&notify));
+        let waiter = tokio::spawn(async move { notify.notified().await });
+
+        engine.wake_account(42);
+
+        let woken = tokio::time::timeout(Duration::from_secs(1), waiter).await;
+        assert!(woken.is_ok(), "wake_account should signal the account's main worker");
     }
 
     #[tokio::test]

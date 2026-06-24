@@ -70,11 +70,11 @@ fn report_send_setup_failure(
     Ok(())
 }
 
-pub fn enqueue_send(db: &Database, draft_id: i64) -> Result<(), SyncError> {
+pub fn enqueue_send(db: &Database, draft_id: i64) -> Result<i64, SyncError> {
     let (account_id, _msg) = drafts_repo::get_draft(db, draft_id)?;
     let payload = serde_json::json!({ "draft_id": draft_id }).to_string();
     queue_repo::enqueue(db, account_id, "send_message", &payload)?;
-    Ok(())
+    Ok(account_id)
 }
 
 pub fn enqueue_draft_sync(db: &Database, draft_id: i64) -> Result<(), SyncError> {

@@ -774,7 +774,12 @@ pub fn mark_message_seen(
 #[tauri::command]
 #[specta::specta]
 pub fn enqueue_send(state: tauri::State<'_, AppState>, draft_id: i64) -> Result<(), String> {
-    am_sync::send::enqueue_send(&state.db, draft_id).map_err(|_| "Failed to enqueue send".to_string())
+    let account_id = am_sync::send::enqueue_send(&state.db, draft_id)
+        .map_err(|_| "Failed to enqueue send".to_string())?;
+    if let Some(engine) = state.engine.lock().unwrap().as_ref() {
+        engine.wake_account(account_id);
+    }
+    Ok(())
 }
 
 #[tauri::command]
