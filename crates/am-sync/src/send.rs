@@ -211,6 +211,9 @@ pub async fn drain_outbox(db: &Database, account_id: i64, creds: &dyn Credential
 
         match send_result {
             Ok(()) => {
+                queue_repo::mark_done(db, op.id)?;
+                sink.emit(SyncEvent::SendSucceeded { account_id });
+
                 let all_folders = folders_repo::list_folders(db, account_id)?;
                 if let Some(sent) = all_folders.iter().find(|f| f.folder_type == FolderType::Sent) {
                     let config = imap_config_pub(&endpoints, &account.email);
@@ -233,8 +236,6 @@ pub async fn drain_outbox(db: &Database, account_id: i64, creds: &dyn Credential
                     }
                 }
                 drafts_repo::delete_draft(db, draft_id)?;
-                queue_repo::mark_done(db, op.id)?;
-                sink.emit(SyncEvent::SendSucceeded { account_id });
             }
             Err(e) => {
                 let error = e.to_string();
