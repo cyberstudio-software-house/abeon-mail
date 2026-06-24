@@ -14,7 +14,12 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "gen:bindings": "cargo run -p abeonmail --bin export_bindings",
-    "test": "vitest run"
+    "test": "vitest run",
+    "sync-version": "node scripts/sync-version.mjs",
+    "version": "node scripts/sync-version.mjs && git add src-tauri/tauri.conf.json Cargo.toml",
+    "release:patch": "npm version patch",
+    "release:minor": "npm version minor",
+    "release:major": "npm version major"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

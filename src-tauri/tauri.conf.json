@@ -25,13 +25,13 @@
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEJCNzRERDZCODhEODE2NUIKUldSYkZ0aUlhOTEwdTJtazlVWUF3UmdERkZ6YW1jaXdmUHlDOW13ck9JbnNwMit5VWk0b1NielkK",
       "endpoints": [
-        "https://github.com/cyberstudio/abeonmail/releases/latest/download/latest.json"
+        "https://github.com/cyberstudio-software-house/abeon-mail/releases/latest/download/latest.json"
       ]
     }
   },
   "bundle": {
     "active": true,
-    "createUpdaterArtifacts": false,
+    "createUpdaterArtifacts": true,
     "targets": "all",
     "category": "Productivity",
     "copyright": "© 2026 Cyberstudio",
