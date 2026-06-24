@@ -1,6 +1,16 @@
 use am_app::{build_specta_builder, state::AppState};
 use am_storage::{settings_repo, Database};
-use tauri::{Manager, WindowEvent};
+use tauri::{Manager, WebviewUrl, WebviewWindowBuilder, WindowEvent};
+
+fn is_external_navigation(url: &tauri::Url) -> bool {
+    if !matches!(url.scheme(), "http" | "https" | "tel") {
+        return false;
+    }
+    !matches!(
+        url.host_str(),
+        Some("localhost") | Some("127.0.0.1") | Some("tauri.localhost")
+    )
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -31,6 +41,17 @@ pub fn run() {
         .invoke_handler(builder.invoke_handler())
         .setup(move |app| {
             builder.mount_events(app);
+            WebviewWindowBuilder::new(app.handle(), "main", WebviewUrl::default())
+                .title("AbeonMail")
+                .inner_size(800.0, 600.0)
+                .on_navigation(|url| {
+                    if is_external_navigation(url) {
+                        let _ = tauri_plugin_opener::open_url(url.as_str(), None::<&str>);
+                        return false;
+                    }
+                    true
+                })
+                .build()?;
             let dir = app.path().app_data_dir().expect("no app data dir");
             std::fs::create_dir_all(&dir).expect("cannot create app data dir");
             let db_path = dir.join("abeonmail.db");
