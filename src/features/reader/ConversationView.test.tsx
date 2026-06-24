@@ -30,6 +30,7 @@ vi.mock("../../ipc/bindings", () => ({
           flagged: false,
           has_attachments: false,
           snippet: "",
+          answered: false,
         },
         {
           id: 2,
@@ -43,6 +44,7 @@ vi.mock("../../ipc/bindings", () => ({
           flagged: true,
           has_attachments: false,
           snippet: "",
+          answered: true,
         },
       ],
     }),
@@ -132,6 +134,14 @@ describe("ConversationView", () => {
 
     await screen.findAllByText("body");
     expect(screen.getAllByText("body").length).toBeGreaterThan(0);
+  });
+
+  it("shows answered indicator on a message that was answered", async () => {
+    render(<ConversationView threadId={1} />, { wrapper: Wrapper });
+
+    await screen.findAllByText("B");
+
+    expect(screen.getByTitle("Odpowiedziano")).toBeTruthy();
   });
 
   it("immediate mode marks the unread message as read after the thread loads", async () => {

@@ -50,6 +50,11 @@ function ActiveMessage({
           <span className="reader__sender-name">{name}</span>
           {accountEmail && <span className="reader__sender-sub">to {accountEmail}</span>}
         </button>
+        {message.answered && (
+          <span className="reader__answered" title="Odpowiedziano" aria-label="Odpowiedziano">
+            <Reply size={14} />
+          </span>
+        )}
         <span className="reader__sender-time">{time}</span>
       </div>
 
@@ -348,6 +353,11 @@ export function ConversationView({ threadId }: { threadId: number }) {
                       <span className="reader__collapsed-name">{name}</span>
                       {m.snippet && <span className="reader__collapsed-snippet">{m.snippet}</span>}
                     </div>
+                    {m.answered && (
+                      <span className="reader__answered" title="Odpowiedziano" aria-label="Odpowiedziano">
+                        <Reply size={14} />
+                      </span>
+                    )}
                     {m.flagged && <Star className="reader__collapsed-flag" size={14} fill="currentColor" />}
                     <span className="reader__sender-time">{time}</span>
                   </button>
