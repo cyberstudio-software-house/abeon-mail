@@ -1,7 +1,7 @@
 {
   "name": "abeonmail",
   "private": true,
-  "version": "0.1.3",
+  "version": "0.1.4",
   "license": "MIT",
   "author": "Cyberstudio",
   "type": "module",
@@ -16,7 +16,7 @@
     "gen:bindings": "cargo run -p abeonmail --bin export_bindings --features export-bindings",
     "test": "vitest run",
     "sync-version": "node scripts/sync-version.mjs",
-    "version": "node scripts/sync-version.mjs && git add src-tauri/tauri.conf.json Cargo.toml Cargo.lock",
+    "version": "node scripts/sync-version.mjs && cargo update --workspace --offline && git add src-tauri/tauri.conf.json Cargo.toml Cargo.lock",
     "release:patch": "npm version patch",
     "release:minor": "npm version minor",
     "release:major": "npm version major"
