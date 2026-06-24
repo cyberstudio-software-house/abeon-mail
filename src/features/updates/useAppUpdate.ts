@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { check } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { getVersion } from "@tauri-apps/api/app";
@@ -7,7 +7,9 @@ type UpdateStatus = "idle" | "checking" | "uptodate" | "available" | "downloadin
 
 type AvailableUpdate = { version: string; downloadAndInstall: () => Promise<void> };
 
-export function useAppUpdate() {
+type UseAppUpdateOptions = { checkOnMount?: boolean };
+
+export function useAppUpdate({ checkOnMount = false }: UseAppUpdateOptions = {}) {
   const [version, setVersion] = useState("");
   const [status, setStatus] = useState<UpdateStatus>("idle");
   const [newVersion, setNewVersion] = useState("");
@@ -23,7 +25,7 @@ export function useAppUpdate() {
     };
   }, []);
 
-  async function checkForUpdate() {
+  const checkForUpdate = useCallback(async () => {
     setStatus("checking");
     try {
       const update = await check();
@@ -37,9 +39,9 @@ export function useAppUpdate() {
     } catch {
       setStatus("error");
     }
-  }
+  }, []);
 
-  async function installUpdate() {
+  const installUpdate = useCallback(async () => {
     if (!pending) return;
     setStatus("downloading");
     try {
@@ -48,7 +50,11 @@ export function useAppUpdate() {
     } catch {
       setStatus("error");
     }
-  }
+  }, [pending]);
+
+  useEffect(() => {
+    if (checkOnMount) void checkForUpdate();
+  }, [checkOnMount, checkForUpdate]);
 
   return { version, status, newVersion, checkForUpdate, installUpdate };
 }
