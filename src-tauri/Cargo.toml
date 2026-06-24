@@ -16,6 +16,10 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 [[bin]]
 name = "export_bindings"
 path = "bin/export_bindings.rs"
+required-features = ["export-bindings"]
+
+[features]
+export-bindings = []
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

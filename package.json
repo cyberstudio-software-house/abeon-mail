@@ -13,7 +13,7 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
-    "gen:bindings": "cargo run -p abeonmail --bin export_bindings",
+    "gen:bindings": "cargo run -p abeonmail --bin export_bindings --features export-bindings",
     "test": "vitest run",
     "sync-version": "node scripts/sync-version.mjs",
     "version": "node scripts/sync-version.mjs && git add src-tauri/tauri.conf.json Cargo.toml Cargo.lock",
