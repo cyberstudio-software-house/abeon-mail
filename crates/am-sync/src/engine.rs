@@ -52,6 +52,7 @@ pub struct SyncEngine {
     creds: Arc<dyn CredentialSource>,
     pub workers: Mutex<HashMap<i64, CancellationToken>>,
     wakeups: Mutex<HashMap<i64, Arc<Notify>>>,
+    prefetch_wakeups: Mutex<HashMap<i64, Arc<Notify>>>,
 }
 
 impl SyncEngine {
@@ -66,6 +67,7 @@ impl SyncEngine {
             creds,
             workers: Mutex::new(HashMap::new()),
             wakeups: Mutex::new(HashMap::new()),
+            prefetch_wakeups: Mutex::new(HashMap::new()),
         });
         if let Ok(accounts) = accounts_repo::list_accounts(&engine.db) {
             for account in accounts {
@@ -79,6 +81,7 @@ impl SyncEngine {
     pub fn spawn_account(self: &Arc<Self>, account_id: i64) {
         let token = CancellationToken::new();
         let notify = Arc::new(Notify::new());
+        let prefetch_notify = Arc::new(Notify::new());
         {
             let mut guard = self.workers.lock().unwrap();
             if guard.contains_key(&account_id) {
@@ -87,7 +90,8 @@ impl SyncEngine {
             guard.insert(account_id, token.clone());
         }
         self.wakeups.lock().unwrap().insert(account_id, Arc::clone(&notify));
-        self.spawn_prefetch(account_id, token.clone());
+        self.prefetch_wakeups.lock().unwrap().insert(account_id, Arc::clone(&prefetch_notify));
+        self.spawn_prefetch(account_id, token.clone(), Arc::clone(&prefetch_notify));
         let db = Arc::clone(&self.db);
         let sink = Arc::clone(&self.sink);
         let creds = Arc::clone(&self.creds);
@@ -112,10 +116,11 @@ impl SyncEngine {
                 let _ = crate::send::drain_invite_replies(&db, account_id, creds.as_ref(), sink.as_ref(), now).await;
                 let _ = crate::send::drain_draft_sync(&db, account_id, creds.as_ref(), now).await;
                 let mut backoff = POLL_INTERVAL;
+                let mut new_mail = 0i64;
                 if let Ok(folders) = folders_repo::list_folders(&db, account_id) {
                     for folder in &folders {
                         if !folder.remote_path.eq_ignore_ascii_case(INBOX_PATH) {
-                            if let Err(e) = service::incremental_sync_folder(
+                            match service::incremental_sync_folder(
                                 &db,
                                 account_id,
                                 folder.id,
@@ -123,10 +128,13 @@ impl SyncEngine {
                                 sink.as_ref(),
                             )
                             .await {
-                                if matches!(e, service::SyncError::NeedsReauth) {
-                                    let _ = am_storage::accounts_repo::set_requires_reauth(&db, account_id, true);
-                                    sink.emit(crate::events::SyncEvent::AuthChanged { account_id, requires_reauth: true });
-                                    return;
+                                Ok(count) => new_mail += count,
+                                Err(e) => {
+                                    if matches!(e, service::SyncError::NeedsReauth) {
+                                        let _ = am_storage::accounts_repo::set_requires_reauth(&db, account_id, true);
+                                        sink.emit(crate::events::SyncEvent::AuthChanged { account_id, requires_reauth: true });
+                                        return;
+                                    }
                                 }
                             }
                         }
@@ -135,7 +143,7 @@ impl SyncEngine {
                         .iter()
                         .find(|f| f.remote_path.eq_ignore_ascii_case(INBOX_PATH))
                     {
-                        if let Err(e) = service::incremental_sync_folder(
+                        match service::incremental_sync_folder(
                             &db,
                             account_id,
                             inbox.id,
@@ -143,11 +151,17 @@ impl SyncEngine {
                             sink.as_ref(),
                         )
                         .await {
-                            if matches!(e, service::SyncError::NeedsReauth) {
-                                let _ = am_storage::accounts_repo::set_requires_reauth(&db, account_id, true);
-                                sink.emit(crate::events::SyncEvent::AuthChanged { account_id, requires_reauth: true });
-                                return;
+                            Ok(count) => new_mail += count,
+                            Err(e) => {
+                                if matches!(e, service::SyncError::NeedsReauth) {
+                                    let _ = am_storage::accounts_repo::set_requires_reauth(&db, account_id, true);
+                                    sink.emit(crate::events::SyncEvent::AuthChanged { account_id, requires_reauth: true });
+                                    return;
+                                }
                             }
+                        }
+                        if new_mail > 0 {
+                            prefetch_notify.notify_one();
                         }
                         let idled = idle_inbox(&db, account_id, &inbox.remote_path, creds.as_ref(), token.clone(), Arc::clone(&notify)).await;
                         if should_resync_after_idle(&idled) {
@@ -167,7 +181,7 @@ impl SyncEngine {
         });
     }
 
-    pub fn spawn_prefetch(self: &Arc<Self>, account_id: i64, token: CancellationToken) {
+    pub fn spawn_prefetch(self: &Arc<Self>, account_id: i64, token: CancellationToken, notify: Arc<Notify>) {
         let db = Arc::clone(&self.db);
         let sink = Arc::clone(&self.sink);
         let creds = Arc::clone(&self.creds);
@@ -188,6 +202,7 @@ impl SyncEngine {
                 let pause = if did_work { PREFETCH_WORK_PAUSE } else { PREFETCH_IDLE_INTERVAL };
                 tokio::select! {
                     _ = tokio::time::sleep(pause) => {},
+                    _ = notify.notified() => {},
                     _ = token.cancelled() => break,
                 }
             }
@@ -206,8 +221,16 @@ impl SyncEngine {
     }
 
     pub fn sync_now(&self) {
-        let guard = self.wakeups.lock().unwrap();
-        for notify in guard.values() {
+        for notify in self.wakeups.lock().unwrap().values() {
+            notify.notify_one();
+        }
+        for notify in self.prefetch_wakeups.lock().unwrap().values() {
+            notify.notify_one();
+        }
+    }
+
+    pub fn wake_prefetch(&self, account_id: i64) {
+        if let Some(notify) = self.prefetch_wakeups.lock().unwrap().get(&account_id) {
             notify.notify_one();
         }
     }
@@ -218,6 +241,7 @@ impl SyncEngine {
             token.cancel();
         }
         self.wakeups.lock().unwrap().remove(&account_id);
+        self.prefetch_wakeups.lock().unwrap().remove(&account_id);
     }
 
     pub fn shutdown(&self) {
@@ -226,6 +250,7 @@ impl SyncEngine {
             token.cancel();
         }
         self.wakeups.lock().unwrap().clear();
+        self.prefetch_wakeups.lock().unwrap().clear();
     }
 }
 
@@ -384,5 +409,69 @@ mod tests {
 
         assert!(t1.is_cancelled());
         assert!(t2.is_cancelled());
+    }
+
+    #[tokio::test]
+    async fn stop_account_clears_prefetch_wakeup() {
+        let db = Arc::new(Database::open_in_memory().unwrap());
+        let sink = Arc::new(NoopSink);
+        let creds: Arc<dyn crate::auth::CredentialSource> = Arc::new(FakeCreds);
+        let engine = SyncEngine::start(Arc::clone(&db), sink, creds);
+
+        engine.workers.lock().unwrap().insert(7, CancellationToken::new());
+        engine.prefetch_wakeups.lock().unwrap().insert(7, Arc::new(Notify::new()));
+
+        engine.stop_account(7);
+
+        assert!(!engine.prefetch_wakeups.lock().unwrap().contains_key(&7));
+    }
+
+    #[tokio::test]
+    async fn shutdown_clears_prefetch_wakeups() {
+        let db = Arc::new(Database::open_in_memory().unwrap());
+        let sink = Arc::new(NoopSink);
+        let creds: Arc<dyn crate::auth::CredentialSource> = Arc::new(FakeCreds);
+        let engine = SyncEngine::start(Arc::clone(&db), sink, creds);
+
+        engine.prefetch_wakeups.lock().unwrap().insert(1, Arc::new(Notify::new()));
+        engine.prefetch_wakeups.lock().unwrap().insert(2, Arc::new(Notify::new()));
+
+        engine.shutdown();
+
+        assert!(engine.prefetch_wakeups.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn wake_prefetch_signals_waiting_task() {
+        let db = Arc::new(Database::open_in_memory().unwrap());
+        let sink = Arc::new(NoopSink);
+        let creds: Arc<dyn crate::auth::CredentialSource> = Arc::new(FakeCreds);
+        let engine = SyncEngine::start(Arc::clone(&db), sink, creds);
+
+        let notify = Arc::new(Notify::new());
+        engine.prefetch_wakeups.lock().unwrap().insert(42, Arc::clone(&notify));
+        let waiter = tokio::spawn(async move { notify.notified().await });
+
+        engine.wake_prefetch(42);
+
+        let woken = tokio::time::timeout(Duration::from_secs(1), waiter).await;
+        assert!(woken.is_ok(), "wake_prefetch should signal the account's prefetch task");
+    }
+
+    #[tokio::test]
+    async fn sync_now_signals_prefetch_wakeups() {
+        let db = Arc::new(Database::open_in_memory().unwrap());
+        let sink = Arc::new(NoopSink);
+        let creds: Arc<dyn crate::auth::CredentialSource> = Arc::new(FakeCreds);
+        let engine = SyncEngine::start(Arc::clone(&db), sink, creds);
+
+        let notify = Arc::new(Notify::new());
+        engine.prefetch_wakeups.lock().unwrap().insert(9, Arc::clone(&notify));
+        let waiter = tokio::spawn(async move { notify.notified().await });
+
+        engine.sync_now();
+
+        let woken = tokio::time::timeout(Duration::from_secs(1), waiter).await;
+        assert!(woken.is_ok(), "sync_now should also wake prefetch tasks");
     }
 }

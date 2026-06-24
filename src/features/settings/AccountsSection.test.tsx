@@ -41,6 +41,7 @@ vi.mock("../../ipc/bindings", () => ({
     beginReauth: vi.fn().mockResolvedValue({ status: "ok", data: null }),
     getSettings: vi.fn().mockResolvedValue({ status: "ok", data: [] }),
     setSetting: vi.fn().mockResolvedValue({ status: "ok", data: null }),
+    wakePrefetch: vi.fn().mockResolvedValue({ status: "ok", data: null }),
     listFolders: vi.fn().mockResolvedValue({ status: "ok", data: [] }),
   },
 }));
@@ -155,6 +156,7 @@ describe("AccountsSection", () => {
         JSON.stringify([11]),
       ),
     );
+    await waitFor(() => expect(commands.wakePrefetch).toHaveBeenCalledWith(1));
   });
 
   it("shows subfolders nested under their parent in the modal", async () => {

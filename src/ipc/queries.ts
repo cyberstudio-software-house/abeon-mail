@@ -776,6 +776,7 @@ export function useToggleFolderPrefetch() {
       const current = parsePrefetchFoldersMap(all).get(accountId) ?? [];
       const next = togglePrefetchedIds(current, folderId);
       await commands.setSetting(prefetchFoldersKey(accountId), JSON.stringify(next)).then(unwrap);
+      await commands.wakePrefetch(accountId).then(unwrap);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["prefetch-folders"] });
@@ -795,8 +796,10 @@ export function useAccountPrefetch(accountId: number | null) {
 export function useSetAccountPrefetch() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ accountId, value }: { accountId: number; value: boolean }) =>
-      commands.setSetting(prefetchBodiesKey(accountId), value ? "true" : "false").then(unwrap),
+    mutationFn: async ({ accountId, value }: { accountId: number; value: boolean }) => {
+      await commands.setSetting(prefetchBodiesKey(accountId), value ? "true" : "false").then(unwrap);
+      await commands.wakePrefetch(accountId).then(unwrap);
+    },
     onSuccess: (_data, { accountId }) => {
       queryClient.invalidateQueries({ queryKey: ["prefetch-bodies", accountId] });
     },

@@ -546,7 +546,7 @@ pub async fn incremental_sync_folder(
     folder_id: i64,
     creds: &dyn CredentialSource,
     sink: &dyn SyncEventSink,
-) -> Result<(), SyncError> {
+) -> Result<i64, SyncError> {
     let account = accounts_repo::get_account(db, account_id)?;
     let endpoints = load_endpoints(db, account_id)?;
     let folder = folders_repo::get_folder(db, folder_id)?;
@@ -569,7 +569,7 @@ pub async fn incremental_sync_folder(
         let unread = folders_repo::recount_unread(db, folder_id)?;
         folders_repo::set_counts(db, folder_id, unread, state.exists)?;
         sink.emit(SyncEvent::MailboxChanged { account_id, folder_id });
-        return Ok(());
+        return Ok(headers.len() as i64);
     }
 
     let caps = session.server_caps().await?;
@@ -616,7 +616,7 @@ pub async fn incremental_sync_folder(
         sink.emit(SyncEvent::NewMessages { account_id, folder_id, count: new_count });
     }
     sink.emit(SyncEvent::MailboxChanged { account_id, folder_id });
-    Ok(())
+    Ok(new_count)
 }
 
 pub async fn run_prefetch_batch(
@@ -635,6 +635,22 @@ pub async fn run_prefetch_batch(
         am_storage::settings_repo::get_setting(db, &format!("prefetch.folders.{account_id}"))?,
     );
     if selected.is_empty() {
+        return Ok(false);
+    }
+
+    let mut has_pending = false;
+    for &folder_id in &selected {
+        if folders_repo::get_folder(db, folder_id).is_err() {
+            continue;
+        }
+        if !folders_repo::get_backfill_complete(db, folder_id)?
+            || messages_repo::count_without_body(db, folder_id)? > 0
+        {
+            has_pending = true;
+            break;
+        }
+    }
+    if !has_pending {
         return Ok(false);
     }
 
@@ -1457,5 +1473,50 @@ mod path_tests {
     fn child_path_appends_with_delimiter() {
         assert_eq!(child_path("Clients", "/", "Work"), "Clients/Work");
         assert_eq!(child_path("INBOX", ".", "Sub"), "INBOX.Sub");
+    }
+}
+
+#[cfg(test)]
+mod prefetch_precheck_tests {
+    use super::*;
+    use am_core::account::{NewAccount, ProviderType};
+    use am_core::folder::FolderType;
+    use am_storage::{accounts_repo, folders_repo, settings_repo, Database};
+    use crate::events::NoopSink;
+
+    struct PanicCreds;
+
+    #[async_trait::async_trait]
+    impl crate::auth::CredentialSource for PanicCreds {
+        async fn auth_for(
+            &self,
+            _account: &am_core::account::Account,
+        ) -> Result<crate::auth::AccountAuth, SyncError> {
+            panic!("auth_for must not be called when nothing is pending to prefetch");
+        }
+    }
+
+    #[tokio::test]
+    async fn run_prefetch_batch_skips_session_when_nothing_pending() {
+        let db = Database::open_in_memory().unwrap();
+        let account = accounts_repo::insert_account(&db, &NewAccount {
+            email: "p@e.com".into(), display_name: "P".into(),
+            provider_type: ProviderType::ImapPassword, color: None,
+        }).unwrap();
+        let inbox = folders_repo::upsert_folder(&db, account.id, "INBOX", "Inbox", FolderType::Inbox).unwrap();
+        folders_repo::set_backfill_complete(&db, inbox.id, true).unwrap();
+        settings_repo::set_setting(&db, &format!("prefetch.bodies.{}", account.id), "true").unwrap();
+        settings_repo::set_setting(
+            &db,
+            &format!("prefetch.folders.{}", account.id),
+            &format!("[{}]", inbox.id),
+        ).unwrap();
+
+        let creds = PanicCreds;
+        let sink = NoopSink;
+        let worked = run_prefetch_batch(&db, account.id, &creds, &sink)
+            .await
+            .expect("run_prefetch_batch should succeed");
+        assert!(!worked, "no pending bodies => no work and no IMAP session opened");
     }
 }

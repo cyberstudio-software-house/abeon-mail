@@ -49,6 +49,7 @@ pub fn build_specta_builder() -> Builder<tauri::Wry> {
             commands::thread_for_message,
             commands::enqueue_send,
             commands::sync_now,
+            commands::wake_prefetch,
             commands::list_send_errors,
             commands::retry_send,
             commands::dismiss_send_error,

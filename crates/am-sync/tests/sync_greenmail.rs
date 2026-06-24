@@ -445,9 +445,10 @@ async fn prefetch_downloads_bodies_without_marking_seen() {
         assert!(service::get_or_fetch_body(&db, h.id, creds.as_ref()).await.unwrap().text_plain.is_some());
     }
 
-    service::incremental_sync_folder(&db, account.id, inbox.id, creds.as_ref(), &sink)
+    let resynced = service::incremental_sync_folder(&db, account.id, inbox.id, creds.as_ref(), &sink)
         .await
         .expect("incremental sync failed");
+    assert_eq!(resynced, 0, "re-syncing with no new mail reports zero new messages");
     let after = messages_repo::list_by_folder(&db, inbox.id, 50, 0, i64::MAX).unwrap();
     assert!(after.iter().all(|h| !h.seen), "prefetch must not mark messages seen");
 
