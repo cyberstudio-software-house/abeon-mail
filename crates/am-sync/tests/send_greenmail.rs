@@ -248,6 +248,13 @@ async fn enqueue_and_drain_sends_and_appends_to_sent() {
         "draft should be deleted after send, got ids: {draft_ids:?}"
     );
 
+    let sent_after_drain = messages_repo::list_by_folder(&db, sent_folder.id, 50, 0, i64::MAX)
+        .expect("list Sent after drain");
+    assert!(
+        sent_after_drain.iter().any(|m| m.subject == SEND_SUBJECT),
+        "drain_outbox should sync the Sent copy immediately"
+    );
+
     sync_folder(&db, account.id, sent_folder.id, creds.as_ref(), |_| {})
         .await
         .expect("sync Sent folder failed");

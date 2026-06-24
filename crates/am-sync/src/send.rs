@@ -246,6 +246,7 @@ pub async fn drain_outbox(db: &Database, account_id: i64, creds: &dyn Credential
                         }
                         let _ = session.logout().await;
                     }
+                    let _ = crate::service::incremental_sync_folder(db, account_id, sent.id, creds, sink).await;
                 }
                 drafts_repo::delete_draft(db, draft_id)?;
             }
