@@ -87,6 +87,6 @@ jobs:
           tagName: ${{ github.ref_name }}
           releaseName: 'AbeonMail ${{ github.ref_name }}'
           releaseBody: 'Pobierz właściwy plik instalacyjny dla swojej platformy z sekcji Assets.'
-          releaseDraft: true
+          releaseDraft: false
           prerelease: false
           args: ${{ matrix.args }}
