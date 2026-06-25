@@ -24,6 +24,7 @@ export function useSyncEvents() {
       queryClient.invalidateQueries({ queryKey: ["folders", account_id] });
       queryClient.invalidateQueries({ queryKey: ["messages", folder_id] });
       queryClient.invalidateQueries({ queryKey: ["threads"] });
+      queryClient.invalidateQueries({ queryKey: ["thread-messages"] });
       queryClient.invalidateQueries({ queryKey: ["smart"] });
     });
 
@@ -32,6 +33,7 @@ export function useSyncEvents() {
       queryClient.invalidateQueries({ queryKey: ["folders", account_id] });
       queryClient.invalidateQueries({ queryKey: ["messages", folder_id] });
       queryClient.invalidateQueries({ queryKey: ["threads"] });
+      queryClient.invalidateQueries({ queryKey: ["thread-messages"] });
       queryClient.invalidateQueries({ queryKey: ["smart"] });
       void maybeNotifyNewMail(event.payload);
       void commands.refreshUnreadBadge(useUiStore.getState().badgeEnabled);
@@ -42,6 +44,7 @@ export function useSyncEvents() {
       queryClient.invalidateQueries({ queryKey: ["folders", account_id] });
       queryClient.invalidateQueries({ queryKey: ["messages", folder_id] });
       queryClient.invalidateQueries({ queryKey: ["threads"] });
+      queryClient.invalidateQueries({ queryKey: ["thread-messages"] });
       queryClient.invalidateQueries({ queryKey: ["smart"] });
       void commands.refreshUnreadBadge(useUiStore.getState().badgeEnabled);
     });
@@ -54,6 +57,7 @@ export function useSyncEvents() {
       queryClient.invalidateQueries({ queryKey: ["folders"] });
       queryClient.invalidateQueries({ queryKey: ["messages"] });
       queryClient.invalidateQueries({ queryKey: ["threads"] });
+      queryClient.invalidateQueries({ queryKey: ["thread-messages"] });
       queryClient.invalidateQueries({ queryKey: ["smart"] });
       void commands.refreshUnreadBadge(useUiStore.getState().badgeEnabled);
     });

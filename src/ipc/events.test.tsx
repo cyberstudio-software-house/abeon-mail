@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderHook, waitFor, cleanup } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import type { QueryKey } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { useUiStore } from "../app/store";
 import { useSyncEvents } from "./events";
@@ -91,6 +92,19 @@ describe("useSyncEvents notifications", () => {
     await waitFor(() => expect(h.sendNotification).toHaveBeenCalledWith({ title: "Alice", body: "Hi" }));
     expect(h.buildNewMailNotification).toHaveBeenCalledWith(2, 1);
     await waitFor(() => expect(h.refreshUnreadBadge).toHaveBeenCalledWith(true));
+  });
+
+  it("refreshes the open conversation when new mail arrives", async () => {
+    const invalidateSpy = vi.spyOn(QueryClient.prototype, "invalidateQueries");
+    renderHook(() => useSyncEvents(), { wrapper });
+    await waitFor(() => expect(h.newMessagesCb).not.toBeNull());
+    invalidateSpy.mockClear();
+    h.newMessagesCb!({ payload: { account_id: 1, folder_id: 2, count: 1 } });
+    await waitFor(() => {
+      const keys = invalidateSpy.mock.calls.map((c) => (c[0] as { queryKey: QueryKey }).queryKey);
+      expect(keys).toContainEqual(["thread-messages"]);
+    });
+    invalidateSpy.mockRestore();
   });
 
   it("does not notify when the window is focused", async () => {
