@@ -320,7 +320,7 @@ describe("Composer", () => {
     render(<Composer />, { wrapper: Wrapper });
     await screen.findByRole("dialog");
 
-    const insertImageButton = screen.getByRole("button", { name: "Insert image" });
+    const insertImageButton = screen.getByRole("button", { name: "Wstaw obraz" });
     await act(async () => {
       fireEvent.click(insertImageButton);
     });

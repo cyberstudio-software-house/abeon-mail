@@ -1,7 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
-import StarterKit from "@tiptap/starter-kit";
-import { Image } from "@tiptap/extension-image";
+import { createEditorExtensions } from "./editor/extensions";
+import { EditorToolbar } from "./editor/EditorToolbar";
 import { commands } from "../../ipc/bindings";
 import type { OutgoingAttachment, Signature } from "../../ipc/bindings";
 import { useAccounts, useSaveDraft, useEnqueueSend, useDiscardDraft } from "../../ipc/queries";
@@ -71,7 +71,7 @@ export function Composer() {
   const accountId = fromAccountId ?? (accounts[0]?.id ?? null);
 
   const editor = useEditor({
-    extensions: [StarterKit, Image],
+    extensions: createEditorExtensions(),
     content: prefill?.html_body ?? "",
   });
 
@@ -333,53 +333,7 @@ export function Composer() {
           </div>
         </div>
 
-        <div className="composer-toolbar">
-          <button
-            type="button"
-            className={`toolbar-btn${editor?.isActive("bold") ? " active" : ""}`}
-            aria-label="Bold"
-            onClick={() => editor?.chain().focus().toggleBold().run()}
-          >
-            <strong>B</strong>
-          </button>
-          <button
-            type="button"
-            className={`toolbar-btn${editor?.isActive("italic") ? " active" : ""}`}
-            aria-label="Italic"
-            onClick={() => editor?.chain().focus().toggleItalic().run()}
-          >
-            <em>I</em>
-          </button>
-          <button
-            type="button"
-            className={`toolbar-btn${editor?.isActive("bulletList") ? " active" : ""}`}
-            aria-label="Bullet list"
-            onClick={() => editor?.chain().focus().toggleBulletList().run()}
-          >
-            ≡
-          </button>
-          <button
-            type="button"
-            className="toolbar-btn"
-            aria-label="Insert link"
-            onClick={() => {
-              const url = window.prompt("URL");
-              if (url) {
-                editor?.chain().focus().setLink({ href: url }).run();
-              }
-            }}
-          >
-            🔗
-          </button>
-          <button
-            type="button"
-            className="toolbar-btn"
-            aria-label="Insert image"
-            onClick={handleInsertImage}
-          >
-            🖼
-          </button>
-        </div>
+        <EditorToolbar editor={editor} onInsertImage={handleInsertImage} />
 
         <div className="composer-editor">
           <EditorContent editor={editor} />
