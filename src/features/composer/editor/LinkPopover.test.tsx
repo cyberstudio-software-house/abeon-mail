@@ -15,7 +15,7 @@ describe("LinkPopover", () => {
     expect(chain.setLink).toHaveBeenCalledWith({ href: "https://example.com" });
   });
 
-  it("inserts an anchor when link text is provided", async () => {
+  it("inserts a link mark via structured content when text is provided", async () => {
     const user = userEvent.setup();
     const { editor, chain } = createEditorMock();
     render(<LinkPopover editor={editor} />);
@@ -23,6 +23,22 @@ describe("LinkPopover", () => {
     await user.type(screen.getByLabelText("URL"), "https://example.com");
     await user.type(screen.getByLabelText("Tekst linku"), "Example");
     await user.click(screen.getByText("Wstaw"));
-    expect(chain.insertContent).toHaveBeenCalledWith('<a href="https://example.com">Example</a>');
+    expect(chain.insertContent).toHaveBeenCalledWith({
+      type: "text",
+      text: "Example",
+      marks: [{ type: "link", attrs: { href: "https://example.com" } }],
+    });
+  });
+
+  it("rejects a javascript: URL", async () => {
+    const user = userEvent.setup();
+    const { editor, chain } = createEditorMock();
+    render(<LinkPopover editor={editor} />);
+    await user.click(screen.getByLabelText("Wstaw link"));
+    await user.type(screen.getByLabelText("URL"), "javascript:alert(1)");
+    await user.type(screen.getByLabelText("Tekst linku"), "x");
+    await user.click(screen.getByText("Wstaw"));
+    expect(chain.insertContent).not.toHaveBeenCalled();
+    expect(chain.setLink).not.toHaveBeenCalled();
   });
 });
