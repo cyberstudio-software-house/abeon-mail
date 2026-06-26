@@ -128,6 +128,36 @@ pub fn mark_folder_seen(db: &Database, folder_id: i64) -> Result<usize, StorageE
     )?)
 }
 
+pub fn mark_self_echoes_seen(db: &Database, account_id: i64) -> Result<Vec<(i64, Option<i64>)>, StorageError> {
+    let conn = db.conn();
+    let rows: Vec<(i64, i64, Option<i64>)> = {
+        let mut stmt = conn.prepare(
+            "SELECT id, folder_id, thread_id FROM messages
+             WHERE account_id = ?1 AND seen = 0 AND deleted = 0 AND draft = 0
+               AND message_id_hdr IS NOT NULL
+               AND folder_id NOT IN (SELECT id FROM folders WHERE account_id = ?1 AND folder_type = 'sent')
+               AND message_id_hdr IN (
+                   SELECT m2.message_id_hdr FROM messages m2
+                   JOIN folders f2 ON f2.id = m2.folder_id
+                   WHERE f2.account_id = ?1 AND f2.folder_type = 'sent'
+                     AND m2.deleted = 0 AND m2.draft = 0 AND m2.message_id_hdr IS NOT NULL
+               )",
+        )?;
+        let mapped = stmt.query_map(params![account_id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?;
+        let mut out = Vec::new();
+        for r in mapped {
+            out.push(r?);
+        }
+        out
+    };
+    let mut affected = Vec::with_capacity(rows.len());
+    for (id, folder_id, thread_id) in rows {
+        conn.execute("UPDATE messages SET seen = 1 WHERE id = ?1", params![id])?;
+        affected.push((folder_id, thread_id));
+    }
+    Ok(affected)
+}
+
 pub fn thread_ids_in_folder(db: &Database, folder_id: i64) -> Result<Vec<i64>, StorageError> {
     let conn = db.conn();
     let mut stmt = conn.prepare(
@@ -1230,5 +1260,44 @@ mod tests {
         set_deleted(&db, first_id, true).unwrap();
         assert_eq!(count_active_by_folder(&db, folder.id).unwrap(), 1);
         assert_eq!(count_by_folder(&db, folder.id).unwrap(), 2);
+    }
+
+    #[test]
+    fn mark_self_echoes_seen_clears_inbox_copy_of_sent_message() {
+        let db = Database::open_in_memory().unwrap();
+        let account = insert_account(&db, &sample_account()).unwrap();
+        let inbox = upsert_folder(&db, account.id, "INBOX", "Inbox", FolderType::Inbox).unwrap();
+        let sent = upsert_folder(&db, account.id, "Sent", "Sent", FolderType::Sent).unwrap();
+
+        let echo_header = |uid: i64, seen: bool| NewMessageHeader {
+            uid,
+            message_id_hdr: Some("<echo@example.com>".into()),
+            in_reply_to: None,
+            references_hdr: None,
+            from_address: "test@example.com".into(),
+            from_name: Some("Me".into()),
+            subject: "Re: Spotkanie".into(),
+            date: 1000,
+            seen,
+            flagged: false,
+            answered: false,
+            has_attachments: false,
+            size: 1,
+            snippet: String::new(),
+        };
+        insert_headers(&db, sent.id, &[echo_header(10, true)]).unwrap();
+        insert_headers(&db, inbox.id, &[echo_header(20, false)]).unwrap();
+        insert_headers(&db, inbox.id, &[make_header(30, 2000)]).unwrap();
+
+        let inbox_echo_id = ids_by_uids(&db, inbox.id, &[20]).unwrap()[0];
+        let control_id = ids_by_uids(&db, inbox.id, &[30]).unwrap()[0];
+        let sent_echo_id = ids_by_uids(&db, sent.id, &[10]).unwrap()[0];
+
+        let affected = mark_self_echoes_seen(&db, account.id).unwrap();
+
+        assert!(get_header(&db, inbox_echo_id).unwrap().seen, "inbox copy of own sent message becomes seen");
+        assert!(!get_header(&db, control_id).unwrap().seen, "unrelated unread message stays unread");
+        assert!(get_header(&db, sent_echo_id).unwrap().seen, "sent copy is untouched");
+        assert_eq!(affected, vec![(inbox.id, None)], "returns the affected inbox folder for recount");
     }
 }

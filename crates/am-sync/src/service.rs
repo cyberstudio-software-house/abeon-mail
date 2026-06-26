@@ -313,6 +313,22 @@ pub fn assign_threads(db: &Database, account_id: i64) -> Result<(), SyncError> {
     for thread_id in touched {
         threads_repo::recompute(db, thread_id)?;
     }
+
+    let echoes = messages_repo::mark_self_echoes_seen(db, account_id)?;
+    let mut echo_folders: std::collections::HashSet<i64> = std::collections::HashSet::new();
+    let mut echo_threads: std::collections::HashSet<i64> = std::collections::HashSet::new();
+    for (folder_id, thread_id) in echoes {
+        echo_folders.insert(folder_id);
+        if let Some(thread_id) = thread_id {
+            echo_threads.insert(thread_id);
+        }
+    }
+    for folder_id in echo_folders {
+        folders_repo::recount_unread(db, folder_id)?;
+    }
+    for thread_id in echo_threads {
+        threads_repo::recompute(db, thread_id)?;
+    }
     Ok(())
 }
 
@@ -1143,6 +1159,34 @@ mod move_tests {
             id: op_id, account_id, op_type: "move_message".into(),
             payload: "{}".into(), attempts,
         }
+    }
+
+    #[test]
+    fn assign_threads_marks_self_sent_echo_seen_and_recounts_folder() {
+        let db = Database::open_in_memory().unwrap();
+        let account = accounts_repo::insert_account(&db, &NewAccount {
+            email: "m@e.com".into(), display_name: "M".into(),
+            provider_type: ProviderType::ImapPassword, color: None,
+        }).unwrap();
+        let inbox = folders_repo::upsert_folder(&db, account.id, "INBOX", "Inbox", FolderType::Inbox).unwrap();
+        let sent = folders_repo::upsert_folder(&db, account.id, "Sent", "Sent", FolderType::Sent).unwrap();
+
+        let echo = |uid: i64, seen: bool| NewMessageHeader {
+            uid, message_id_hdr: Some("<echo@e>".into()), in_reply_to: None, references_hdr: None,
+            from_address: "m@e.com".into(), from_name: None, subject: "Re: Spotkanie".into(), date: uid,
+            seen, flagged: false, answered: false, has_attachments: false, size: 1, snippet: "x".into(),
+        };
+        messages_repo::insert_headers(&db, sent.id, &[echo(10, true)]).unwrap();
+        messages_repo::insert_headers(&db, inbox.id, &[echo(20, false)]).unwrap();
+        assert_eq!(folders_repo::recount_unread(&db, inbox.id).unwrap(), 1, "INBOX echo starts unread");
+
+        assign_threads(&db, account.id).unwrap();
+
+        let folders = folders_repo::list_folders(&db, account.id).unwrap();
+        let inbox_unread = folders.iter().find(|f| f.id == inbox.id).unwrap().unread_count;
+        assert_eq!(inbox_unread, 0, "self-sent echo no longer counts toward the INBOX badge");
+        let inbox_msg = messages_repo::list_by_folder(&db, inbox.id, 10, 0, i64::MAX).unwrap();
+        assert!(inbox_msg[0].seen, "the INBOX copy of the own sent message is marked seen");
     }
 
     #[test]
