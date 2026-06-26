@@ -537,6 +537,7 @@
 
 .composer-editor .tiptap th,
 .composer-editor .tiptap td {
+  position: relative;
   border: 1px solid var(--border, #cbd5e1);
   padding: 4px 8px;
   vertical-align: top;
