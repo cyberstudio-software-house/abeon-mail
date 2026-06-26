@@ -37,3 +37,4 @@ exports.Video = Icon;
 exports.Phone = Icon;
 exports.Loader2 = Icon;
 exports.Table = Icon;
+exports.Link = Icon;
