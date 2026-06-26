@@ -39,6 +39,11 @@ function resolveInitialFromAccount(isBlankCompose: boolean, activeAccountId: num
   return isBlankCompose ? activeAccountId : null;
 }
 
+function buildInitialContent(htmlBody: string | null | undefined, isReplyOrForward: boolean): string {
+  if (!htmlBody) return "";
+  return isReplyOrForward ? `<p></p>${htmlBody}` : htmlBody;
+}
+
 export function Composer() {
   const composer = useUiStore((s) => s.composer);
   const closeComposer = useUiStore((s) => s.closeComposer);
@@ -72,14 +77,17 @@ export function Composer() {
 
   const editor = useEditor({
     extensions: createEditorExtensions(),
-    content: prefill?.html_body ?? "",
+    content: buildInitialContent(prefill?.html_body, composer.draftId == null),
   });
 
   useEffect(() => {
     if (prefill?.html_body && editor) {
-      editor.commands.setContent(prefill.html_body);
+      editor.commands.setContent(buildInitialContent(prefill.html_body, composer.draftId == null));
+      if (composer.draftId == null) {
+        editor.commands.focus("start");
+      }
     }
-  }, [prefill?.html_body, editor]);
+  }, [prefill?.html_body, editor, composer.draftId]);
 
   const [signatures, setSignatures] = useState<Signature[]>([]);
   const signatureInsertedRef = useRef(false);
