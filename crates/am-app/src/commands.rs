@@ -14,6 +14,7 @@ use am_core::{
     rule::{Rule, RuleInput},
     signature::Signature,
     smart::{SmartFolderKind, SmartMessageRow},
+    thread::ThreadListFilters,
     thread::ThreadSummary,
 };
 use am_storage::{accounts_repo, drafts_repo, folders_repo, labels_repo, messages_repo, notifications_repo, queue_repo, settings_repo, signatures_repo, smart_repo};
@@ -623,10 +624,11 @@ pub fn undo_move(
 pub fn list_threads(
     state: tauri::State<'_, AppState>,
     folder_id: i64,
+    filters: ThreadListFilters,
     limit: i64,
     offset: i64,
 ) -> Result<Vec<ThreadSummary>, String> {
-    am_storage::threads_repo::list_for_folder(&state.db, folder_id, limit, offset, am_sync::service::now_secs()).map_err(|e| e.to_string())
+    am_storage::threads_repo::list_for_folder_filtered(&state.db, folder_id, &filters, limit, offset, am_sync::service::now_secs()).map_err(|e| e.to_string())
 }
 
 #[tauri::command]

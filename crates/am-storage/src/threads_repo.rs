@@ -1,4 +1,4 @@
-use am_core::thread::ThreadSummary;
+use am_core::thread::{ThreadListFilters, ThreadSortDir, ThreadSummary};
 use rusqlite::params;
 use crate::db::{Database, StorageError};
 
@@ -53,9 +53,65 @@ pub fn create(db: &Database, account_id: i64, subject_root: &str, last_date: i64
     Ok(conn.last_insert_rowid())
 }
 
+fn like_contains(term: &str) -> String {
+    let escaped = term
+        .replace('\\', "\\\\")
+        .replace('%', "\\%")
+        .replace('_', "\\_");
+    format!("%{escaped}%")
+}
+
 pub fn list_for_folder(db: &Database, folder_id: i64, limit: i64, offset: i64, now: i64) -> Result<Vec<ThreadSummary>, StorageError> {
+    list_for_folder_filtered(db, folder_id, &ThreadListFilters::default(), limit, offset, now)
+}
+
+pub fn list_for_folder_filtered(
+    db: &Database,
+    folder_id: i64,
+    filters: &ThreadListFilters,
+    limit: i64,
+    offset: i64,
+    now: i64,
+) -> Result<Vec<ThreadSummary>, StorageError> {
     let conn = db.conn();
-    let mut stmt = conn.prepare(
+
+    let mut bind: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+    bind.push(Box::new(folder_id));
+    bind.push(Box::new(now));
+
+    let sender_clause = match filters.sender.as_deref().filter(|s| !s.is_empty()) {
+        Some(s) => {
+            let pat = like_contains(s);
+            bind.push(Box::new(pat.clone()));
+            bind.push(Box::new(pat));
+            "AND (from_address LIKE ? ESCAPE '\\' OR from_name LIKE ? ESCAPE '\\')"
+        }
+        None => "",
+    };
+
+    let subject_clause = match filters.subject.as_deref().filter(|s| !s.is_empty()) {
+        Some(s) => {
+            bind.push(Box::new(like_contains(s)));
+            "AND t.subject_root LIKE ? ESCAPE '\\'"
+        }
+        None => "",
+    };
+
+    let having_clause = if filters.attachments_only {
+        "HAVING MAX(m.has_attachments) = 1"
+    } else {
+        ""
+    };
+
+    let dir = match filters.sort_dir {
+        ThreadSortDir::Asc => "ASC",
+        ThreadSortDir::Desc => "DESC",
+    };
+
+    bind.push(Box::new(limit));
+    bind.push(Box::new(offset));
+
+    let sql = format!(
         "SELECT t.id, t.account_id, t.subject_root, t.last_date, t.message_count,
                 (SELECT count(*) FROM messages WHERE thread_id = t.id AND draft = 0 AND deleted = 0 AND seen = 0
                   AND id IN (SELECT MIN(id) FROM messages WHERE thread_id = t.id AND draft = 0
@@ -63,8 +119,7 @@ pub fn list_for_folder(db: &Database, folder_id: i64, limit: i64, offset: i64, n
                 MAX(m.has_attachments), MAX(m.flagged),
                 group_concat(DISTINCT COALESCE(m.from_name, m.from_address)),
                 (SELECT snippet FROM messages WHERE thread_id = t.id ORDER BY date DESC LIMIT 1),
-                (SELECT subject FROM messages WHERE thread_id = t.id ORDER BY date DESC LIMIT 1)
-                ,
+                (SELECT subject FROM messages WHERE thread_id = t.id ORDER BY date DESC LIMIT 1),
                 (SELECT m2.answered FROM messages m2
                   WHERE m2.thread_id = t.id AND m2.draft = 0 AND m2.deleted = 0
                     AND m2.from_address <> (SELECT a.email FROM accounts a WHERE a.id = t.account_id)
@@ -72,14 +127,20 @@ pub fn list_for_folder(db: &Database, folder_id: i64, limit: i64, offset: i64, n
          FROM threads t
          JOIN messages m ON m.thread_id = t.id
          WHERE t.id IN (SELECT DISTINCT thread_id FROM messages
-                        WHERE folder_id = ?1 AND thread_id IS NOT NULL AND draft = 0 AND deleted = 0
-                          AND (snooze_wake_at IS NULL OR snooze_wake_at <= ?4))
+                        WHERE folder_id = ? AND thread_id IS NOT NULL AND draft = 0 AND deleted = 0
+                          AND (snooze_wake_at IS NULL OR snooze_wake_at <= ?)
+                          {sender_clause})
+           {subject_clause}
            AND m.draft = 0
          GROUP BY t.id
-         ORDER BY t.last_date DESC
-         LIMIT ?2 OFFSET ?3",
-    )?;
-    let rows = stmt.query_map(params![folder_id, limit, offset, now], |row| {
+         {having_clause}
+         ORDER BY t.last_date {dir}
+         LIMIT ? OFFSET ?"
+    );
+
+    let mut stmt = conn.prepare(&sql)?;
+    let param_refs: Vec<&dyn rusqlite::ToSql> = bind.iter().map(|b| b.as_ref()).collect();
+    let rows = stmt.query_map(rusqlite::params_from_iter(param_refs), |row| {
         let participants_csv: Option<String> = row.get(8)?;
         let latest_subject: Option<String> = row.get(10)?;
         let subject_root: String = row.get(2)?;
@@ -100,7 +161,9 @@ pub fn list_for_folder(db: &Database, folder_id: i64, limit: i64, offset: i64, n
         })
     })?;
     let mut out = Vec::new();
-    for r in rows { out.push(r?); }
+    for r in rows {
+        out.push(r?);
+    }
     Ok(out)
 }
 
@@ -126,6 +189,7 @@ mod tests {
     use am_core::account::{NewAccount, ProviderType};
     use am_core::folder::FolderType;
     use am_core::message::NewMessageHeader;
+    use am_core::thread::{ThreadListFilters, ThreadSortDir};
 
     fn sample_account() -> NewAccount {
         NewAccount {
@@ -155,10 +219,87 @@ mod tests {
         }
     }
 
+    fn make_header_full(
+        uid: i64,
+        date: i64,
+        message_id: &str,
+        from_address: &str,
+        subject: &str,
+        has_attachments: bool,
+    ) -> NewMessageHeader {
+        NewMessageHeader {
+            uid,
+            message_id_hdr: Some(message_id.to_string()),
+            in_reply_to: None,
+            references_hdr: None,
+            from_address: from_address.into(),
+            from_name: None,
+            subject: subject.into(),
+            date,
+            seen: true,
+            flagged: false,
+            answered: false,
+            has_attachments,
+            size: 512,
+            snippet: String::new(),
+        }
+    }
+
     fn setup(db: &Database) -> (i64, i64) {
         let account = insert_account(db, &sample_account()).unwrap();
         let folder_id = upsert_folder(db, account.id, "INBOX", "Inbox", FolderType::Inbox).unwrap().id;
         (account.id, folder_id)
+    }
+
+    #[test]
+    fn list_for_folder_filtered_sorts_filters_sender_subject_attachments() {
+        let db = Database::open_in_memory().unwrap();
+        let (account_id, folder_id) = setup(&db);
+
+        let ta = create(&db, account_id, "Invoice March", 1000).unwrap();
+        insert_headers(&db, folder_id, &[make_header_full(1, 1000, "<a@x>", "alice@example.com", "Invoice March", true)]).unwrap();
+        let tb = create(&db, account_id, "Lunch plans", 2000).unwrap();
+        insert_headers(&db, folder_id, &[make_header_full(2, 2000, "<b@x>", "bob@example.com", "Lunch plans", false)]).unwrap();
+        {
+            let conn = db.conn();
+            conn.execute("UPDATE messages SET thread_id = ?1 WHERE message_id_hdr = '<a@x>'", params![ta]).unwrap();
+            conn.execute("UPDATE messages SET thread_id = ?1 WHERE message_id_hdr = '<b@x>'", params![tb]).unwrap();
+        }
+        let ids = |v: &[ThreadSummary]| v.iter().map(|t| t.thread_id).collect::<Vec<_>>();
+
+        let def = list_for_folder_filtered(&db, folder_id, &ThreadListFilters::default(), 10, 0, i64::MAX).unwrap();
+        assert_eq!(ids(&def), vec![tb, ta]);
+
+        let asc = list_for_folder_filtered(&db, folder_id, &ThreadListFilters { sort_dir: ThreadSortDir::Asc, ..Default::default() }, 10, 0, i64::MAX).unwrap();
+        assert_eq!(ids(&asc), vec![ta, tb]);
+
+        let sender = list_for_folder_filtered(&db, folder_id, &ThreadListFilters { sender: Some("alice".into()), ..Default::default() }, 10, 0, i64::MAX).unwrap();
+        assert_eq!(ids(&sender), vec![ta]);
+
+        let subject = list_for_folder_filtered(&db, folder_id, &ThreadListFilters { subject: Some("Lunch".into()), ..Default::default() }, 10, 0, i64::MAX).unwrap();
+        assert_eq!(ids(&subject), vec![tb]);
+
+        let att = list_for_folder_filtered(&db, folder_id, &ThreadListFilters { attachments_only: true, ..Default::default() }, 10, 0, i64::MAX).unwrap();
+        assert_eq!(ids(&att), vec![ta]);
+    }
+
+    #[test]
+    fn list_for_folder_filtered_escapes_like_wildcards() {
+        let db = Database::open_in_memory().unwrap();
+        let (account_id, folder_id) = setup(&db);
+
+        let t1 = create(&db, account_id, "50% off sale", 1000).unwrap();
+        insert_headers(&db, folder_id, &[make_header_full(1, 1000, "<p@x>", "promo@example.com", "50% off sale", false)]).unwrap();
+        let t2 = create(&db, account_id, "500 dollars off", 2000).unwrap();
+        insert_headers(&db, folder_id, &[make_header_full(2, 2000, "<q@x>", "promo@example.com", "500 dollars off", false)]).unwrap();
+        {
+            let conn = db.conn();
+            conn.execute("UPDATE messages SET thread_id = ?1 WHERE message_id_hdr = '<p@x>'", params![t1]).unwrap();
+            conn.execute("UPDATE messages SET thread_id = ?1 WHERE message_id_hdr = '<q@x>'", params![t2]).unwrap();
+        }
+
+        let res = list_for_folder_filtered(&db, folder_id, &ThreadListFilters { subject: Some("50%".into()), ..Default::default() }, 10, 0, i64::MAX).unwrap();
+        assert_eq!(res.iter().map(|t| t.thread_id).collect::<Vec<_>>(), vec![t1]);
     }
 
     #[test]

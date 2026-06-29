@@ -64,7 +64,7 @@ export const commands = {
 	moveMessages: (messageIds: number[], targetFolderId: number) => typedError<null, string>(__TAURI_INVOKE("move_messages", { messageIds, targetFolderId })),
 	messageIdsForThreads: (threadIds: number[]) => typedError<number[], string>(__TAURI_INVOKE("message_ids_for_threads", { threadIds })),
 	markMessageSeen: (messageId: number) => typedError<null, string>(__TAURI_INVOKE("mark_message_seen", { messageId })),
-	listThreads: (folderId: number, limit: number, offset: number) => typedError<ThreadSummary[], string>(__TAURI_INVOKE("list_threads", { folderId, limit, offset })),
+	listThreads: (folderId: number, filters: ThreadListFilters, limit: number, offset: number) => typedError<ThreadSummary[], string>(__TAURI_INVOKE("list_threads", { folderId, filters, limit, offset })),
 	listThreadMessages: (threadId: number) => typedError<MessageHeader[], string>(__TAURI_INVOKE("list_thread_messages", { threadId })),
 	threadForMessage: (messageId: number) => typedError<number, string>(__TAURI_INVOKE("thread_for_message", { messageId })),
 	enqueueSend: (draftId: number) => typedError<null, string>(__TAURI_INVOKE("enqueue_send", { draftId })),
@@ -386,6 +386,15 @@ export type SyncProgress = {
 	fetched: number,
 	total: number,
 };
+
+export type ThreadListFilters = {
+	sort_dir: ThreadSortDir,
+	sender: string | null,
+	subject: string | null,
+	attachments_only: boolean,
+};
+
+export type ThreadSortDir = "asc" | "desc";
 
 export type ThreadSummary = {
 	thread_id: number,

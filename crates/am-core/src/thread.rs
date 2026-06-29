@@ -14,3 +14,19 @@ pub struct ThreadSummary {
     pub flagged: bool,
     pub answered: bool,
 }
+
+#[derive(Serialize, Deserialize, specta::Type, Clone, Debug, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum ThreadSortDir {
+    Asc,
+    #[default]
+    Desc,
+}
+
+#[derive(Serialize, Deserialize, specta::Type, Clone, Debug, PartialEq, Eq, Default)]
+pub struct ThreadListFilters {
+    pub sort_dir: ThreadSortDir,
+    pub sender: Option<String>,
+    pub subject: Option<String>,
+    pub attachments_only: bool,
+}
