@@ -4,12 +4,15 @@ export type MarkReadMode = "immediate" | "delay" | "never";
 
 export type ThreadOrder = "ascending" | "descending";
 
+export type ListSortDir = "asc" | "desc";
+
 export type GeneralFields = {
   defaultAccountId: string;
   timeFormat: TimeFormat;
   markReadMode: MarkReadMode;
   markReadDelaySeconds: number;
   threadOrder: ThreadOrder;
+  listSortDir: ListSortDir;
 };
 
 export const GENERAL_KEYS = {
@@ -18,6 +21,7 @@ export const GENERAL_KEYS = {
   markReadMode: "general.markReadMode",
   markReadDelaySeconds: "general.markReadDelaySeconds",
   threadOrder: "general.threadOrder",
+  listSortDir: "general.listSortDir",
 } as const;
 
 export const DEFAULT_GENERAL: GeneralFields = {
@@ -26,6 +30,7 @@ export const DEFAULT_GENERAL: GeneralFields = {
   markReadMode: "immediate",
   markReadDelaySeconds: 2,
   threadOrder: "ascending",
+  listSortDir: "desc",
 };
 
 export const TIME_FORMATS: { value: TimeFormat; label: string }[] = [
@@ -57,6 +62,10 @@ function isThreadOrder(v: string): v is ThreadOrder {
   return v === "ascending" || v === "descending";
 }
 
+function isListSortDir(v: string): v is ListSortDir {
+  return v === "asc" || v === "desc";
+}
+
 export function parseGeneralSettings(pairs: [string, string][]): Partial<GeneralFields> {
   const out: Partial<GeneralFields> = {};
   for (const [key, value] of pairs) {
@@ -77,6 +86,9 @@ export function parseGeneralSettings(pairs: [string, string][]): Partial<General
       }
       case GENERAL_KEYS.threadOrder:
         if (isThreadOrder(value)) out.threadOrder = value;
+        break;
+      case GENERAL_KEYS.listSortDir:
+        if (isListSortDir(value)) out.listSortDir = value;
         break;
       default:
         break;

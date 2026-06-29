@@ -30,6 +30,7 @@ describe("parseGeneralSettings", () => {
       markReadMode: "immediate",
       markReadDelaySeconds: 2,
       threadOrder: "ascending",
+      listSortDir: "desc",
     });
   });
 
@@ -37,6 +38,16 @@ describe("parseGeneralSettings", () => {
     expect(parseGeneralSettings([[GENERAL_KEYS.threadOrder, "ascending"]]).threadOrder).toBe("ascending");
     expect(parseGeneralSettings([[GENERAL_KEYS.threadOrder, "descending"]]).threadOrder).toBe("descending");
     expect(parseGeneralSettings([[GENERAL_KEYS.threadOrder, "nope"]]).threadOrder).toBeUndefined();
+  });
+
+  it("whitelists listSortDir and rejects junk", () => {
+    expect(parseGeneralSettings([[GENERAL_KEYS.listSortDir, "asc"]]).listSortDir).toBe("asc");
+    expect(parseGeneralSettings([[GENERAL_KEYS.listSortDir, "desc"]]).listSortDir).toBe("desc");
+    expect(parseGeneralSettings([[GENERAL_KEYS.listSortDir, "nope"]]).listSortDir).toBeUndefined();
+  });
+
+  it("defaults listSortDir to desc", () => {
+    expect(DEFAULT_GENERAL.listSortDir).toBe("desc");
   });
 
   it("whitelists markReadMode and rejects junk", () => {
