@@ -32,6 +32,10 @@ vi.mock("../../app/store", () => ({
   useUiStore: vi.fn(),
 }));
 
+vi.mock("../../shared/general/GeneralProvider", () => ({
+  useGeneral: () => ({ listSortDir: "desc", setListSortDir: vi.fn() }),
+}));
+
 import { useThreads, useFolders, useDraftSummaries, useSmartFolder, useSearch } from "../../ipc/queries";
 import { useUiStore } from "../../app/store";
 import type { UiState, Density } from "../../app/store";
@@ -289,6 +293,15 @@ function setupStore(
       setSnoozeWeekendDay: vi.fn(),
       setSnoozeWeekStartDay: vi.fn(),
       hydrateSnooze: vi.fn(),
+      listSortDir: "desc",
+      listFilterSender: "",
+      listFilterSubject: "",
+      listFilterAttachmentsOnly: false,
+      setListSortDir: vi.fn(),
+      setListFilterSender: vi.fn(),
+      setListFilterSubject: vi.fn(),
+      setListFilterAttachmentsOnly: vi.fn(),
+      clearListFilters: vi.fn(),
       ...overrides,
     };
     return selector ? selector(state) : state;
@@ -532,7 +545,7 @@ describe("MessageListPane", () => {
     expect(mockOpenComposer).toHaveBeenCalledWith(null);
   });
 
-  it("sort label is a non-interactive placeholder", () => {
+  it("shows the filter/sort control in folder mode", () => {
     setupStore(10);
     mockUseThreads.mockReturnValue({
       data: sampleThreads,
@@ -549,9 +562,27 @@ describe("MessageListPane", () => {
 
     render(<MessageListPane />);
 
-    const newestEl = screen.getByText("Newest", { exact: false });
-    const ariaDisabledEl = newestEl.closest("[aria-disabled='true']");
-    expect(ariaDisabledEl).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /filter and sort/i })).not.toBeNull();
+  });
+
+  it("hides the filter/sort control in search mode", () => {
+    setupStore(null, "comfortable", null, true, "report");
+    mockUseThreads.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isError: false,
+      error: null,
+    } as unknown as ReturnType<typeof useThreads>);
+    mockUseSmartFolder.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isError: false,
+      error: null,
+    } as unknown as ReturnType<typeof useSmartFolder>);
+
+    render(<MessageListPane />);
+
+    expect(screen.queryByRole("button", { name: /filter and sort/i })).toBeNull();
   });
 
   it("renders label-view messages when a label is selected", () => {

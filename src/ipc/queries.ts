@@ -1,6 +1,6 @@
 import { useQuery, useQueries, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { commands } from "./bindings";
-import type { Account, DraftSummary, Endpoints, Folder, Label, MessageFlag, OutgoingMessage, Rule, RuleInput, RsvpStatus, SendError, Signature, SmartFolderKind, SmartMessageRow } from "./bindings";
+import type { Account, DraftSummary, Endpoints, Folder, Label, MessageFlag, OutgoingMessage, Rule, RuleInput, RsvpStatus, SendError, Signature, SmartFolderKind, SmartMessageRow, ThreadListFilters } from "./bindings";
 import { useUiStore } from "../app/store";
 import { parsePinnedMap, pinKey, togglePinnedIds } from "../features/mailbox/pinned";
 import { decodeFolderNames } from "../features/mailbox/folder-tree";
@@ -35,10 +35,10 @@ export function useDraftSummaries(accountId: number | null) {
   });
 }
 
-export function useThreads(folderId: number | null) {
+export function useThreads(folderId: number | null, filters: ThreadListFilters) {
   return useQuery({
-    queryKey: ["threads", folderId],
-    queryFn: () => commands.listThreads(folderId!, 100, 0).then(unwrap),
+    queryKey: ["threads", folderId, filters],
+    queryFn: () => commands.listThreads(folderId!, filters, 100, 0).then(unwrap),
     enabled: folderId != null,
   });
 }

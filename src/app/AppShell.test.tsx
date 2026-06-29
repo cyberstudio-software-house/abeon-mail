@@ -10,6 +10,10 @@ vi.mock("../features/startup/useStartupView", () => ({
   useStartupView: vi.fn(),
 }));
 
+vi.mock("../shared/general/GeneralProvider", () => ({
+  useGeneral: () => ({ listSortDir: "desc", setListSortDir: vi.fn() }),
+}));
+
 vi.mock("../ipc/client", () => ({
   health: vi.fn(async () => "ok"),
 }));
@@ -130,6 +134,15 @@ vi.mock("../app/store", () => ({
       snoozePickerTargetIds: [],
       openSnoozePicker: vi.fn(),
       closeSnoozePicker: vi.fn(),
+      listSortDir: "desc",
+      listFilterSender: "",
+      listFilterSubject: "",
+      listFilterAttachmentsOnly: false,
+      setListSortDir: vi.fn(),
+      setListFilterSender: vi.fn(),
+      setListFilterSubject: vi.fn(),
+      setListFilterAttachmentsOnly: vi.fn(),
+      clearListFilters: vi.fn(),
     };
     return selector ? selector(state) : state;
   },

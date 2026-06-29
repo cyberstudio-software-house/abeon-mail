@@ -7,12 +7,14 @@ vi.mock("./bindings", () => ({
     getSettings: vi.fn(),
     setSetting: vi.fn(),
     listFolders: vi.fn(),
+    listThreads: vi.fn(),
   },
   events: {},
 }));
 
 import { commands } from "./bindings";
-import { usePinnedMap, useTogglePinnedFolder } from "./queries";
+import { usePinnedMap, useTogglePinnedFolder, useThreads } from "./queries";
+import type { ThreadListFilters } from "./bindings";
 
 function wrapper({ children }: { children: React.ReactNode }) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -58,5 +60,24 @@ describe("pinned folder queries", () => {
     await waitFor(() =>
       expect(commands.setSetting).toHaveBeenCalledWith("folders.pinned.1", "[7]"),
     );
+  });
+});
+
+describe("useThreads", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("passes filters to listThreads with limit and offset", async () => {
+    const filters: ThreadListFilters = {
+      sort_dir: "asc",
+      sender: "alice",
+      subject: null,
+      attachments_only: true,
+    };
+    vi.mocked(commands.listThreads).mockResolvedValue({ status: "ok", data: [] });
+    const { result } = renderHook(() => useThreads(7, filters), { wrapper });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(commands.listThreads).toHaveBeenCalledWith(7, filters, 100, 0);
   });
 });

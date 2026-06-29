@@ -1,12 +1,13 @@
 import { useRef, useMemo, useEffect, type MouseEvent as ReactMouseEvent } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { PencilLine, ChevronDown, Reply } from "lucide-react";
+import { PencilLine, Reply } from "lucide-react";
 import { useThreads, useFolders, useSmartFolder, useSearch, useLabelsForMessages, useMessagesByLabel, useLabels } from "../../ipc/queries";
 import { DraftsList } from "./DraftsList";
+import { FilterSortMenu } from "./FilterSortMenu";
 import { formatListDate, formatWakeTime } from "../../shared/datetime/datetime";
 import { useDebouncedValue } from "../../shared/hooks/useDebouncedValue";
 import { useUiStore } from "../../app/store";
-import type { ThreadSummary, SmartMessageRow, Label } from "../../ipc/bindings";
+import type { ThreadSummary, SmartMessageRow, Label, ThreadListFilters } from "../../ipc/bindings";
 import { LabelChips } from "../labels/LabelChips";
 import { Avatar } from "../../shared/appearance/Avatar";
 import { groupIntoEntries, type ListEntry } from "./grouping";
@@ -211,13 +212,32 @@ export function MessageListPane() {
   const selectedLabelId = useUiStore((s) => s.selectedLabelId);
   const debouncedQuery = useDebouncedValue(searchQuery, 200);
 
+  const listSortDir = useUiStore((s) => s.listSortDir);
+  const listFilterSender = useUiStore((s) => s.listFilterSender);
+  const listFilterSubject = useUiStore((s) => s.listFilterSubject);
+  const listFilterAttachmentsOnly = useUiStore((s) => s.listFilterAttachmentsOnly);
+  const clearListFilters = useUiStore((s) => s.clearListFilters);
+
+  const debouncedSender = useDebouncedValue(listFilterSender, 200);
+  const debouncedSubject = useDebouncedValue(listFilterSubject, 200);
+
+  const threadFilters = useMemo<ThreadListFilters>(
+    () => ({
+      sort_dir: listSortDir,
+      sender: debouncedSender.trim() === "" ? null : debouncedSender,
+      subject: debouncedSubject.trim() === "" ? null : debouncedSubject,
+      attachments_only: listFilterAttachmentsOnly,
+    }),
+    [listSortDir, debouncedSender, debouncedSubject, listFilterAttachmentsOnly]
+  );
+
   function handleRowClick(e: ReactMouseEvent, rowId: number) {
     if (e.shiftKey) selectRangeTo(rowId);
     else if (e.metaKey || e.ctrlKey) toggleRow(rowId);
     else selectRow(rowId);
   }
 
-  const { data: threads, isLoading: threadsLoading } = useThreads(selectedFolderId);
+  const { data: threads, isLoading: threadsLoading } = useThreads(selectedFolderId, threadFilters);
   const { data: smartRows, isLoading: smartLoading } = useSmartFolder(selectedSmartFolder);
   const { data: searchRows, isLoading: searchLoading } = useSearch(debouncedQuery);
   const { data: labelRows, isLoading: labelLoading } = useMessagesByLabel(selectedLabelId);
@@ -303,6 +323,10 @@ export function MessageListPane() {
     setListContext(ids, isFlatMode ? "message" : "thread", accounts);
   }, [rawItems, isFlatMode, setListContext]);
 
+  useEffect(() => {
+    clearListFilters();
+  }, [selectedFolderId, clearListFilters]);
+
   const virtualizer = useVirtualizer({
     count: entries.length,
     getScrollElement: () => scrollContainerRef.current,
@@ -323,9 +347,7 @@ export function MessageListPane() {
         >
           <PencilLine size={15} /> Compose
         </button>
-        <span className="message-list__sort" aria-disabled="true">
-          Newest <ChevronDown size={13} />
-        </span>
+        {!isFlatMode && !isDraftsMode && <FilterSortMenu />}
       </div>
 
       {isDraftsMode ? (
@@ -369,7 +391,20 @@ export function MessageListPane() {
       )}
 
       {hasSelection && !isLoading && rawItems.length === 0 && (
-        <div className="message-list__empty">No messages</div>
+        !isFlatMode && !isDraftsMode && (listFilterSender !== "" || listFilterSubject !== "" || listFilterAttachmentsOnly) ? (
+          <div className="message-list__empty">
+            No messages match your filters
+            <button
+              type="button"
+              className="list-filter__clear"
+              onClick={() => clearListFilters()}
+            >
+              Clear filters
+            </button>
+          </div>
+        ) : (
+          <div className="message-list__empty">No messages</div>
+        )
       )}
 
       {hasSelection && !isLoading && rawItems.length > 0 && (
