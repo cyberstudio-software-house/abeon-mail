@@ -187,6 +187,8 @@ export function ShortcutsProvider({ children }: { children: ReactNode }) {
       },
       archive: () => doMove("archive"),
       delete: () => doMove("delete"),
+      "delete-key": () => doMove("delete"),
+      "delete-backspace": () => doMove("delete"),
     };
   }, [move, jumpTo, doReply, toggleFlag, setSeen, doMove]);
 

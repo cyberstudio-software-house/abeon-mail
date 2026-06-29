@@ -25,6 +25,8 @@ export type ActionId =
   | "close-composer"
   | "archive"
   | "delete"
+  | "delete-key"
+  | "delete-backspace"
   | "snooze"
   | "label";
 
@@ -61,6 +63,8 @@ export const ACTIONS: ActionMeta[] = [
   { id: "close-composer", label: "Close composer", contexts: ["composer"], defaultBinding: "Escape", enabled: true },
   { id: "archive", label: "Archive", contexts: ["reader", "list"], defaultBinding: "e", enabled: true },
   { id: "delete", label: "Delete", contexts: ["reader", "list"], defaultBinding: "#", enabled: true },
+  { id: "delete-key", label: "Delete (Del)", contexts: ["reader", "list"], defaultBinding: "Delete", enabled: true },
+  { id: "delete-backspace", label: "Delete (Backspace)", contexts: ["reader", "list"], defaultBinding: "Backspace", enabled: true },
   { id: "snooze", label: "Snooze", contexts: ["reader", "list"], defaultBinding: "b", enabled: true },
   { id: "label", label: "Label", contexts: ["reader", "list"], defaultBinding: "l", enabled: true },
 ];
