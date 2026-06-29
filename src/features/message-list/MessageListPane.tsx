@@ -221,15 +221,16 @@ export function MessageListPane() {
   const debouncedSender = useDebouncedValue(listFilterSender, 200);
   const debouncedSubject = useDebouncedValue(listFilterSubject, 200);
 
-  const threadFilters = useMemo<ThreadListFilters>(
-    () => ({
+  const threadFilters = useMemo<ThreadListFilters>(() => {
+    const trimmedSender = debouncedSender.trim();
+    const trimmedSubject = debouncedSubject.trim();
+    return {
       sort_dir: listSortDir,
-      sender: debouncedSender.trim() === "" ? null : debouncedSender,
-      subject: debouncedSubject.trim() === "" ? null : debouncedSubject,
+      sender: trimmedSender === "" ? null : trimmedSender,
+      subject: trimmedSubject === "" ? null : trimmedSubject,
       attachments_only: listFilterAttachmentsOnly,
-    }),
-    [listSortDir, debouncedSender, debouncedSubject, listFilterAttachmentsOnly]
-  );
+    };
+  }, [listSortDir, debouncedSender, debouncedSubject, listFilterAttachmentsOnly]);
 
   function handleRowClick(e: ReactMouseEvent, rowId: number) {
     if (e.shiftKey) selectRangeTo(rowId);
@@ -391,7 +392,7 @@ export function MessageListPane() {
       )}
 
       {hasSelection && !isLoading && rawItems.length === 0 && (
-        !isFlatMode && !isDraftsMode && (listFilterSender !== "" || listFilterSubject !== "" || listFilterAttachmentsOnly) ? (
+        !isFlatMode && (listFilterSender !== "" || listFilterSubject !== "" || listFilterAttachmentsOnly) ? (
           <div className="message-list__empty">
             No messages match your filters
             <button

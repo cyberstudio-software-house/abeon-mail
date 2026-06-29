@@ -303,6 +303,36 @@ mod tests {
     }
 
     #[test]
+    fn list_for_folder_filtered_combines_sender_and_subject() {
+        let db = Database::open_in_memory().unwrap();
+        let (account_id, folder_id) = setup(&db);
+
+        let ta = create(&db, account_id, "Invoice March", 1000).unwrap();
+        insert_headers(&db, folder_id, &[make_header_full(1, 1000, "<a@x>", "alice@example.com", "Invoice March", false)]).unwrap();
+        let tb = create(&db, account_id, "Invoice February", 2000).unwrap();
+        insert_headers(&db, folder_id, &[make_header_full(2, 2000, "<b@x>", "bob@example.com", "Invoice February", false)]).unwrap();
+        let tc = create(&db, account_id, "Lunch plans", 3000).unwrap();
+        insert_headers(&db, folder_id, &[make_header_full(3, 3000, "<c@x>", "alice@example.com", "Lunch plans", false)]).unwrap();
+        {
+            let conn = db.conn();
+            conn.execute("UPDATE messages SET thread_id = ?1 WHERE message_id_hdr = '<a@x>'", params![ta]).unwrap();
+            conn.execute("UPDATE messages SET thread_id = ?1 WHERE message_id_hdr = '<b@x>'", params![tb]).unwrap();
+            conn.execute("UPDATE messages SET thread_id = ?1 WHERE message_id_hdr = '<c@x>'", params![tc]).unwrap();
+        }
+
+        let res = list_for_folder_filtered(
+            &db,
+            folder_id,
+            &ThreadListFilters { sender: Some("alice".into()), subject: Some("Invoice".into()), ..Default::default() },
+            10,
+            0,
+            i64::MAX,
+        )
+        .unwrap();
+        assert_eq!(res.iter().map(|t| t.thread_id).collect::<Vec<_>>(), vec![ta]);
+    }
+
+    #[test]
     fn create_and_find_by_subject_root() {
         let db = Database::open_in_memory().unwrap();
         let (account_id, _) = setup(&db);
