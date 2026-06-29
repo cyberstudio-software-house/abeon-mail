@@ -11,6 +11,7 @@ import type { ThreadSummary, SmartMessageRow, Label, ThreadListFilters } from ".
 import { LabelChips } from "../labels/LabelChips";
 import { Avatar } from "../../shared/appearance/Avatar";
 import { groupIntoEntries, type ListEntry } from "./grouping";
+import { entryIndexForId } from "./entryIndexForId";
 import { extractTerms, Highlight } from "./highlight";
 import { ROW_HEIGHT, HEADER_HEIGHT } from "./rowMetrics";
 import "./MessageListPane.css";
@@ -202,6 +203,8 @@ export function MessageListPane() {
   const setListContext = useUiStore((s) => s.setListContext);
 
   const selectedRowIds = useUiStore((s) => s.selectedRowIds);
+  const selectedThreadId = useUiStore((s) => s.selectedThreadId);
+  const selectedMessageId = useUiStore((s) => s.selectedMessageId);
   const selectRow = useUiStore((s) => s.selectRow);
   const toggleRow = useUiStore((s) => s.toggleRow);
   const selectRangeTo = useUiStore((s) => s.selectRangeTo);
@@ -336,6 +339,15 @@ export function MessageListPane() {
   });
 
   const virtualItems = virtualizer.getVirtualItems();
+
+  const activeRowId = isFlatMode ? selectedMessageId : selectedThreadId;
+  useEffect(() => {
+    if (activeRowId == null) return;
+    const index = entryIndexForId(entries, activeRowId, (item) =>
+      isFlatMode ? (item as SmartMessageRow).message_id : (item as ThreadSummary).thread_id
+    );
+    if (index >= 0) virtualizer.scrollToIndex(index, { align: "auto" });
+  }, [activeRowId, entries, isFlatMode, virtualizer]);
 
   return (
     <section className="pane message-list-pane" aria-label="message-list">

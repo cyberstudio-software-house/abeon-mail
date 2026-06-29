@@ -10,6 +10,8 @@ export type ActionId =
   | "search"
   | "next-message"
   | "prev-message"
+  | "next-message-arrow"
+  | "prev-message-arrow"
   | "first-message"
   | "last-message"
   | "reply"
@@ -44,6 +46,8 @@ export const ACTIONS: ActionMeta[] = [
   { id: "search", label: "Search mail", contexts: ["global"], defaultBinding: "/", enabled: true },
   { id: "next-message", label: "Next message", contexts: ["list", "reader"], defaultBinding: "j", enabled: true },
   { id: "prev-message", label: "Previous message", contexts: ["list", "reader"], defaultBinding: "k", enabled: true },
+  { id: "next-message-arrow", label: "Next message (↓)", contexts: ["list", "reader"], defaultBinding: "ArrowDown", enabled: true },
+  { id: "prev-message-arrow", label: "Previous message (↑)", contexts: ["list", "reader"], defaultBinding: "ArrowUp", enabled: true },
   { id: "first-message", label: "First message", contexts: ["list", "reader"], defaultBinding: "", enabled: true },
   { id: "last-message", label: "Last message", contexts: ["list", "reader"], defaultBinding: "", enabled: true },
   { id: "reply", label: "Reply", contexts: ["reader"], defaultBinding: "r", enabled: true },

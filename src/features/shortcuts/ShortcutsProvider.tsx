@@ -156,6 +156,8 @@ export function ShortcutsProvider({ children }: { children: ReactNode }) {
       search: () => useUiStore.getState().focusSearch?.(),
       "next-message": () => move(1),
       "prev-message": () => move(-1),
+      "next-message-arrow": () => move(1),
+      "prev-message-arrow": () => move(-1),
       "first-message": () => jumpTo("first"),
       "last-message": () => jumpTo("last"),
       reply: () => void doReply("reply"),
