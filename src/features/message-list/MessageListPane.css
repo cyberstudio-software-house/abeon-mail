@@ -199,13 +199,124 @@
   box-shadow: var(--shadow-accent);
 }
 
-.message-list__sort {
+.list-filter {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.list-filter__trigger {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 5px;
-  font-size: 12px;
+  padding: 4px 8px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
   color: var(--text-muted);
+  cursor: pointer;
+}
+
+.list-filter__trigger:hover {
+  background: var(--surface-hover, rgba(127, 127, 127, 0.12));
+  color: var(--text);
+}
+
+.list-filter__trigger[data-active="true"] {
+  color: var(--accent);
+}
+
+.list-filter__dot {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.list-filter__panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 260px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  box-shadow: 0 12px 32px -12px rgba(0, 0, 0, 0.45);
+}
+
+.list-filter__sort {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.list-filter__sort legend,
+.list-filter__field label {
+  font-size: 11px;
   font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.list-filter__sort label,
+.list-filter__check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.list-filter__field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.list-filter__field input[type="text"] {
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface-2, var(--surface));
+  color: var(--text);
+  font-size: 13px;
+}
+
+.list-filter__footer {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.list-filter__clear {
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.list-filter__clear:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 .message-list__group {

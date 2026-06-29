@@ -58,3 +58,4 @@ exports.Code = Icon;
 exports.Minus = Icon;
 exports.Image = Icon;
 exports.RemoveFormatting = Icon;
+exports.SlidersHorizontal = Icon;
