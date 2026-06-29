@@ -21,10 +21,12 @@ function Probe() {
       <span data-testid="tf">{g.timeFormat}</span>
       <span data-testid="acc">{g.defaultAccountId}</span>
       <span data-testid="mode">{g.markReadMode}</span>
+      <span data-testid="sort">{g.listSortDir}</span>
       <button onClick={() => g.setTimeFormat("24h")}>set-24h</button>
       <button onClick={() => g.setDefaultAccountId("5")}>set-acc</button>
       <button onClick={() => g.setMarkReadMode("never")}>set-never</button>
       <button onClick={() => g.setMarkReadDelaySeconds(9)}>set-delay</button>
+      <button onClick={() => g.setListSortDir("asc")}>set-sort</button>
     </div>
   );
 }
@@ -85,5 +87,14 @@ describe("GeneralProvider", () => {
     expect(setSetting).toHaveBeenCalledWith("general.markReadMode", "never");
     fireEvent.click(screen.getByText("set-delay"));
     expect(setSetting).toHaveBeenCalledWith("general.markReadDelaySeconds", "9");
+  });
+
+  it("setListSortDir persists general.listSortDir", async () => {
+    render(<GeneralProvider><Probe /></GeneralProvider>);
+    await waitFor(() => expect(screen.getByTestId("tf").textContent).toBe("12h"));
+    fireEvent.click(screen.getByText("set-sort"));
+    await waitFor(() => expect(screen.getByTestId("sort").textContent).toBe("asc"));
+    expect(setSetting).toHaveBeenCalledWith("general.listSortDir", "asc");
+    expect(useUiStore.getState().listSortDir).toBe("asc");
   });
 });

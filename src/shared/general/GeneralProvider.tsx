@@ -7,7 +7,7 @@ import {
 } from "react";
 import { commands } from "../../ipc/bindings";
 import { useUiStore } from "../../app/store";
-import { GENERAL_KEYS, parseGeneralSettings, type TimeFormat, type MarkReadMode, type ThreadOrder } from "./general";
+import { GENERAL_KEYS, parseGeneralSettings, type TimeFormat, type MarkReadMode, type ThreadOrder, type ListSortDir } from "./general";
 
 type GeneralContextValue = {
   defaultAccountId: string;
@@ -15,11 +15,13 @@ type GeneralContextValue = {
   markReadMode: MarkReadMode;
   markReadDelaySeconds: number;
   threadOrder: ThreadOrder;
+  listSortDir: ListSortDir;
   setDefaultAccountId: (value: string) => void;
   setTimeFormat: (value: TimeFormat) => void;
   setMarkReadMode: (value: MarkReadMode) => void;
   setMarkReadDelaySeconds: (value: number) => void;
   setThreadOrder: (value: ThreadOrder) => void;
+  setListSortDir: (value: ListSortDir) => void;
 };
 
 const GeneralContext = createContext<GeneralContextValue | null>(null);
@@ -35,11 +37,13 @@ export function GeneralProvider({ children }: { children: ReactNode }) {
   const markReadMode = useUiStore((s) => s.markReadMode);
   const markReadDelaySeconds = useUiStore((s) => s.markReadDelaySeconds);
   const threadOrder = useUiStore((s) => s.threadOrder);
+  const listSortDir = useUiStore((s) => s.listSortDir);
   const storeSetDefaultAccountId = useUiStore((s) => s.setDefaultAccountId);
   const storeSetTimeFormat = useUiStore((s) => s.setTimeFormat);
   const storeSetMarkReadMode = useUiStore((s) => s.setMarkReadMode);
   const storeSetMarkReadDelaySeconds = useUiStore((s) => s.setMarkReadDelaySeconds);
   const storeSetThreadOrder = useUiStore((s) => s.setThreadOrder);
+  const storeSetListSortDir = useUiStore((s) => s.setListSortDir);
 
   useEffect(() => {
     let active = true;
@@ -64,6 +68,7 @@ export function GeneralProvider({ children }: { children: ReactNode }) {
       markReadMode,
       markReadDelaySeconds,
       threadOrder,
+      listSortDir,
       setDefaultAccountId: (v) => {
         storeSetDefaultAccountId(v);
         persist(GENERAL_KEYS.defaultAccountId, v);
@@ -84,6 +89,10 @@ export function GeneralProvider({ children }: { children: ReactNode }) {
         storeSetThreadOrder(v);
         persist(GENERAL_KEYS.threadOrder, v);
       },
+      setListSortDir: (v) => {
+        storeSetListSortDir(v);
+        persist(GENERAL_KEYS.listSortDir, v);
+      },
     }),
     [
       defaultAccountId,
@@ -91,11 +100,13 @@ export function GeneralProvider({ children }: { children: ReactNode }) {
       markReadMode,
       markReadDelaySeconds,
       threadOrder,
+      listSortDir,
       storeSetDefaultAccountId,
       storeSetTimeFormat,
       storeSetMarkReadMode,
       storeSetMarkReadDelaySeconds,
       storeSetThreadOrder,
+      storeSetListSortDir,
     ]
   );
 

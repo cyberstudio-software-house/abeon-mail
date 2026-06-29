@@ -332,6 +332,33 @@ describe("general mark-as-read slice", () => {
   });
 });
 
+describe("general list filter and sort slice", () => {
+  it("sets and clears list filters without touching sort direction", () => {
+    const s = useUiStore.getState();
+    s.setListSortDir("asc");
+    s.setListFilterSender("alice");
+    s.setListFilterSubject("invoice");
+    s.setListFilterAttachmentsOnly(true);
+    let st = useUiStore.getState();
+    expect(st.listSortDir).toBe("asc");
+    expect(st.listFilterSender).toBe("alice");
+    expect(st.listFilterSubject).toBe("invoice");
+    expect(st.listFilterAttachmentsOnly).toBe(true);
+
+    st.clearListFilters();
+    st = useUiStore.getState();
+    expect(st.listFilterSender).toBe("");
+    expect(st.listFilterSubject).toBe("");
+    expect(st.listFilterAttachmentsOnly).toBe(false);
+    expect(st.listSortDir).toBe("asc");
+  });
+
+  it("hydrateGeneral applies listSortDir", () => {
+    useUiStore.getState().hydrateGeneral({ listSortDir: "asc" });
+    expect(useUiStore.getState().listSortDir).toBe("asc");
+  });
+});
+
 describe("smart folder visibility", () => {
   it("setSmartFoldersEnabled toggles the master flag", () => {
     useUiStore.getState().setSmartFoldersEnabled(false);

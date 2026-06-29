@@ -15,6 +15,7 @@ import {
   type TimeFormat,
   type MarkReadMode,
   type ThreadOrder,
+  type ListSortDir,
 } from "../shared/general/general";
 import {
   DEFAULT_SNOOZE_CONFIG,
@@ -26,6 +27,7 @@ export type { Density };
 export type { TimeFormat };
 export type { MarkReadMode };
 export type { ThreadOrder };
+export type { ListSortDir };
 
 type ComposerState = {
   open: boolean;
@@ -63,6 +65,10 @@ export type UiState = {
   markReadMode: MarkReadMode;
   markReadDelaySeconds: number;
   threadOrder: ThreadOrder;
+  listSortDir: ListSortDir;
+  listFilterSender: string;
+  listFilterSubject: string;
+  listFilterAttachmentsOnly: boolean;
   generalHydrated: boolean;
   markUnreadEpoch: number;
   snoozeMorningHour: number;
@@ -126,6 +132,11 @@ export type UiState = {
   setMarkReadMode: (value: MarkReadMode) => void;
   setMarkReadDelaySeconds: (value: number) => void;
   setThreadOrder: (value: ThreadOrder) => void;
+  setListSortDir: (value: ListSortDir) => void;
+  setListFilterSender: (value: string) => void;
+  setListFilterSubject: (value: string) => void;
+  setListFilterAttachmentsOnly: (value: boolean) => void;
+  clearListFilters: () => void;
   hydrateGeneral: (partial: Partial<GeneralFields>) => void;
   setSnoozeMorningHour: (value: number) => void;
   setSnoozeLaterTodayHours: (value: number) => void;
@@ -187,6 +198,10 @@ export const useUiStore = create<UiState>((set, get) => ({
   markReadMode: DEFAULT_GENERAL.markReadMode,
   markReadDelaySeconds: DEFAULT_GENERAL.markReadDelaySeconds,
   threadOrder: DEFAULT_GENERAL.threadOrder,
+  listSortDir: DEFAULT_GENERAL.listSortDir,
+  listFilterSender: "",
+  listFilterSubject: "",
+  listFilterAttachmentsOnly: false,
   generalHydrated: false,
   markUnreadEpoch: 0,
   snoozeMorningHour: DEFAULT_SNOOZE_CONFIG.morningHour,
@@ -297,6 +312,12 @@ export const useUiStore = create<UiState>((set, get) => ({
   setMarkReadMode: (markReadMode) => set({ markReadMode }),
   setMarkReadDelaySeconds: (markReadDelaySeconds) => set({ markReadDelaySeconds }),
   setThreadOrder: (threadOrder) => set({ threadOrder }),
+  setListSortDir: (listSortDir) => set({ listSortDir }),
+  setListFilterSender: (listFilterSender) => set({ listFilterSender }),
+  setListFilterSubject: (listFilterSubject) => set({ listFilterSubject }),
+  setListFilterAttachmentsOnly: (listFilterAttachmentsOnly) => set({ listFilterAttachmentsOnly }),
+  clearListFilters: () =>
+    set({ listFilterSender: "", listFilterSubject: "", listFilterAttachmentsOnly: false }),
   hydrateGeneral: (partial) => set({ ...partial, generalHydrated: true }),
   setSnoozeMorningHour: (snoozeMorningHour) => set({ snoozeMorningHour }),
   setSnoozeLaterTodayHours: (snoozeLaterTodayHours) => set({ snoozeLaterTodayHours }),
