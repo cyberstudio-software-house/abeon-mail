@@ -28,7 +28,9 @@ export const CONTENT_SECURITY_LEVELS: {
 ];
 
 export function sandboxForLevel(level: ContentSecurityLevel): string {
-  return level === "strict" ? "" : "allow-same-origin";
+  return level === "strict"
+    ? ""
+    : "allow-same-origin allow-top-navigation-by-user-activation";
 }
 
 export function interceptLinksForLevel(level: ContentSecurityLevel): boolean {
@@ -41,7 +43,12 @@ export function autoloadRemoteForLevel(level: ContentSecurityLevel): boolean {
 
 export function isExternalLink(href: string): boolean {
   const lower = href.trim().toLowerCase();
-  return lower.startsWith("https://") || lower.startsWith("http://") || lower.startsWith("tel:");
+  return (
+    lower.startsWith("https://") ||
+    lower.startsWith("http://") ||
+    lower.startsWith("tel:") ||
+    lower.startsWith("mailto:")
+  );
 }
 
 export function parseContentSecurityLevel(value: string | undefined): ContentSecurityLevel {

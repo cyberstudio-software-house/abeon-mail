@@ -102,7 +102,9 @@ describe("MessageBodyView — HTML body path", () => {
 
     await waitFor(() => {
       const el = screen.getByTitle("message-content");
-      expect(el.getAttribute("sandbox")).toBe("allow-same-origin");
+      expect(el.getAttribute("sandbox")).toBe(
+        "allow-same-origin allow-top-navigation-by-user-activation"
+      );
     });
     expect(screen.getByTitle("message-content").getAttribute("sandbox")).not.toContain("allow-scripts");
   });

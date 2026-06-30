@@ -498,7 +498,10 @@ pub fn respond_to_invite(
 
 fn is_supported_external_url(url: &str) -> bool {
     let lower = url.to_ascii_lowercase();
-    lower.starts_with("https://") || lower.starts_with("http://") || lower.starts_with("tel:")
+    lower.starts_with("https://")
+        || lower.starts_with("http://")
+        || lower.starts_with("tel:")
+        || lower.starts_with("mailto:")
 }
 
 #[tauri::command]
@@ -1526,13 +1529,14 @@ mod tests {
     }
 
     #[test]
-    fn supported_external_url_allows_web_and_tel_only() {
+    fn supported_external_url_allows_web_tel_and_mailto() {
         assert!(super::is_supported_external_url("https://example.com"));
         assert!(super::is_supported_external_url("HTTPS://EXAMPLE.COM"));
         assert!(super::is_supported_external_url("http://insecure.test"));
         assert!(super::is_supported_external_url("HTTP://INSECURE.TEST"));
         assert!(super::is_supported_external_url("tel:+48123"));
-        assert!(!super::is_supported_external_url("mailto:a@b.c"));
+        assert!(super::is_supported_external_url("mailto:a@b.c"));
+        assert!(super::is_supported_external_url("MAILTO:A@B.C"));
         assert!(!super::is_supported_external_url("javascript:alert(1)"));
         assert!(!super::is_supported_external_url("/relative"));
         assert!(!super::is_supported_external_url(""));

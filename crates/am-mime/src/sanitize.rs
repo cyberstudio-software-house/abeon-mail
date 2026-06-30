@@ -90,7 +90,7 @@ fn sanitize_internal(
             "cellpadding", "cellspacing",
         ])
         .filter_style_properties(email_style_properties())
-        .set_tag_attribute_value("a", "target", "_self")
+        .set_tag_attribute_value("a", "target", "_top")
         .link_rel(Some("noopener noreferrer"))
         .attribute_filter(move |element, attribute, value| {
             if attribute.starts_with("on") {
@@ -404,7 +404,7 @@ mod tests {
     fn test_link_gets_rel_target() {
         let result = sanitize_html("<a href=\"https://example.com\">link</a>");
         assert!(result.html.contains("noopener noreferrer"));
-        assert!(result.html.contains("target=\"_self\""));
+        assert!(result.html.contains("target=\"_top\""));
     }
 
     #[test]

@@ -3,7 +3,7 @@ use am_storage::{settings_repo, Database};
 use tauri::{Manager, WebviewUrl, WebviewWindowBuilder, WindowEvent};
 
 fn is_external_navigation(url: &tauri::Url) -> bool {
-    if !matches!(url.scheme(), "http" | "https" | "tel") {
+    if !matches!(url.scheme(), "http" | "https" | "tel" | "mailto") {
         return false;
     }
     !matches!(
@@ -95,4 +95,31 @@ pub fn run() {
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_external_navigation;
+
+    fn check(url: &str) -> bool {
+        is_external_navigation(&tauri::Url::parse(url).unwrap())
+    }
+
+    #[test]
+    fn external_schemes_open_in_system_browser() {
+        assert!(check("http://www.provirtus.pl/ikm"));
+        assert!(check("https://example.com"));
+        assert!(check("tel:+48123456789"));
+        assert!(check("mailto:user@example.com"));
+    }
+
+    #[test]
+    fn app_origins_and_internal_schemes_stay_in_app() {
+        assert!(!check("tauri://localhost"));
+        assert!(!check("http://localhost:1420/"));
+        assert!(!check("http://127.0.0.1/"));
+        assert!(!check("http://tauri.localhost/"));
+        assert!(!check("about:srcdoc"));
+        assert!(!check("data:text/html,hi"));
+    }
 }

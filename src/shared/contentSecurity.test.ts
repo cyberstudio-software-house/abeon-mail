@@ -13,16 +13,19 @@ import {
 const LEVELS: ContentSecurityLevel[] = ["strict", "balanced", "open"];
 
 describe("contentSecurity", () => {
-  it("SECURITY: no level ever grants allow-scripts", () => {
+  it("SECURITY: no level ever grants allow-scripts, allow-popups or unsupervised top navigation", () => {
     for (const level of LEVELS) {
-      expect(sandboxForLevel(level)).not.toContain("allow-scripts");
+      const sandbox = sandboxForLevel(level);
+      expect(sandbox).not.toContain("allow-scripts");
+      expect(sandbox).not.toContain("allow-popups");
+      expect(sandbox.split(/\s+/)).not.toContain("allow-top-navigation");
     }
   });
 
   it("maps sandbox tokens per level", () => {
     expect(sandboxForLevel("strict")).toBe("");
-    expect(sandboxForLevel("balanced")).toBe("allow-same-origin");
-    expect(sandboxForLevel("open")).toBe("allow-same-origin");
+    expect(sandboxForLevel("balanced")).toBe("allow-same-origin allow-top-navigation-by-user-activation");
+    expect(sandboxForLevel("open")).toBe("allow-same-origin allow-top-navigation-by-user-activation");
   });
 
   it("intercepts links at non-strict levels only", () => {
@@ -37,13 +40,14 @@ describe("contentSecurity", () => {
     expect(autoloadRemoteForLevel("open")).toBe(true);
   });
 
-  it("recognizes http, https and tel links as external", () => {
+  it("recognizes http, https, tel and mailto links as external", () => {
     expect(isExternalLink("https://example.com")).toBe(true);
     expect(isExternalLink("HTTPS://EXAMPLE.COM")).toBe(true);
     expect(isExternalLink("http://insecure.test")).toBe(true);
     expect(isExternalLink("HTTP://INSECURE.TEST")).toBe(true);
     expect(isExternalLink("tel:+48123")).toBe(true);
-    expect(isExternalLink("mailto:a@b.c")).toBe(false);
+    expect(isExternalLink("mailto:a@b.c")).toBe(true);
+    expect(isExternalLink("MAILTO:A@B.C")).toBe(true);
     expect(isExternalLink("javascript:alert(1)")).toBe(false);
     expect(isExternalLink("/relative")).toBe(false);
     expect(isExternalLink("")).toBe(false);
