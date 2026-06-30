@@ -17,7 +17,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEJCNzRERDZCODhEODE2NUIKUldSYkZ0aUlhOTEwdTJtazlVWUF3UmdERkZ6YW1jaXdmUHlDOW13ck9JbnNwMit5VWk0b1NielkK",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDlBQUQxMDlCMTY5RDAwMjUKUldRbEFKMFdteEN0bXA3VWM3by9UMGxqQVAzU3lJZk0vVzVZd2tFNmE2YUxGNDFqUXQ0cDJZVjAK",
       "endpoints": [
         "https://github.com/cyberstudio-software-house/abeon-mail/releases/latest/download/latest.json"
       ]

@@ -1,16 +1,20 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, fireEvent, waitFor, cleanup } from "@testing-library/react";
 
-const { check, relaunch, getVersion, downloadAndInstall } = vi.hoisted(() => ({
+const { check, relaunch, getVersion, downloadAndInstall, openExternalUrl } = vi.hoisted(() => ({
   check: vi.fn(),
   relaunch: vi.fn(),
   getVersion: vi.fn(),
   downloadAndInstall: vi.fn(),
+  openExternalUrl: vi.fn(),
 }));
 
 vi.mock("@tauri-apps/plugin-updater", () => ({ check: () => check() }));
 vi.mock("@tauri-apps/plugin-process", () => ({ relaunch: () => relaunch() }));
 vi.mock("@tauri-apps/api/app", () => ({ getVersion: () => getVersion() }));
+vi.mock("../../ipc/bindings", () => ({
+  commands: { openExternalUrl: (url: string) => openExternalUrl(url) },
+}));
 
 import { UpdateAvailableBanner } from "./UpdateAvailableBanner";
 
@@ -51,5 +55,20 @@ describe("UpdateAvailableBanner", () => {
     fireEvent.click(getByText("Restart & update"));
     await waitFor(() => expect(downloadAndInstall).toHaveBeenCalled());
     await waitFor(() => expect(relaunch).toHaveBeenCalled());
+  });
+
+  it("surfaces a failure and offers a manual download when install fails", async () => {
+    check.mockResolvedValue({ available: true, version: "0.2.0", downloadAndInstall });
+    downloadAndInstall.mockRejectedValue(new Error("signature verification failed"));
+    const { getByText, queryByText } = render(<UpdateAvailableBanner />);
+    await waitFor(() => expect(getByText("Restart & update")).toBeTruthy());
+    fireEvent.click(getByText("Restart & update"));
+    await waitFor(() => expect(getByText(/Update failed/i)).toBeTruthy());
+    expect(relaunch).not.toHaveBeenCalled();
+    expect(queryByText("Restart & update")).toBeNull();
+    fireEvent.click(getByText("Download"));
+    expect(openExternalUrl).toHaveBeenCalledWith(
+      "https://github.com/cyberstudio-software-house/abeon-mail/releases/latest",
+    );
   });
 });

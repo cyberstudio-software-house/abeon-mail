@@ -17,7 +17,9 @@ export function UpdatesPanel() {
       {u.status === "checking" && <span className="updates-panel__status">Checking…</span>}
       {u.status === "uptodate" && <span className="updates-panel__status">You're up to date.</span>}
       {u.status === "error" && (
-        <span className="updates-panel__status">Couldn't check for updates.</span>
+        <span className="updates-panel__status">
+          {u.error !== "" ? `Update failed: ${u.error}` : "Couldn't check for updates."}
+        </span>
       )}
       {u.status === "available" && (
         <div className="updates-panel__available">

@@ -13,6 +13,7 @@ export function useAppUpdate({ checkOnMount = false }: UseAppUpdateOptions = {})
   const [version, setVersion] = useState("");
   const [status, setStatus] = useState<UpdateStatus>("idle");
   const [newVersion, setNewVersion] = useState("");
+  const [error, setError] = useState("");
   const [pending, setPending] = useState<AvailableUpdate | null>(null);
 
   useEffect(() => {
@@ -26,6 +27,7 @@ export function useAppUpdate({ checkOnMount = false }: UseAppUpdateOptions = {})
   }, []);
 
   const checkForUpdate = useCallback(async () => {
+    setError("");
     setStatus("checking");
     try {
       const update = await check();
@@ -43,11 +45,13 @@ export function useAppUpdate({ checkOnMount = false }: UseAppUpdateOptions = {})
 
   const installUpdate = useCallback(async () => {
     if (!pending) return;
+    setError("");
     setStatus("downloading");
     try {
       await pending.downloadAndInstall();
       await relaunch();
-    } catch {
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
       setStatus("error");
     }
   }, [pending]);
@@ -56,5 +60,5 @@ export function useAppUpdate({ checkOnMount = false }: UseAppUpdateOptions = {})
     if (checkOnMount) void checkForUpdate();
   }, [checkOnMount, checkForUpdate]);
 
-  return { version, status, newVersion, checkForUpdate, installUpdate };
+  return { version, status, newVersion, error, checkForUpdate, installUpdate };
 }
