@@ -17,6 +17,7 @@ pub const IDLE_ERROR_BACKOFF: Duration = Duration::from_secs(15);
 pub const WAKE_SWEEP_INTERVAL: Duration = Duration::from_secs(60);
 pub const PREFETCH_IDLE_INTERVAL: Duration = Duration::from_secs(60);
 pub const PREFETCH_WORK_PAUSE: Duration = Duration::from_secs(2);
+pub const FULL_SCAN_INTERVAL: Duration = Duration::from_secs(300);
 const INBOX_PATH: &str = "INBOX";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -31,6 +32,10 @@ fn should_resync_after_idle(outcome: &Result<IdleOutcomeKind, ()>) -> bool {
         outcome,
         Ok(IdleOutcomeKind::Changed) | Ok(IdleOutcomeKind::Refreshed)
     )
+}
+
+fn should_full_scan(elapsed: Duration, interval: Duration) -> bool {
+    elapsed >= interval
 }
 
 pub fn run_wake_sweep_at(db: &Database, sink: &dyn SyncEventSink, now: i64) {
@@ -103,6 +108,7 @@ impl SyncEngine {
                     return;
                 }
             }
+            let mut last_full_scan = std::time::Instant::now();
             loop {
                 let now = service::now_secs();
                 if let Err(e) = service::drain_queue(&db, account_id, creds.as_ref(), now).await {
@@ -118,31 +124,10 @@ impl SyncEngine {
                 let mut backoff = POLL_INTERVAL;
                 let mut new_mail = 0i64;
                 if let Ok(folders) = folders_repo::list_folders(&db, account_id) {
-                    for folder in &folders {
-                        if !folder.remote_path.eq_ignore_ascii_case(INBOX_PATH) {
-                            match service::incremental_sync_folder(
-                                &db,
-                                account_id,
-                                folder.id,
-                                creds.as_ref(),
-                                sink.as_ref(),
-                            )
-                            .await {
-                                Ok(count) => new_mail += count,
-                                Err(e) => {
-                                    if matches!(e, service::SyncError::NeedsReauth) {
-                                        let _ = am_storage::accounts_repo::set_requires_reauth(&db, account_id, true);
-                                        sink.emit(crate::events::SyncEvent::AuthChanged { account_id, requires_reauth: true });
-                                        return;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    if let Some(inbox) = folders
+                    let inbox = folders
                         .iter()
-                        .find(|f| f.remote_path.eq_ignore_ascii_case(INBOX_PATH))
-                    {
+                        .find(|f| f.remote_path.eq_ignore_ascii_case(INBOX_PATH));
+                    if let Some(inbox) = inbox {
                         match service::incremental_sync_folder(
                             &db,
                             account_id,
@@ -160,9 +145,38 @@ impl SyncEngine {
                                 }
                             }
                         }
-                        if new_mail > 0 {
-                            prefetch_notify.notify_one();
+                    }
+
+                    if should_full_scan(last_full_scan.elapsed(), FULL_SCAN_INTERVAL) {
+                        for folder in &folders {
+                            if !folder.remote_path.eq_ignore_ascii_case(INBOX_PATH) {
+                                match service::incremental_sync_folder(
+                                    &db,
+                                    account_id,
+                                    folder.id,
+                                    creds.as_ref(),
+                                    sink.as_ref(),
+                                )
+                                .await {
+                                    Ok(count) => new_mail += count,
+                                    Err(e) => {
+                                        if matches!(e, service::SyncError::NeedsReauth) {
+                                            let _ = am_storage::accounts_repo::set_requires_reauth(&db, account_id, true);
+                                            sink.emit(crate::events::SyncEvent::AuthChanged { account_id, requires_reauth: true });
+                                            return;
+                                        }
+                                    }
+                                }
+                            }
                         }
+                        last_full_scan = std::time::Instant::now();
+                    }
+
+                    if new_mail > 0 {
+                        prefetch_notify.notify_one();
+                    }
+
+                    if let Some(inbox) = inbox {
                         let idled = idle_inbox(&db, account_id, &inbox.remote_path, creds.as_ref(), token.clone(), Arc::clone(&notify)).await;
                         if should_resync_after_idle(&idled) {
                             continue;
@@ -312,6 +326,15 @@ mod tests {
     use am_core::folder::FolderType;
     use am_core::message::NewMessageHeader;
     use crate::events::RecordingSink;
+
+    #[test]
+    fn full_scan_only_after_interval_elapsed() {
+        let interval = Duration::from_secs(300);
+        assert!(!should_full_scan(Duration::from_secs(0), interval));
+        assert!(!should_full_scan(Duration::from_secs(299), interval));
+        assert!(should_full_scan(Duration::from_secs(300), interval));
+        assert!(should_full_scan(Duration::from_secs(600), interval));
+    }
 
     fn seed_due_message(db: &Database) {
         let acc = accounts_repo::insert_account(db, &NewAccount {
