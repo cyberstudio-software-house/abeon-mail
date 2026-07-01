@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { commands } from "../../ipc/bindings";
-import { useStartReply, useSetFlag, useSetSeen, useArchive, useDelete } from "../../ipc/queries";
+import { useStartReply, useSetFlag, useSetSeen, useArchive, useDelete, useUndoMove } from "../../ipc/queries";
 import { seenIdsForBulk } from "../reader/seen";
 import { useUiStore } from "../../app/store";
 import { resolveBindings, parseShortcutSettings, SHORTCUT_KEYS, type Profile } from "./bindings";
@@ -44,6 +44,7 @@ export function ShortcutsProvider({ children }: { children: ReactNode }) {
   const setSeenBulk = useSetSeen();
   const archive = useArchive();
   const del = useDelete();
+  const undoMove = useUndoMove();
 
   useEffect(() => {
     let active = true;
@@ -134,6 +135,13 @@ export function ShortcutsProvider({ children }: { children: ReactNode }) {
     [archive, del, queryClient]
   );
 
+  const doUndo = useCallback(() => {
+    const s = useUiStore.getState();
+    if (!s.undoToast) return;
+    undoMove.mutate({ messageIds: s.undoToast.messageIds });
+    s.clearUndoToast();
+  }, [undoMove]);
+
   const toggleFlag = useCallback(() => {
     const s = useUiStore.getState();
     if (s.replyTargetId == null || s.selectedThreadId == null) return;
@@ -189,8 +197,9 @@ export function ShortcutsProvider({ children }: { children: ReactNode }) {
       delete: () => doMove("delete"),
       "delete-key": () => doMove("delete"),
       "delete-backspace": () => doMove("delete"),
+      undo: () => doUndo(),
     };
-  }, [move, jumpTo, doReply, toggleFlag, setSeen, doMove]);
+  }, [move, jumpTo, doReply, toggleFlag, setSeen, doMove, doUndo]);
 
   const resolvedRef = useRef(resolved);
   resolvedRef.current = resolved;

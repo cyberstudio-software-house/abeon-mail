@@ -27,6 +27,7 @@ export type ActionId =
   | "delete"
   | "delete-key"
   | "delete-backspace"
+  | "undo"
   | "snooze"
   | "label";
 
@@ -65,6 +66,7 @@ export const ACTIONS: ActionMeta[] = [
   { id: "delete", label: "Delete", contexts: ["reader", "list"], defaultBinding: "#", enabled: true },
   { id: "delete-key", label: "Delete (Del)", contexts: ["reader", "list"], defaultBinding: "Delete", enabled: true },
   { id: "delete-backspace", label: "Delete (Backspace)", contexts: ["reader", "list"], defaultBinding: "Backspace", enabled: true },
+  { id: "undo", label: "Undo archive/delete", contexts: ["reader", "list"], defaultBinding: "Mod+z", enabled: true },
   { id: "snooze", label: "Snooze", contexts: ["reader", "list"], defaultBinding: "b", enabled: true },
   { id: "label", label: "Label", contexts: ["reader", "list"], defaultBinding: "l", enabled: true },
 ];
