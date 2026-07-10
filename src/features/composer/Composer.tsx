@@ -1,6 +1,12 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
 import { createEditorExtensions } from "./editor/extensions";
+import {
+  rewriteInlineSrcs,
+  generateContentId,
+  saveInlineImageAttachment,
+  reconstructDraftInlineImages,
+} from "./inlineImages";
 import { EditorToolbar } from "./editor/EditorToolbar";
 import { commands } from "../../ipc/bindings";
 import type { OutgoingAttachment, Signature } from "../../ipc/bindings";
@@ -11,23 +17,6 @@ import { SafeHtmlFrame } from "../reader/SafeHtmlFrame";
 import "./composer.css";
 
 const AUTOSAVE_DELAY_MS = 1500;
-
-let inlineImageCounter = 0;
-
-function generateContentId(): string {
-  inlineImageCounter += 1;
-  return `inline-${inlineImageCounter}@abeonmail`;
-}
-
-function rewriteInlineSrcs(html: string, srcToContentId: Map<string, string>): string {
-  return html.replace(/<img([^>]*)\ssrc="([^"]*)"([^>]*)>/g, (match, before, src, after) => {
-    const contentId = srcToContentId.get(src);
-    if (contentId) {
-      return `<img${before} src="cid:${contentId}"${after}>`;
-    }
-    return match;
-  });
-}
 
 function htmlToText(html: string): string {
   const el = document.createElement("div");
@@ -75,19 +64,74 @@ export function Composer() {
 
   const accountId = fromAccountId ?? (accounts[0]?.id ?? null);
 
+  const insertInlineImageRef = useRef<(blob: Blob) => void>(() => {});
+
   const editor = useEditor({
     extensions: createEditorExtensions(),
     content: buildInitialContent(prefill?.html_body, composer.draftId == null),
+    editorProps: {
+      handlePaste: (_view, event) => {
+        const items = event.clipboardData?.items;
+        if (!items) return false;
+        for (const item of Array.from(items)) {
+          if (item.kind === "file" && item.type.startsWith("image/")) {
+            const file = item.getAsFile();
+            if (file) {
+              insertInlineImageRef.current(file);
+              return true;
+            }
+          }
+        }
+        return false;
+      },
+      handleDrop: (_view, event) => {
+        const files = event.dataTransfer?.files;
+        if (!files || files.length === 0) return false;
+        let handled = false;
+        for (const file of Array.from(files)) {
+          if (file.type.startsWith("image/")) {
+            insertInlineImageRef.current(file);
+            handled = true;
+          }
+        }
+        return handled;
+      },
+    },
   });
 
   useEffect(() => {
     if (prefill?.html_body && editor) {
+      const hasInline = (prefill.attachments ?? []).some((a) => a.content_id);
+      if (hasInline && composer.draftId != null) return;
       editor.commands.setContent(buildInitialContent(prefill.html_body, composer.draftId == null));
       if (composer.draftId == null) {
         editor.commands.focus("start");
       }
     }
-  }, [prefill?.html_body, editor, composer.draftId]);
+  }, [prefill?.html_body, prefill?.attachments, editor, composer.draftId]);
+
+  const inlineReconstructedRef = useRef(false);
+  useEffect(() => {
+    if (!editor || inlineReconstructedRef.current) return;
+    if (composer.draftId == null) return;
+    const html = prefill?.html_body;
+    const atts = prefill?.attachments ?? [];
+    if (!html || !atts.some((a) => a.content_id)) return;
+    inlineReconstructedRef.current = true;
+    let cancelled = false;
+    reconstructDraftInlineImages(html, atts, commands.readInlineImage).then(
+      ({ html: rebuilt, entries }) => {
+        if (cancelled || !editor) return;
+        for (const [src, cid] of entries) {
+          inlineSrcMapRef.current.set(src, cid);
+        }
+        editor.commands.setContent(rebuilt);
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [editor, composer.draftId, prefill?.html_body, prefill?.attachments]);
 
   const [signatures, setSignatures] = useState<Signature[]>([]);
   const signatureInsertedRef = useRef(false);
@@ -246,6 +290,27 @@ export function Composer() {
     setAttachments((prev) => [...prev, ...inlineAttachments]);
     scheduleAutosave();
   }
+
+  const insertInlineImageFromBlob = useCallback(
+    async (blob: Blob) => {
+      if (!editor) return;
+      try {
+        const { dataUri, contentId, attachment } = await saveInlineImageAttachment(
+          blob,
+          commands.saveInlineImage,
+        );
+        inlineSrcMapRef.current.set(dataUri, contentId);
+        editor.chain().focus().setImage({ src: dataUri }).run();
+        setAttachments((prev) => [...prev, attachment]);
+        scheduleAutosave();
+      } catch (err) {
+        setSendError(err instanceof Error ? err.message : String(err));
+      }
+    },
+    [editor, scheduleAutosave],
+  );
+
+  insertInlineImageRef.current = insertInlineImageFromBlob;
 
   function removeAttachment(index: number) {
     setAttachments((prev) => prev.filter((_, i) => i !== index));
