@@ -994,6 +994,90 @@ fn guess_mime_from_extension(ext: &str) -> &'static str {
     }
 }
 
+fn guess_extension_from_mime(mime: &str) -> &'static str {
+    match mime.to_ascii_lowercase().as_str() {
+        "image/png" => "png",
+        "image/jpeg" | "image/jpg" => "jpg",
+        "image/gif" => "gif",
+        "image/webp" => "webp",
+        "image/svg+xml" => "svg",
+        "image/bmp" => "bmp",
+        "image/tiff" => "tiff",
+        _ => "bin",
+    }
+}
+
+const MAX_INLINE_IMAGE_BYTES: usize = 25 * 1024 * 1024;
+
+fn write_inline_image(
+    dir: &std::path::Path,
+    mime_type: &str,
+    bytes: &[u8],
+) -> Result<OutgoingAttachment, String> {
+    if !mime_type.starts_with("image/") {
+        return Err("Only image files can be pasted inline".to_string());
+    }
+    if bytes.len() > MAX_INLINE_IMAGE_BYTES {
+        return Err("Image is too large (max 25 MB)".to_string());
+    }
+    std::fs::create_dir_all(dir).map_err(|e| format!("Failed to create image directory: {e}"))?;
+    let ext = guess_extension_from_mime(mime_type);
+    let path = unique_path(dir, &format!("pasted-image.{ext}"));
+    std::fs::write(&path, bytes).map_err(|e| format!("Failed to write image: {e}"))?;
+    let filename = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("pasted-image")
+        .to_string();
+    Ok(OutgoingAttachment {
+        filename,
+        mime_type: mime_type.to_string(),
+        blob_ref: path.to_string_lossy().into_owned(),
+        content_id: None,
+    })
+}
+
+fn read_inline_image_file(app_data_dir: &std::path::Path, blob_ref: &str) -> Result<String, String> {
+    use base64::Engine;
+    let canonical = std::fs::canonicalize(blob_ref).map_err(|_| "Image not found".to_string())?;
+    let base =
+        std::fs::canonicalize(app_data_dir).map_err(|_| "Cannot resolve app data dir".to_string())?;
+    if !canonical.starts_with(&base) {
+        return Err("Refusing to read file outside app data".to_string());
+    }
+    let bytes = std::fs::read(&canonical).map_err(|e| format!("Failed to read image: {e}"))?;
+    Ok(base64::engine::general_purpose::STANDARD.encode(&bytes))
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn save_inline_image(
+    app: tauri::AppHandle,
+    mime_type: String,
+    data_base64: String,
+) -> Result<OutgoingAttachment, String> {
+    use base64::Engine;
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(data_base64.as_bytes())
+        .map_err(|_| "Invalid image data".to_string())?;
+    let dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|_| "Cannot resolve app data dir".to_string())?
+        .join("inline_images");
+    write_inline_image(&dir, &mime_type, &bytes)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn read_inline_image(app: tauri::AppHandle, blob_ref: String) -> Result<String, String> {
+    let base = app
+        .path()
+        .app_data_dir()
+        .map_err(|_| "Cannot resolve app data dir".to_string())?;
+    read_inline_image_file(&base, &blob_ref)
+}
+
 #[tauri::command]
 #[specta::specta]
 pub async fn pick_attachment(app: tauri::AppHandle) -> Result<Vec<OutgoingAttachment>, String> {
@@ -1526,6 +1610,52 @@ mod tests {
         assert_eq!(no_ext_2, base.join("LICENSE (1)"));
 
         let _ = fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn write_inline_image_persists_bytes_and_maps_mime() {
+        use std::fs;
+        let dir = std::env::temp_dir().join(format!("am-inline-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        let att = super::write_inline_image(&dir, "image/png", b"\x89PNG\r\n").unwrap();
+        assert_eq!(att.mime_type, "image/png");
+        assert!(att.filename.ends_with(".png"));
+        assert_eq!(att.content_id, None);
+        let written = fs::read(&att.blob_ref).unwrap();
+        assert_eq!(written, b"\x89PNG\r\n");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn write_inline_image_rejects_non_image_and_oversize() {
+        let dir = std::env::temp_dir().join(format!("am-inline-rej-{}", std::process::id()));
+        assert!(super::write_inline_image(&dir, "application/pdf", b"x").is_err());
+        let big = vec![0u8; super::MAX_INLINE_IMAGE_BYTES + 1];
+        assert!(super::write_inline_image(&dir, "image/png", &big).is_err());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn read_inline_image_file_roundtrips_and_guards_path() {
+        use base64::Engine;
+        use std::fs;
+        let base = std::env::temp_dir().join(format!("am-read-{}", std::process::id()));
+        let inside = base.join("inline_images");
+        fs::create_dir_all(&inside).unwrap();
+        let f = inside.join("a.png");
+        fs::write(&f, b"hello").unwrap();
+        let b64 = super::read_inline_image_file(&base, f.to_str().unwrap()).unwrap();
+        assert_eq!(
+            base64::engine::general_purpose::STANDARD.decode(b64).unwrap(),
+            b"hello"
+        );
+
+        let outside = std::env::temp_dir().join(format!("am-out-{}.png", std::process::id()));
+        fs::write(&outside, b"secret").unwrap();
+        assert!(super::read_inline_image_file(&base, outside.to_str().unwrap()).is_err());
+
+        let _ = fs::remove_dir_all(&base);
+        let _ = fs::remove_file(&outside);
     }
 
     #[test]

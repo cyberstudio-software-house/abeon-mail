@@ -65,6 +65,8 @@ pub fn build_specta_builder() -> Builder<tauri::Wry> {
             commands::set_default_signature,
             commands::delete_signature,
             commands::pick_attachment,
+            commands::save_inline_image,
+            commands::read_inline_image,
             commands::list_smart_folder,
             commands::search_messages,
             commands::list_labels,
