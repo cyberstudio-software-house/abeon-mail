@@ -3,7 +3,18 @@ import {
   rewriteInlineSrcs,
   saveInlineImageAttachment,
   reconstructDraftInlineImages,
+  generateContentId,
 } from "./inlineImages";
+
+describe("generateContentId", () => {
+  it("returns distinct, well-formed ids on consecutive calls", () => {
+    const first = generateContentId();
+    const second = generateContentId();
+    expect(first).not.toBe(second);
+    expect(first).toMatch(/^inline-.+@abeonmail$/);
+    expect(second).toMatch(/^inline-.+@abeonmail$/);
+  });
+});
 
 describe("rewriteInlineSrcs", () => {
   it("rewrites a mapped data URI to a cid", () => {

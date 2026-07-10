@@ -1100,7 +1100,8 @@ pub fn read_inline_image(app: tauri::AppHandle, blob_ref: String) -> Result<Stri
     let base = app
         .path()
         .app_data_dir()
-        .map_err(|_| "Cannot resolve app data dir".to_string())?;
+        .map_err(|_| "Cannot resolve app data dir".to_string())?
+        .join("inline_images");
     read_inline_image_file(&base, &blob_ref)
 }
 

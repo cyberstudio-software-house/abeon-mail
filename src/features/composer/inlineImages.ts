@@ -6,7 +6,7 @@ let inlineImageCounter = 0;
 
 export function generateContentId(): string {
   inlineImageCounter += 1;
-  return `inline-${inlineImageCounter}@abeonmail`;
+  return `inline-${Date.now().toString(36)}-${inlineImageCounter.toString(36)}@abeonmail`;
 }
 
 export function rewriteInlineSrcs(html: string, srcToContentId: Map<string, string>): string {
