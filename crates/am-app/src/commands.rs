@@ -899,9 +899,16 @@ pub fn list_draft_summaries(
 #[tauri::command]
 #[specta::specta]
 pub fn discard_draft(
+    app: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
     draft_id: i64,
 ) -> Result<(), String> {
+    if let Ok(dir) = app.path().app_data_dir() {
+        let inline_dir = dir.join("inline_images");
+        if let Ok((_account_id, msg)) = drafts_repo::get_draft(&state.db, draft_id) {
+            delete_inline_files(&inline_dir, &msg.attachments);
+        }
+    }
     drafts_repo::delete_draft(&state.db, draft_id)
         .map_err(|_| "Failed to discard draft".to_string())
 }
@@ -1047,6 +1054,18 @@ fn read_inline_image_file(app_data_dir: &std::path::Path, blob_ref: &str) -> Res
     }
     let bytes = std::fs::read(&canonical).map_err(|e| format!("Failed to read image: {e}"))?;
     Ok(base64::engine::general_purpose::STANDARD.encode(&bytes))
+}
+
+fn delete_inline_files(inline_dir: &std::path::Path, attachments: &[OutgoingAttachment]) {
+    for att in attachments {
+        if att.content_id.is_none() {
+            continue;
+        }
+        let path = std::path::Path::new(&att.blob_ref);
+        if path.starts_with(inline_dir) {
+            let _ = std::fs::remove_file(path);
+        }
+    }
 }
 
 #[tauri::command]
@@ -1656,6 +1675,36 @@ mod tests {
 
         let _ = fs::remove_dir_all(&base);
         let _ = fs::remove_file(&outside);
+    }
+
+    #[test]
+    fn delete_inline_files_removes_only_inline_attachments() {
+        use std::fs;
+        let dir = std::env::temp_dir().join(format!("am-del-{}", std::process::id()));
+        let inline = dir.join("inline_images");
+        fs::create_dir_all(&inline).unwrap();
+        let inline_file = inline.join("a.png");
+        fs::write(&inline_file, b"x").unwrap();
+        let other = dir.join("keep.pdf");
+        fs::write(&other, b"x").unwrap();
+        let atts = vec![
+            am_core::outgoing::OutgoingAttachment {
+                filename: "a.png".into(),
+                mime_type: "image/png".into(),
+                blob_ref: inline_file.to_string_lossy().into_owned(),
+                content_id: Some("c1".into()),
+            },
+            am_core::outgoing::OutgoingAttachment {
+                filename: "keep.pdf".into(),
+                mime_type: "application/pdf".into(),
+                blob_ref: other.to_string_lossy().into_owned(),
+                content_id: None,
+            },
+        ];
+        super::delete_inline_files(&inline, &atts);
+        assert!(!inline_file.exists());
+        assert!(other.exists());
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]
