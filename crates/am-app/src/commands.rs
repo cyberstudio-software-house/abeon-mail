@@ -1057,13 +1057,20 @@ fn read_inline_image_file(app_data_dir: &std::path::Path, blob_ref: &str) -> Res
 }
 
 fn delete_inline_files(inline_dir: &std::path::Path, attachments: &[OutgoingAttachment]) {
+    let base = match std::fs::canonicalize(inline_dir) {
+        Ok(base) => base,
+        Err(_) => return,
+    };
     for att in attachments {
         if att.content_id.is_none() {
             continue;
         }
-        let path = std::path::Path::new(&att.blob_ref);
-        if path.starts_with(inline_dir) {
-            let _ = std::fs::remove_file(path);
+        let canonical = match std::fs::canonicalize(&att.blob_ref) {
+            Ok(canonical) => canonical,
+            Err(_) => continue,
+        };
+        if canonical.starts_with(&base) {
+            let _ = std::fs::remove_file(&canonical);
         }
     }
 }
@@ -1705,6 +1712,29 @@ mod tests {
         assert!(!inline_file.exists());
         assert!(other.exists());
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn delete_inline_files_ignores_parent_traversal() {
+        use std::fs;
+        let base = std::env::temp_dir().join(format!("am-del-trav-{}", std::process::id()));
+        let inline = base.join("inline_images");
+        fs::create_dir_all(&inline).unwrap();
+        let keep = base.join("keep.pdf");
+        fs::write(&keep, b"x").unwrap();
+        let atts = vec![am_core::outgoing::OutgoingAttachment {
+            filename: "keep.pdf".into(),
+            mime_type: "application/pdf".into(),
+            blob_ref: inline
+                .join("..")
+                .join("keep.pdf")
+                .to_string_lossy()
+                .into_owned(),
+            content_id: Some("c1".into()),
+        }];
+        super::delete_inline_files(&inline, &atts);
+        assert!(keep.exists());
+        let _ = fs::remove_dir_all(&base);
     }
 
     #[test]
