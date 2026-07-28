@@ -62,6 +62,9 @@ pub fn run() {
             {
                 eprintln!("header redecode migration failed: {err}");
             }
+            if let Err(err) = am_storage::maintenance::fill_contact_search_keys(&db) {
+                eprintln!("contact search key backfill failed: {err}");
+            }
             let tray_enabled =
                 matches!(settings_repo::get_setting(&db, "notifications.tray"), Ok(Some(ref v)) if v == "true");
             app.manage(AppState::new(db));

@@ -52,6 +52,37 @@ pub fn redecode_legacy_headers(
     Ok(updated)
 }
 
+pub fn fill_contact_search_keys(db: &Database) -> Result<usize, StorageError> {
+    let rows = {
+        let conn = db.conn();
+        let mut stmt =
+            conn.prepare("SELECT id, email, name FROM contacts_cache WHERE search_key = ''")?;
+        let rows = stmt
+            .query_map([], |r| {
+                Ok((
+                    r.get::<_, i64>(0)?,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, Option<String>>(2)?,
+                ))
+            })?
+            .collect::<Result<Vec<_>, rusqlite::Error>>()?;
+        drop(stmt);
+        rows
+    };
+
+    let conn = db.conn();
+    let mut updated = 0usize;
+    for (id, email, name) in rows {
+        let key = crate::contacts_repo::normalize_search_key(name.as_deref(), &email);
+        conn.execute(
+            "UPDATE contacts_cache SET search_key = ?2 WHERE id = ?1",
+            params![id, key],
+        )?;
+        updated += 1;
+    }
+    Ok(updated)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -151,5 +182,88 @@ mod tests {
 
         let second = redecode_legacy_headers(&db, strip).unwrap();
         assert_eq!(second, 0, "second run must be a no-op (idempotent)");
+    }
+
+    #[test]
+    fn fill_contact_search_keys_indexes_backfilled_rows() {
+        use crate::contacts_repo::suggest;
+
+        let (db, _) = setup();
+        let account_id: i64 = db
+            .conn()
+            .query_row("SELECT id FROM accounts LIMIT 1", [], |r| r.get(0))
+            .unwrap();
+        db.conn()
+            .execute(
+                "INSERT INTO contacts_cache (account_id, email, name, exchange_count, last_contact_at, search_key)
+                 VALUES (?1, 'l.nowak@firma.pl', 'Łukasz Nowak', 3, 1000, '')",
+                params![account_id],
+            )
+            .unwrap();
+
+        assert!(suggest(&db, "lukasz", None, 8, 5_000).unwrap().is_empty());
+
+        let filled = fill_contact_search_keys(&db).unwrap();
+        assert_eq!(filled, 1);
+
+        let found = suggest(&db, "lukasz", None, 8, 5_000).unwrap();
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].email, "l.nowak@firma.pl");
+
+        assert_eq!(fill_contact_search_keys(&db).unwrap(), 0);
+    }
+
+    #[test]
+    fn migration_v19_backfills_sent_recipients_and_answered_senders() {
+        use crate::contacts_repo::suggest;
+        use crate::messages_repo::store_recipients;
+
+        let (db, inbox) = setup();
+        let account_id: i64 = db
+            .conn()
+            .query_row("SELECT id FROM accounts LIMIT 1", [], |r| r.get(0))
+            .unwrap();
+        let sent = upsert_folder(&db, account_id, "Sent", "Sent", FolderType::Sent)
+            .unwrap()
+            .id;
+
+        let mut sent_header = h(1, "Sent one", None);
+        sent_header.from_address = "me@example.com".into();
+        insert_headers(&db, sent, &[sent_header]).unwrap();
+
+        let mut answered = h(2, "Answered one", Some("Anna"));
+        answered.from_address = "Anna@Dom.pl".into();
+        answered.answered = true;
+        insert_headers(&db, inbox, &[answered]).unwrap();
+
+        let mut ignored = h(3, "Newsletter", None);
+        ignored.from_address = "spam@ads.com".into();
+        insert_headers(&db, inbox, &[ignored]).unwrap();
+
+        let sent_msg = ids_by_uids(&db, sent, &[1]).unwrap()[0];
+        store_recipients(
+            &db,
+            sent_msg,
+            &["Jan@Firma.PL".into()],
+            &["biuro@firma.pl".into()],
+        )
+        .unwrap();
+
+        db.conn()
+            .execute_batch(include_str!("migrations/V19__contacts_backfill.sql"))
+            .unwrap();
+        fill_contact_search_keys(&db).unwrap();
+
+        assert_eq!(suggest(&db, "jan@firma.pl", None, 8, 5_000).unwrap().len(), 1);
+        assert_eq!(
+            suggest(&db, "biuro@firma.pl", None, 8, 5_000).unwrap().len(),
+            1
+        );
+        let anna = suggest(&db, "anna@dom.pl", None, 8, 5_000).unwrap();
+        assert_eq!(anna.len(), 1);
+        assert_eq!(anna[0].name.as_deref(), Some("Anna"));
+        assert!(suggest(&db, "spam@ads.com", None, 8, 5_000)
+            .unwrap()
+            .is_empty());
     }
 }
