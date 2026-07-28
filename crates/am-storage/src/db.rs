@@ -200,4 +200,27 @@ mod tests {
             .unwrap();
         assert_eq!(count, 1);
     }
+
+    #[test]
+    fn migration_v18_adds_contact_index_columns() {
+        let db = Database::open_in_memory().unwrap();
+        let conn = db.conn();
+        let cols: i64 = conn
+            .query_row(
+                "SELECT count(*) FROM pragma_table_info('contacts_cache')
+                 WHERE name IN ('exchange_count','last_contact_at','search_key')",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(cols, 3);
+        let idx: i64 = conn
+            .query_row(
+                "SELECT count(*) FROM sqlite_master WHERE type='index' AND name='idx_contacts_search'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(idx, 1);
+    }
 }
