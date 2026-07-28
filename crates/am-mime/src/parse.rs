@@ -124,6 +124,11 @@ pub fn parse_message(raw: &[u8]) -> ParsedMessage {
     let text_plain = msg.body_text(0).map(|s| s.into_owned());
     let text_html = msg.body_html(0).map(|s| s.into_owned());
 
+    let html_lower = text_html
+        .as_deref()
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+
     let attachments: Vec<NewAttachment> = msg
         .attachments()
         .filter(|part| part.sub_parts().is_none())
@@ -131,11 +136,14 @@ pub fn parse_message(raw: &[u8]) -> ParsedMessage {
             let content_id = part
                 .content_id()
                 .map(|c| c.trim_matches(|ch| ch == '<' || ch == '>').to_string());
-            let disposition_inline = part
+            let disposition_attachment = part
                 .content_disposition()
-                .map(|d| d.is_inline())
+                .map(|d| d.is_attachment())
                 .unwrap_or(false);
-            let is_inline = content_id.is_some() || disposition_inline;
+            let referenced_in_html = content_id
+                .as_deref()
+                .is_some_and(|cid| html_lower.contains(&format!("cid:{}", cid.to_ascii_lowercase())));
+            let is_inline = !disposition_attachment && referenced_in_html;
             let mime_type = part
                 .content_type()
                 .map(|ct| match ct.subtype() {
@@ -274,6 +282,99 @@ iVBORw0KGgo=\r\n\
         let inline: Vec<_> = result.attachments.iter().filter(|a| a.is_inline).collect();
         assert_eq!(inline.len(), 1);
         assert_eq!(inline[0].content_id.as_deref(), Some("logo"));
+        assert!(result.attachment_names.is_empty());
+    }
+
+    #[test]
+    fn pdf_with_content_id_and_attachment_disposition_is_not_inline() {
+        let raw = b"From: a@x.com\r\n\
+MIME-Version: 1.0\r\n\
+Content-Type: multipart/mixed; boundary=\"b\"\r\n\
+\r\n\
+--b\r\n\
+Content-Type: text/html\r\n\
+\r\n\
+<div>Pozdrawiam</div>\r\n\
+--b\r\n\
+Content-Type: application/pdf; name=\"Cyber 06.pdf\"\r\n\
+Content-ID: <a42db8932a2378d74e98059e861bbfba>\r\n\
+Content-Disposition: attachment; filename=\"Cyber 06.pdf\"\r\n\
+Content-Transfer-Encoding: base64\r\n\
+\r\n\
+JVBERi0=\r\n\
+--b--\r\n";
+        let result = parse_message(raw);
+        assert_eq!(result.attachments.len(), 1);
+        assert!(!result.attachments[0].is_inline);
+        assert_eq!(result.attachment_names, vec!["Cyber 06.pdf".to_string()]);
+    }
+
+    #[test]
+    fn content_id_without_html_reference_is_not_inline() {
+        let raw = b"From: a@x.com\r\n\
+MIME-Version: 1.0\r\n\
+Content-Type: multipart/mixed; boundary=\"b\"\r\n\
+\r\n\
+--b\r\n\
+Content-Type: text/html\r\n\
+\r\n\
+<div>brak osadzonych obrazow</div>\r\n\
+--b\r\n\
+Content-Type: application/pdf; name=\"cv.pdf\"\r\n\
+Content-ID: <orphan-cid>\r\n\
+Content-Transfer-Encoding: base64\r\n\
+\r\n\
+JVBERi0=\r\n\
+--b--\r\n";
+        let result = parse_message(raw);
+        assert_eq!(result.attachments.len(), 1);
+        assert!(!result.attachments[0].is_inline);
+        assert_eq!(result.attachment_names, vec!["cv.pdf".to_string()]);
+    }
+
+    #[test]
+    fn inline_disposition_without_content_id_is_listed_as_attachment() {
+        let raw = b"From: a@x.com\r\n\
+MIME-Version: 1.0\r\n\
+Content-Type: multipart/mixed; boundary=\"b\"\r\n\
+\r\n\
+--b\r\n\
+Content-Type: text/html\r\n\
+\r\n\
+<p>hi</p>\r\n\
+--b\r\n\
+Content-Type: application/pdf\r\n\
+Content-Disposition: inline; filename=\"contract.pdf\"\r\n\
+Content-Transfer-Encoding: base64\r\n\
+\r\n\
+JVBERi0=\r\n\
+--b--\r\n";
+        let result = parse_message(raw);
+        assert_eq!(result.attachments.len(), 1);
+        assert!(!result.attachments[0].is_inline);
+        assert_eq!(result.attachment_names, vec!["contract.pdf".to_string()]);
+    }
+
+    #[test]
+    fn inline_image_referenced_with_uppercase_cid_stays_inline() {
+        let raw = b"From: a@x.com\r\n\
+MIME-Version: 1.0\r\n\
+Content-Type: multipart/related; boundary=\"b\"\r\n\
+\r\n\
+--b\r\n\
+Content-Type: text/html\r\n\
+\r\n\
+<img src=\"CID:Logo@Example.COM\">\r\n\
+--b\r\n\
+Content-Type: image/png\r\n\
+Content-ID: <logo@example.com>\r\n\
+Content-Transfer-Encoding: base64\r\n\
+\r\n\
+iVBORw0KGgo=\r\n\
+--b--\r\n";
+        let result = parse_message(raw);
+        assert_eq!(result.attachments.len(), 1);
+        assert!(result.attachments[0].is_inline);
         assert!(result.attachment_names.is_empty());
     }
 
