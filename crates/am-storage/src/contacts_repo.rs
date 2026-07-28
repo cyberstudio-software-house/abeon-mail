@@ -96,6 +96,71 @@ pub fn upsert_contact(
     Ok(())
 }
 
+const RECENT_WINDOW_SECS: i64 = 30 * 86_400;
+const STALE_WINDOW_SECS: i64 = 365 * 86_400;
+
+fn escape_like(input: &str) -> String {
+    input
+        .replace('\\', "\\\\")
+        .replace('%', "\\%")
+        .replace('_', "\\_")
+}
+
+pub fn suggest(
+    db: &Database,
+    query: &str,
+    account_id: Option<i64>,
+    limit: u32,
+    now: i64,
+) -> Result<Vec<ContactSuggestion>, StorageError> {
+    let normalized = fold_text(query.trim());
+    if normalized.is_empty() {
+        return Ok(Vec::new());
+    }
+    let pattern = escape_like(&normalized);
+
+    let conn = db.conn();
+    let mut stmt = conn.prepare(
+        "SELECT email,
+                MAX(name) AS name,
+                SUM(exchange_count) AS exchange_count,
+                MAX(last_contact_at) AS last_contact_at
+         FROM contacts_cache
+         WHERE search_key LIKE '%' || ?1 || '%' ESCAPE '\\'
+         GROUP BY email
+         ORDER BY MAX(CASE WHEN account_id = ?2 THEN 1 ELSE 0 END) DESC,
+                  MAX(CASE WHEN search_key LIKE ?1 || '%' ESCAPE '\\'
+                             OR email LIKE ?1 || '%' ESCAPE '\\'
+                           THEN 1 ELSE 0 END) DESC,
+                  MAX(CASE WHEN last_contact_at >= ?3 THEN 2
+                           WHEN last_contact_at >= ?4 THEN 1
+                           ELSE 0 END) DESC,
+                  SUM(exchange_count) DESC,
+                  MAX(last_contact_at) DESC
+         LIMIT ?5",
+    )?;
+    let rows = stmt
+        .query_map(
+            params![
+                pattern,
+                account_id.unwrap_or(-1),
+                now - RECENT_WINDOW_SECS,
+                now - STALE_WINDOW_SECS,
+                limit
+            ],
+            |r| {
+                Ok(ContactSuggestion {
+                    email: r.get(0)?,
+                    name: r.get(1)?,
+                    exchange_count: r.get(2)?,
+                    last_contact_at: r.get(3)?,
+                })
+            },
+        )?
+        .collect::<Result<Vec<_>, rusqlite::Error>>()?;
+    Ok(rows)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -190,6 +255,108 @@ mod tests {
         let (name, _, _, key) = stored(&db, "jan@firma.pl");
         assert_eq!(name.as_deref(), Some("Jan Kowalski"));
         assert_eq!(key, "jan kowalski jan@firma.pl");
+    }
+
+    const NOW: i64 = 1_800_000_000;
+    const DAY: i64 = 86_400;
+
+    #[test]
+    fn suggest_returns_nothing_for_an_empty_query() {
+        let db = Database::open_in_memory().unwrap();
+        let account_id = seed_account(&db, "me@example.com");
+        upsert_contact(&db, account_id, "jan@firma.pl", None, NOW).unwrap();
+
+        assert!(suggest(&db, "", None, 8, NOW).unwrap().is_empty());
+        assert!(suggest(&db, "   ", None, 8, NOW).unwrap().is_empty());
+    }
+
+    #[test]
+    fn suggest_matches_name_and_address_ignoring_diacritics() {
+        let db = Database::open_in_memory().unwrap();
+        let account_id = seed_account(&db, "me@example.com");
+        upsert_contact(&db, account_id, "l.nowak@firma.pl", Some("Łukasz Nowak"), NOW).unwrap();
+
+        assert_eq!(suggest(&db, "lukasz", None, 8, NOW).unwrap().len(), 1);
+        assert_eq!(suggest(&db, "ŁUKASZ", None, 8, NOW).unwrap().len(), 1);
+        assert_eq!(suggest(&db, "nowak@fir", None, 8, NOW).unwrap().len(), 1);
+        assert!(suggest(&db, "kowalski", None, 8, NOW).unwrap().is_empty());
+    }
+
+    #[test]
+    fn suggest_merges_the_same_address_across_accounts() {
+        let db = Database::open_in_memory().unwrap();
+        let work = seed_account(&db, "work@example.com");
+        let home = seed_account(&db, "home@example.com");
+        upsert_contact(&db, work, "jan@firma.pl", None, NOW).unwrap();
+        upsert_contact(&db, home, "jan@firma.pl", Some("Jan Kowalski"), NOW).unwrap();
+
+        let found = suggest(&db, "jan", None, 8, NOW).unwrap();
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].name.as_deref(), Some("Jan Kowalski"));
+        assert_eq!(found[0].exchange_count, 2);
+    }
+
+    #[test]
+    fn suggest_ranks_the_sending_account_first() {
+        let db = Database::open_in_memory().unwrap();
+        let work = seed_account(&db, "work@example.com");
+        let home = seed_account(&db, "home@example.com");
+        upsert_contact(&db, home, "anna@dom.pl", None, NOW).unwrap();
+        upsert_contact(&db, home, "anna@dom.pl", None, NOW).unwrap();
+        upsert_contact(&db, work, "anna@praca.pl", None, NOW).unwrap();
+
+        let found = suggest(&db, "anna", Some(work), 8, NOW).unwrap();
+        assert_eq!(found[0].email, "anna@praca.pl");
+    }
+
+    #[test]
+    fn suggest_ranks_prefix_matches_before_infix_matches() {
+        let db = Database::open_in_memory().unwrap();
+        let account_id = seed_account(&db, "me@example.com");
+        upsert_contact(&db, account_id, "biuro@nowak.pl", None, NOW).unwrap();
+        upsert_contact(&db, account_id, "biuro@nowak.pl", None, NOW).unwrap();
+        upsert_contact(&db, account_id, "nowak@firma.pl", None, NOW).unwrap();
+
+        let found = suggest(&db, "nowak", None, 8, NOW).unwrap();
+        assert_eq!(found[0].email, "nowak@firma.pl");
+    }
+
+    #[test]
+    fn suggest_ranks_recent_contacts_before_frequent_stale_ones() {
+        let db = Database::open_in_memory().unwrap();
+        let account_id = seed_account(&db, "me@example.com");
+        for _ in 0..10 {
+            upsert_contact(&db, account_id, "stale@firma.pl", None, NOW - 400 * DAY).unwrap();
+        }
+        upsert_contact(&db, account_id, "fresh@firma.pl", None, NOW - DAY).unwrap();
+
+        let found = suggest(&db, "firma", None, 8, NOW).unwrap();
+        assert_eq!(found[0].email, "fresh@firma.pl");
+    }
+
+    #[test]
+    fn suggest_breaks_ties_within_a_bucket_by_exchange_count() {
+        let db = Database::open_in_memory().unwrap();
+        let account_id = seed_account(&db, "me@example.com");
+        upsert_contact(&db, account_id, "rare@firma.pl", None, NOW - DAY).unwrap();
+        for _ in 0..3 {
+            upsert_contact(&db, account_id, "often@firma.pl", None, NOW - 2 * DAY).unwrap();
+        }
+
+        let found = suggest(&db, "firma", None, 8, NOW).unwrap();
+        assert_eq!(found[0].email, "often@firma.pl");
+    }
+
+    #[test]
+    fn suggest_treats_wildcards_as_literal_text_and_honours_the_limit() {
+        let db = Database::open_in_memory().unwrap();
+        let account_id = seed_account(&db, "me@example.com");
+        upsert_contact(&db, account_id, "a@firma.pl", None, NOW).unwrap();
+        upsert_contact(&db, account_id, "b@firma.pl", None, NOW).unwrap();
+
+        assert!(suggest(&db, "%", None, 8, NOW).unwrap().is_empty());
+        assert!(suggest(&db, "_", None, 8, NOW).unwrap().is_empty());
+        assert_eq!(suggest(&db, "firma", None, 1, NOW).unwrap().len(), 1);
     }
 
     #[test]
