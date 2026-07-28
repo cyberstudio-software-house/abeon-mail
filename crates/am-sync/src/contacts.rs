@@ -1,3 +1,4 @@
+use am_core::outgoing::OutgoingMessage;
 use am_protocols::imap::FetchedHeader;
 use am_storage::{contacts_repo, Database};
 
@@ -13,6 +14,14 @@ pub fn harvest_sent_headers(db: &Database, account_id: i64, fetched: &[FetchedHe
             ) {
                 eprintln!("contact upsert failed ({}): {e}", addr.address);
             }
+        }
+    }
+}
+
+pub fn record_sent_message(db: &Database, account_id: i64, msg: &OutgoingMessage, now: i64) {
+    for address in msg.to.iter().chain(msg.cc.iter()).chain(msg.bcc.iter()) {
+        if let Err(e) = contacts_repo::upsert_contact(db, account_id, address, None, now) {
+            eprintln!("contact upsert failed ({address}): {e}");
         }
     }
 }
@@ -87,6 +96,36 @@ mod tests {
         assert_eq!(found[0].last_contact_at, 4_000);
 
         assert_eq!(suggest(&db, "biuro", None, 8, 5_000).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn record_sent_message_stores_every_recipient_class() {
+        use am_core::outgoing::OutgoingMessage;
+
+        let db = Database::open_in_memory().unwrap();
+        let account_id = seed_account(&db);
+
+        let msg = OutgoingMessage {
+            from_address: "me@example.com".into(),
+            from_name: None,
+            to: vec!["Jan@Firma.PL".into()],
+            cc: vec!["biuro@firma.pl".into()],
+            bcc: vec!["ukryty@firma.pl".into()],
+            subject: "S".into(),
+            text_body: String::new(),
+            html_body: None,
+            in_reply_to: None,
+            references: Vec::new(),
+            attachments: Vec::new(),
+        };
+
+        record_sent_message(&db, account_id, &msg, 7_000);
+
+        for email in ["jan@firma.pl", "biuro@firma.pl", "ukryty@firma.pl"] {
+            let found = suggest(&db, email, None, 8, 9_000).unwrap();
+            assert_eq!(found.len(), 1, "{email} should be suggested");
+            assert_eq!(found[0].last_contact_at, 7_000);
+        }
     }
 
     #[test]

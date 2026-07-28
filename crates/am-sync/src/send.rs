@@ -225,6 +225,7 @@ pub async fn drain_outbox(db: &Database, account_id: i64, creds: &dyn Credential
                 queue_repo::mark_done(db, op.id)?;
                 sink.emit(SyncEvent::SendSucceeded { account_id });
                 let _ = mark_original_answered(db, account_id, msg.in_reply_to.as_deref());
+                crate::contacts::record_sent_message(db, account_id, &msg, now_secs());
 
                 let all_folders = folders_repo::list_folders(db, account_id)?;
                 if let Some(sent) = all_folders.iter().find(|f| f.folder_type == FolderType::Sent) {
