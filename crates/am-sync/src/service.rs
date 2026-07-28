@@ -1134,6 +1134,68 @@ fn mark_move_failed(db: &Database, op: &am_storage::queue_repo::QueuedOp, reason
     Ok(())
 }
 
+pub async fn run_contacts_backfill_batch(
+    db: &Database,
+    account_id: i64,
+    creds: &dyn CredentialSource,
+) -> Result<bool, SyncError> {
+    use crate::contacts::{
+        contacts_cursor_key, next_backfill_uids, CONTACTS_BACKFILL_BATCH, CONTACTS_BACKFILL_DONE,
+    };
+
+    let pending: Vec<_> = folders_repo::list_folders(db, account_id)?
+        .into_iter()
+        .filter(|f| f.folder_type == am_core::folder::FolderType::Sent)
+        .filter(|f| {
+            am_storage::settings_repo::get_setting(db, &contacts_cursor_key(f.id))
+                .ok()
+                .flatten()
+                .as_deref()
+                != Some(CONTACTS_BACKFILL_DONE)
+        })
+        .collect();
+    if pending.is_empty() {
+        return Ok(false);
+    }
+
+    let account = accounts_repo::get_account(db, account_id)?;
+    let endpoints = load_endpoints(db, account_id)?;
+    let auth = creds.auth_for(&account).await?;
+    let config = imap_config(&endpoints, &account.email);
+    let mut session = ImapSession::connect(&config, &auth.to_imap()).await?;
+
+    let mut did_work = false;
+    for folder in pending {
+        if session.select(&folder.remote_path).await.is_err() {
+            continue;
+        }
+        let server_uids = session.search_all_uids().await?;
+        let cursor = am_storage::settings_repo::get_setting(db, &contacts_cursor_key(folder.id))?;
+        let batch = next_backfill_uids(cursor.as_deref(), &server_uids, CONTACTS_BACKFILL_BATCH);
+        if batch.is_empty() {
+            am_storage::settings_repo::set_setting(
+                db,
+                &contacts_cursor_key(folder.id),
+                CONTACTS_BACKFILL_DONE,
+            )?;
+            continue;
+        }
+
+        let fetched = session.fetch_headers_by_uids(&batch).await?;
+        crate::contacts::harvest_sent_headers(db, account_id, &fetched);
+        let lowest = batch.iter().copied().min().unwrap_or(0);
+        am_storage::settings_repo::set_setting(
+            db,
+            &contacts_cursor_key(folder.id),
+            &lowest.to_string(),
+        )?;
+        did_work = true;
+    }
+
+    let _ = session.logout().await;
+    Ok(did_work)
+}
+
 #[cfg(test)]
 mod move_tests {
     use super::*;

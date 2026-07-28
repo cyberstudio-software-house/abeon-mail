@@ -204,7 +204,12 @@ impl SyncEngine {
                 if token.is_cancelled() {
                     break;
                 }
-                let did_work = match service::run_prefetch_batch(&db, account_id, creds.as_ref(), sink.as_ref()).await {
+                let contacts_worked =
+                    match service::run_contacts_backfill_batch(&db, account_id, creds.as_ref()).await {
+                        Ok(worked) => worked,
+                        Err(_) => false,
+                    };
+                let prefetch_worked = match service::run_prefetch_batch(&db, account_id, creds.as_ref(), sink.as_ref()).await {
                     Ok(worked) => worked,
                     Err(service::SyncError::NeedsReauth) => {
                         let _ = am_storage::accounts_repo::set_requires_reauth(&db, account_id, true);
@@ -213,6 +218,7 @@ impl SyncEngine {
                     }
                     Err(_) => false,
                 };
+                let did_work = contacts_worked || prefetch_worked;
                 let pause = if did_work { PREFETCH_WORK_PAUSE } else { PREFETCH_IDLE_INTERVAL };
                 tokio::select! {
                     _ = tokio::time::sleep(pause) => {},

@@ -18,6 +18,28 @@ pub fn harvest_sent_headers(db: &Database, account_id: i64, fetched: &[FetchedHe
     }
 }
 
+pub const CONTACTS_BACKFILL_BATCH: usize = 500;
+pub const CONTACTS_BACKFILL_DONE: &str = "done";
+
+pub fn contacts_cursor_key(folder_id: i64) -> String {
+    format!("contacts.backfill.{folder_id}")
+}
+
+pub fn next_backfill_uids(cursor: Option<&str>, server_uids: &[i64], batch: usize) -> Vec<i64> {
+    if cursor == Some(CONTACTS_BACKFILL_DONE) {
+        return Vec::new();
+    }
+    let ceiling = cursor.and_then(|c| c.parse::<i64>().ok());
+    let mut pending: Vec<i64> = server_uids
+        .iter()
+        .copied()
+        .filter(|uid| ceiling.map_or(true, |c| *uid < c))
+        .collect();
+    pending.sort_unstable_by(|a, b| b.cmp(a));
+    pending.truncate(batch);
+    pending
+}
+
 pub fn record_sent_message(db: &Database, account_id: i64, msg: &OutgoingMessage, now: i64) {
     for address in msg.to.iter().chain(msg.cc.iter()).chain(msg.bcc.iter()) {
         if let Err(e) = contacts_repo::upsert_contact(db, account_id, address, None, now) {
@@ -96,6 +118,31 @@ mod tests {
         assert_eq!(found[0].last_contact_at, 4_000);
 
         assert_eq!(suggest(&db, "biuro", None, 8, 5_000).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn contacts_cursor_key_is_per_folder() {
+        assert_eq!(contacts_cursor_key(12), "contacts.backfill.12");
+    }
+
+    #[test]
+    fn next_backfill_uids_starts_from_the_highest_uid() {
+        let uids = vec![1, 2, 3, 4, 5];
+        assert_eq!(next_backfill_uids(None, &uids, 2), vec![5, 4]);
+    }
+
+    #[test]
+    fn next_backfill_uids_resumes_below_the_cursor() {
+        let uids = vec![1, 2, 3, 4, 5];
+        assert_eq!(next_backfill_uids(Some("4"), &uids, 2), vec![3, 2]);
+    }
+
+    #[test]
+    fn next_backfill_uids_is_empty_when_done_or_exhausted() {
+        let uids = vec![1, 2, 3];
+        assert!(next_backfill_uids(Some("done"), &uids, 10).is_empty());
+        assert!(next_backfill_uids(Some("1"), &uids, 10).is_empty());
+        assert!(next_backfill_uids(None, &[], 10).is_empty());
     }
 
     #[test]
