@@ -51,11 +51,19 @@ pub struct ImapConfig {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EnvelopeAddress {
+    pub address: String,
+    pub name: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FetchedHeader {
     pub uid: i64,
     pub message_id_hdr: Option<String>,
     pub from_address: String,
     pub from_name: Option<String>,
+    pub to: Vec<EnvelopeAddress>,
+    pub cc: Vec<EnvelopeAddress>,
     pub subject: String,
     pub date: i64,
     pub seen: bool,
@@ -636,6 +644,9 @@ fn map_header(fetch: &Fetch) -> FetchedHeader {
         })
         .unwrap_or_default();
 
+    let to = envelope_addresses(envelope.and_then(|e| e.to.as_ref()));
+    let cc = envelope_addresses(envelope.and_then(|e| e.cc.as_ref()));
+
     let date = fetch
         .internal_date()
         .map(|d| d.timestamp())
@@ -661,6 +672,8 @@ fn map_header(fetch: &Fetch) -> FetchedHeader {
         message_id_hdr,
         from_address,
         from_name,
+        to,
+        cc,
         subject,
         date,
         seen,
@@ -670,6 +683,31 @@ fn map_header(fetch: &Fetch) -> FetchedHeader {
         in_reply_to,
         references,
     }
+}
+
+fn envelope_addresses(
+    list: Option<&Vec<async_imap::imap_proto::Address<'_>>>,
+) -> Vec<EnvelopeAddress> {
+    let Some(list) = list else {
+        return Vec::new();
+    };
+    list.iter()
+        .filter_map(|addr| {
+            let mailbox = addr.mailbox.as_ref().map(|s| decode_bytes(s))?;
+            let host = addr.host.as_ref().map(|s| decode_bytes(s))?;
+            if mailbox.is_empty() || host.is_empty() {
+                return None;
+            }
+            Some(EnvelopeAddress {
+                address: format!("{mailbox}@{host}"),
+                name: addr
+                    .name
+                    .as_ref()
+                    .map(|s| decode_bytes(s))
+                    .filter(|n| !n.trim().is_empty()),
+            })
+        })
+        .collect()
 }
 
 fn decode_bytes(bytes: &[u8]) -> String {
@@ -706,6 +744,51 @@ mod tests {
     fn flag_state_has_answered_field() {
         let fs = FlagState { uid: 1, seen: false, flagged: false, answered: true };
         assert!(fs.answered);
+    }
+
+    #[test]
+    fn envelope_addresses_builds_address_and_decodes_name() {
+        use async_imap::imap_proto::Address;
+        use std::borrow::Cow;
+
+        let list = vec![
+            Address {
+                name: Some(Cow::Borrowed(b"=?UTF-8?Q?=C5=81ukasz?=".as_slice())),
+                adl: None,
+                mailbox: Some(Cow::Borrowed(b"l.nowak".as_slice())),
+                host: Some(Cow::Borrowed(b"firma.pl".as_slice())),
+            },
+            Address {
+                name: None,
+                adl: None,
+                mailbox: Some(Cow::Borrowed(b"biuro".as_slice())),
+                host: Some(Cow::Borrowed(b"firma.pl".as_slice())),
+            },
+        ];
+
+        let parsed = envelope_addresses(Some(&list));
+
+        assert_eq!(parsed.len(), 2);
+        assert_eq!(parsed[0].address, "l.nowak@firma.pl");
+        assert_eq!(parsed[0].name.as_deref(), Some("Łukasz"));
+        assert_eq!(parsed[1].address, "biuro@firma.pl");
+        assert_eq!(parsed[1].name, None);
+    }
+
+    #[test]
+    fn envelope_addresses_skips_entries_without_a_host() {
+        use async_imap::imap_proto::Address;
+        use std::borrow::Cow;
+
+        let list = vec![Address {
+            name: None,
+            adl: None,
+            mailbox: Some(Cow::Borrowed(b"undisclosed-recipients".as_slice())),
+            host: None,
+        }];
+
+        assert!(envelope_addresses(Some(&list)).is_empty());
+        assert!(envelope_addresses(None).is_empty());
     }
 
     #[test]
