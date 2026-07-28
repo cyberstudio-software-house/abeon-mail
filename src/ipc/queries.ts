@@ -15,6 +15,7 @@ import {
   parseContentSecurityLevel,
   type ContentSecurityLevel,
 } from "../shared/contentSecurity";
+import { useDebouncedValue } from "../shared/hooks/useDebouncedValue";
 
 type ResultOk<T> = { status: "ok"; data: T };
 type ResultErr = { status: "error"; error: string };
@@ -56,6 +57,16 @@ export function useThreadForMessage(messageId: number | null) {
     queryKey: ["thread-for-message", messageId],
     queryFn: () => commands.threadForMessage(messageId!).then(unwrap),
     enabled: messageId != null,
+    placeholderData: keepPreviousData,
+  });
+}
+
+export function useContactSuggestions(query: string, accountId: number | null) {
+  const debounced = useDebouncedValue(query, 120);
+  return useQuery({
+    queryKey: ["contact-suggestions", debounced, accountId],
+    queryFn: () => commands.suggestContacts(debounced, accountId, 8).then(unwrap),
+    enabled: debounced.trim().length > 0,
     placeholderData: keepPreviousData,
   });
 }
