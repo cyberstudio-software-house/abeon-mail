@@ -210,6 +210,19 @@ fn header_from_fetch(fetched: &FetchedHeader) -> NewMessageHeader {
     }
 }
 
+fn ingest_headers(
+    db: &Database,
+    folder: &am_core::folder::Folder,
+    fetched: &[FetchedHeader],
+) -> Result<usize, SyncError> {
+    let headers: Vec<NewMessageHeader> = fetched.iter().map(header_from_fetch).collect();
+    let inserted = messages_repo::insert_headers(db, folder.id, &headers)?;
+    if folder.folder_type == am_core::folder::FolderType::Sent {
+        crate::contacts::harvest_sent_headers(db, folder.account_id, fetched);
+    }
+    Ok(inserted)
+}
+
 fn load_endpoints(db: &Database, account_id: i64) -> Result<Endpoints, SyncError> {
     let settings = accounts_repo::get_account_settings(db, account_id)?;
     serde_json::from_str(&settings).map_err(|_| SyncError::InvalidSettings)
@@ -350,8 +363,7 @@ pub async fn sync_folder(
     let fetched = session.fetch_recent_headers(INITIAL_SYNC_LIMIT).await?;
     session.logout().await?;
 
-    let headers: Vec<NewMessageHeader> = fetched.iter().map(header_from_fetch).collect();
-    let inserted = messages_repo::insert_headers(db, folder.id, &headers)?;
+    let inserted = ingest_headers(db, &folder, &fetched)?;
     assign_threads(db, account_id)?;
 
     folders_repo::set_sync_markers(db, folder.id, state.uidvalidity, state.uidnext, None, now_secs())?;
@@ -579,14 +591,13 @@ pub async fn incremental_sync_folder(
         folders_repo::set_backfill_complete(db, folder_id, false)?;
         let fetched = session.fetch_recent_headers(INITIAL_SYNC_LIMIT).await?;
         session.logout().await?;
-        let headers: Vec<NewMessageHeader> = fetched.iter().map(header_from_fetch).collect();
-        messages_repo::insert_headers(db, folder_id, &headers)?;
+        ingest_headers(db, &folder, &fetched)?;
         assign_threads(db, account_id)?;
         folders_repo::set_sync_markers(db, folder_id, state.uidvalidity, state.uidnext, state.highestmodseq, now_secs())?;
         let unread = folders_repo::recount_unread(db, folder_id)?;
         folders_repo::set_counts(db, folder_id, unread, state.exists)?;
         sink.emit(SyncEvent::MailboxChanged { account_id, folder_id });
-        return Ok(headers.len() as i64);
+        return Ok(fetched.len() as i64);
     }
 
     let caps = session.server_caps().await?;
@@ -595,8 +606,7 @@ pub async fn incremental_sync_folder(
     let new_count = new_uids.len() as i64;
     if !new_uids.is_empty() {
         let fetched = session.fetch_headers_by_uids(&new_uids).await?;
-        let headers: Vec<NewMessageHeader> = fetched.iter().map(header_from_fetch).collect();
-        messages_repo::insert_headers(db, folder_id, &headers)?;
+        ingest_headers(db, &folder, &fetched)?;
         assign_threads(db, account_id)?;
         if folder.folder_type == am_core::folder::FolderType::Inbox {
             let new_ids = messages_repo::ids_by_uids(db, folder_id, &new_uids)?;
@@ -696,8 +706,7 @@ pub async fn run_prefetch_batch(
             } else {
                 let batch: Vec<i64> = missing.into_iter().take(BACKFILL_BATCH).collect();
                 let fetched = session.fetch_headers_by_uids(&batch).await?;
-                let headers: Vec<NewMessageHeader> = fetched.iter().map(header_from_fetch).collect();
-                messages_repo::insert_headers(db, folder_id, &headers)?;
+                ingest_headers(db, &folder, &fetched)?;
                 assign_threads(db, account_id)?;
                 did_work = true;
             }

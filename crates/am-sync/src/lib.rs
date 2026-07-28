@@ -1,5 +1,6 @@
 pub mod auth;
 pub mod compose;
+pub mod contacts;
 pub mod engine;
 pub mod events;
 pub mod prefetch;
