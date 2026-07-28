@@ -165,15 +165,60 @@
   opacity: 1;
 }
 
+.recipient-input-wrap {
+  position: relative;
+  flex: 1;
+  min-width: 120px;
+}
+
 .recipient-input {
   border: none;
   outline: none;
   font-size: 14px;
-  min-width: 120px;
-  flex: 1;
+  width: 100%;
   background: transparent;
   color: var(--color-text, #111827);
   padding: 4px 0;
+}
+
+.recipient-suggestions {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 40;
+  margin: 4px 0 0;
+  padding: 4px 0;
+  list-style: none;
+  min-width: 260px;
+  max-width: 100%;
+  max-height: 280px;
+  overflow-y: auto;
+  background: var(--color-surface, #ffffff);
+  border: 1px solid var(--color-border, #e5e7eb);
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.18);
+}
+
+.recipient-suggestions .suggestion {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 5px 10px;
+  cursor: pointer;
+}
+
+.recipient-suggestions .suggestion.active {
+  background: var(--color-chip, #e0e7ff);
+}
+
+.suggestion-name {
+  font-size: 13px;
+  color: var(--color-text, #111827);
+}
+
+.suggestion-email {
+  font-size: 12px;
+  color: var(--color-text-muted, #6b7280);
 }
 
 .composer-toolbar {

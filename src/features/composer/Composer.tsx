@@ -375,7 +375,7 @@ export function Composer() {
             </select>
           </div>
 
-          <RecipientField label="To" recipients={to} onChange={handleToChange} />
+          <RecipientField label="To" recipients={to} onChange={handleToChange} accountId={fromAccountId} />
 
           <div className="composer-cc-bcc-toggles">
             {!showCc && (
@@ -390,8 +390,8 @@ export function Composer() {
             )}
           </div>
 
-          {showCc && <RecipientField label="Cc" recipients={cc} onChange={handleCcChange} />}
-          {showBcc && <RecipientField label="Bcc" recipients={bcc} onChange={handleBccChange} />}
+          {showCc && <RecipientField label="Cc" recipients={cc} onChange={handleCcChange} accountId={fromAccountId} />}
+          {showBcc && <RecipientField label="Bcc" recipients={bcc} onChange={handleBccChange} accountId={fromAccountId} />}
 
           <div className="composer-subject">
             <span className="field-label">Subject</span>

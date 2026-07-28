@@ -13,6 +13,7 @@ vi.mock("../../ipc/bindings", () => ({
     listSignatures: vi.fn().mockResolvedValue({ status: "ok", data: [] }),
     pickAttachment: vi.fn().mockResolvedValue({ status: "ok", data: [] }),
     discardDraft: vi.fn().mockResolvedValue({ status: "ok", data: null }),
+    suggestContacts: vi.fn().mockResolvedValue({ status: "ok", data: [] }),
   },
   events: {},
 }));
