@@ -225,6 +225,41 @@ pub fn message_recipients(
     Ok(MessageRecipients { to, cc })
 }
 
+#[derive(serde::Serialize, serde::Deserialize, specta::Type)]
+pub struct ContactSuggestion {
+    pub email: String,
+    pub name: Option<String>,
+    pub exchange_count: i64,
+    pub last_contact_at: i64,
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn suggest_contacts(
+    state: tauri::State<'_, AppState>,
+    query: String,
+    account_id: Option<i64>,
+    limit: u32,
+) -> Result<Vec<ContactSuggestion>, String> {
+    let found = am_storage::contacts_repo::suggest(
+        &state.db,
+        &query,
+        account_id,
+        limit.min(50),
+        am_sync::service::now_secs(),
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(found
+        .into_iter()
+        .map(|c| ContactSuggestion {
+            email: c.email,
+            name: c.name,
+            exchange_count: c.exchange_count,
+            last_contact_at: c.last_contact_at,
+        })
+        .collect())
+}
+
 fn is_blocked_ip(ip: std::net::IpAddr) -> bool {
     use std::net::IpAddr;
     match ip {

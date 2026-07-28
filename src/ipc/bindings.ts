@@ -33,6 +33,7 @@ export const commands = {
 	sanitizeMessageHtml: (html: string) => __TAURI_INVOKE<SanitizedHtml>("sanitize_message_html", { html }),
 	renderMessageHtml: (messageId: number, forceLoadRemote: boolean) => typedError<RenderedMessage, string>(__TAURI_INVOKE("render_message_html", { messageId, forceLoadRemote })),
 	messageRecipients: (messageId: number) => typedError<MessageRecipients, string>(__TAURI_INVOKE("message_recipients", { messageId })),
+	suggestContacts: (query: string, accountId: number | null, limit: number) => typedError<ContactSuggestion[], string>(__TAURI_INVOKE("suggest_contacts", { query, accountId, limit })),
 	listAttachments: (messageId: number) => typedError<Attachment[], string>(__TAURI_INVOKE("list_attachments", { messageId })),
 	saveAttachment: (attachmentId: number) => typedError<boolean, string>(__TAURI_INVOKE("save_attachment", { attachmentId })),
 	saveAllAttachments: (messageId: number) => typedError<number, string>(__TAURI_INVOKE("save_all_attachments", { messageId })),
@@ -152,6 +153,13 @@ export type Attachment = {
 export type ConditionField = "from" | "subject" | "recipient" | "has_attachment";
 
 export type ConditionOp = "contains" | "is";
+
+export type ContactSuggestion = {
+	email: string,
+	name: string | null,
+	exchange_count: number,
+	last_contact_at: number,
+};
 
 export type DraftSummary = {
 	id: number,

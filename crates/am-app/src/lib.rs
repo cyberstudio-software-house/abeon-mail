@@ -30,6 +30,7 @@ pub fn build_specta_builder() -> Builder<tauri::Wry> {
             commands::sanitize_message_html,
             commands::render_message_html,
             commands::message_recipients,
+            commands::suggest_contacts,
             commands::list_attachments,
             commands::save_attachment,
             commands::save_all_attachments,
