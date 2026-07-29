@@ -3,6 +3,7 @@ pub mod events;
 pub mod sink;
 pub mod state;
 pub mod tray;
+pub mod window;
 
 use tauri_specta::{collect_commands, collect_events, Builder};
 

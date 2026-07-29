@@ -122,14 +122,6 @@ fn build_menu(app: &tauri::AppHandle, count: i64) -> tauri::Result<Menu<tauri::W
     Menu::with_items(app, &[&show, &sep1, &unread, &sep2, &quit])
 }
 
-fn focus_main_window(app: &tauri::AppHandle) {
-    if let Some(window) = app.get_webview_window("main") {
-        let _ = window.show();
-        let _ = window.unminimize();
-        let _ = window.set_focus();
-    }
-}
-
 pub fn build_tray(app: &tauri::AppHandle) -> tauri::Result<TrayIcon> {
     let count = count_for_tray(&app.state::<crate::state::AppState>().db);
     let menu = build_menu(app, count)?;
@@ -144,11 +136,11 @@ pub fn build_tray(app: &tauri::AppHandle) -> tauri::Result<TrayIcon> {
                 ..
             } = event
             {
-                focus_main_window(tray.app_handle());
+                crate::window::focus_main_window(tray.app_handle());
             }
         })
         .on_menu_event(|app, event| match event.id.as_ref() {
-            "tray_show" => focus_main_window(app),
+            "tray_show" => crate::window::focus_main_window(app),
             "tray_quit" => app.exit(0),
             _ => {}
         })
