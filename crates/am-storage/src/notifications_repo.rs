@@ -23,16 +23,16 @@ pub fn build_new_mail_notification(
         return Ok(None);
     }
     if count == 1 {
-        let row: Option<(Option<String>, String, String)> = conn
+        let row: Option<(Option<String>, String, String, i64, Option<i64>)> = conn
             .query_row(
-                "SELECT from_name, from_address, subject FROM messages
+                "SELECT from_name, from_address, subject, id, thread_id FROM messages
                  WHERE folder_id = ?1 AND draft = 0 AND deleted = 0
                  ORDER BY date DESC LIMIT 1",
                 params![folder_id],
-                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)),
             )
             .optional()?;
-        let Some((from_name, from_address, subject)) = row else {
+        let Some((from_name, from_address, subject, message_id, thread_id)) = row else {
             return Ok(None);
         };
         let title = match from_name {
@@ -44,7 +44,7 @@ pub fn build_new_mail_notification(
         } else {
             subject
         };
-        Ok(Some(NotificationContent { title, body }))
+        Ok(Some(NotificationContent { title, body, thread_id, message_id: Some(message_id) }))
     } else {
         let email: Option<String> = conn
             .query_row(
@@ -57,6 +57,8 @@ pub fn build_new_mail_notification(
         Ok(Some(NotificationContent {
             title,
             body: format!("{count} new messages"),
+            thread_id: None,
+            message_id: None,
         }))
     }
 }
@@ -189,5 +191,50 @@ mod tests {
     fn count_inbox_unread_zero_when_no_inbox() {
         let db = Database::open_in_memory().unwrap();
         assert_eq!(count_inbox_unread(&db).unwrap(), 0);
+    }
+
+    #[test]
+    fn single_carries_thread_and_message_ids() {
+        let db = Database::open_in_memory().unwrap();
+        let acc = make_account(&db, "a@example.com");
+        let inbox = make_folder(&db, acc, "INBOX", FolderType::Inbox);
+        insert_headers(&db, inbox, &[header(1, Some("Alice"), "alice@example.com", "Lunch?", 1000)]).unwrap();
+        let (message_id, thread_id) = {
+            let conn = db.conn();
+            let message_id: i64 = conn
+                .query_row("SELECT id FROM messages WHERE folder_id = ?1", params![inbox], |r| r.get(0))
+                .unwrap();
+            conn.execute(
+                "INSERT INTO threads (account_id, subject_root, last_date) VALUES (?1, ?2, ?3)",
+                params![acc, "Lunch?", 1000],
+            )
+            .unwrap();
+            let thread_id = conn.last_insert_rowid();
+            conn.execute(
+                "UPDATE messages SET thread_id = ?1 WHERE id = ?2",
+                params![thread_id, message_id],
+            )
+            .unwrap();
+            (message_id, thread_id)
+        };
+
+        let n = build_new_mail_notification(&db, inbox, 1).unwrap().unwrap();
+        assert_eq!(n.message_id, Some(message_id));
+        assert_eq!(n.thread_id, Some(thread_id));
+    }
+
+    #[test]
+    fn aggregate_carries_no_ids() {
+        let db = Database::open_in_memory().unwrap();
+        let acc = make_account(&db, "a@example.com");
+        let inbox = make_folder(&db, acc, "INBOX", FolderType::Inbox);
+        insert_headers(&db, inbox, &[
+            header(1, Some("Alice"), "alice@example.com", "Lunch?", 1000),
+            header(2, Some("Bob"), "bob@example.com", "Report", 2000),
+        ]).unwrap();
+
+        let n = build_new_mail_notification(&db, inbox, 2).unwrap().unwrap();
+        assert_eq!(n.message_id, None);
+        assert_eq!(n.thread_id, None);
     }
 }

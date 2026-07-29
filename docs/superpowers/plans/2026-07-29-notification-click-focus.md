@@ -51,7 +51,7 @@ Bez tego kliknięcie nie ma dokąd prowadzić. `build_new_mail_notification` ju�
 - Produces: `NotificationContent { title: String, body: String, thread_id: Option<i64>, message_id: Option<i64> }`
 - Produces: `notifications_repo::build_new_mail_notification(db: &Database, folder_id: i64, count: i64) -> Result<Option<NotificationContent>, StorageError>` (sygnatura bez zmian)
 
-**Uwaga o teście:** `insert_headers` **nie** ustawia `thread_id` — robi to `assign_threads`, które mieszka w `am-sync`, a `am-storage` nie może od niego zależeć. Dlatego test ustawia `thread_id` bezpośrednim `UPDATE`.
+**Uwaga o teście:** `insert_headers` **nie** ustawia `thread_id` — robi to `assign_threads`, które mieszka w `am-sync`, a `am-storage` nie może od niego zależeć. Dlatego test ustawia `thread_id` bezpośrednim `UPDATE`. Nie da się wpisać dowolnej liczby: `messages.thread_id` ma klucz obcy do `threads(id)`, więc test musi najpierw wstawić wiersz do `threads` (wymagane kolumny: `account_id`, `subject_root`, `last_date`) i użyć jego `last_insert_rowid()`. Odczyty i zapisy trzymaj w jednym bloku `{ let conn = db.conn(); … }`, żeby guard połączenia zwolnił się przed wywołaniem `build_new_mail_notification`.
 
 - [ ] **Step 1: Dopisz failujące testy**
 
@@ -64,17 +64,28 @@ W `crates/am-storage/src/notifications_repo.rs`, wewnątrz istniejącego `mod te
         let acc = make_account(&db, "a@example.com");
         let inbox = make_folder(&db, acc, "INBOX", FolderType::Inbox);
         insert_headers(&db, inbox, &[header(1, Some("Alice"), "alice@example.com", "Lunch?", 1000)]).unwrap();
-        let message_id: i64 = db
-            .conn()
-            .query_row("SELECT id FROM messages WHERE folder_id = ?1", params![inbox], |r| r.get(0))
+        let (message_id, thread_id) = {
+            let conn = db.conn();
+            let message_id: i64 = conn
+                .query_row("SELECT id FROM messages WHERE folder_id = ?1", params![inbox], |r| r.get(0))
+                .unwrap();
+            conn.execute(
+                "INSERT INTO threads (account_id, subject_root, last_date) VALUES (?1, ?2, ?3)",
+                params![acc, "Lunch?", 1000],
+            )
             .unwrap();
-        db.conn()
-            .execute("UPDATE messages SET thread_id = 77 WHERE id = ?1", params![message_id])
+            let thread_id = conn.last_insert_rowid();
+            conn.execute(
+                "UPDATE messages SET thread_id = ?1 WHERE id = ?2",
+                params![thread_id, message_id],
+            )
             .unwrap();
+            (message_id, thread_id)
+        };
 
         let n = build_new_mail_notification(&db, inbox, 1).unwrap().unwrap();
         assert_eq!(n.message_id, Some(message_id));
-        assert_eq!(n.thread_id, Some(77));
+        assert_eq!(n.thread_id, Some(thread_id));
     }
 
     #[test]
