@@ -284,6 +284,27 @@ fn tokenize(html: &str) -> Vec<HtmlToken> {
     toks
 }
 
+fn has_visible_content(html: &str) -> bool {
+    for t in tokenize(html) {
+        if let HtmlToken::Text { start, end } = t {
+            if !decode_entities(&html[start..end]).trim().is_empty() {
+                return true;
+            }
+        }
+    }
+    let lower = html.to_ascii_lowercase();
+    ["<img", "<video", "<audio", "<iframe", "<embed", "<object", "<svg", "<canvas"]
+        .iter()
+        .any(|tag| lower.contains(tag))
+}
+
+fn without_range(html: &str, start: usize, end: usize) -> String {
+    let mut out = String::with_capacity(html.len());
+    out.push_str(&html[..start]);
+    out.push_str(&html[end..]);
+    out
+}
+
 pub fn strip_leading_subject_heading(html: &str, subject: &str) -> String {
     let target = normalize_for_match(subject);
     if target.chars().count() < 3 {
@@ -322,10 +343,10 @@ pub fn strip_leading_subject_heading(html: &str, subject: &str) -> String {
     if stack.is_empty() {
         if let HtmlToken::Text { start, end } = toks[fi] {
             if normalize_for_match(&decode_entities(&html[start..end])) == target {
-                let mut out = String::with_capacity(html.len());
-                out.push_str(&html[..start]);
-                out.push_str(&html[end..]);
-                return out;
+                let out = without_range(html, start, end);
+                if has_visible_content(&out) {
+                    return out;
+                }
             }
         }
         return html.to_string();
@@ -361,10 +382,12 @@ pub fn strip_leading_subject_heading(html: &str, subject: &str) -> String {
 
     match removal {
         Some((s, e)) => {
-            let mut out = String::with_capacity(html.len());
-            out.push_str(&html[..s]);
-            out.push_str(&html[e..]);
-            out
+            let out = without_range(html, s, e);
+            if has_visible_content(&out) {
+                out
+            } else {
+                html.to_string()
+            }
         }
         None => html.to_string(),
     }
@@ -628,6 +651,18 @@ mod tests {
         let html = "<h1>Anything</h1>";
         assert_eq!(strip_leading_subject_heading(html, ""), html);
         assert_eq!(strip_leading_subject_heading(html, "ab"), html);
+    }
+
+    #[test]
+    fn strip_leading_heading_keeps_body_equal_to_subject() {
+        let html = "<p>Test</p>";
+        assert_eq!(strip_leading_subject_heading(html, "Test"), html);
+    }
+
+    #[test]
+    fn strip_leading_heading_keeps_body_when_only_markup_would_remain() {
+        let html = "<div><h1>Weekly report</h1></div>";
+        assert_eq!(strip_leading_subject_heading(html, "Weekly report"), html);
     }
 
     #[test]

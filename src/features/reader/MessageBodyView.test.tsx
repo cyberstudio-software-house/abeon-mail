@@ -110,6 +110,33 @@ describe("MessageBodyView — HTML body path", () => {
   });
 });
 
+describe("MessageBodyView — blank rendered HTML", () => {
+  afterEach(() => {
+    cleanup();
+    vi.clearAllMocks();
+  });
+
+  it("falls back to the plain-text body when the rendered HTML is empty", async () => {
+    (commands.getSettings as ReturnType<typeof vi.fn>).mockResolvedValue({
+      status: "ok",
+      data: [["reader.contentSecurity", "balanced"]],
+    });
+    (commands.renderMessageHtml as ReturnType<typeof vi.fn>).mockResolvedValue({
+      status: "ok",
+      data: { html: "", blocked_remote_content: false, remote_loaded: false },
+    });
+    (commands.getMessageBody as ReturnType<typeof vi.fn>).mockResolvedValue({
+      status: "ok",
+      data: { message_id: 11, text_plain: "Test", text_html: "<p>Test</p>" },
+    });
+
+    render(<MessageBodyView messageId={11} />, { wrapper: Wrapper });
+
+    await screen.findByText((t) => t.includes("Test"));
+    expect(screen.queryByTitle("message-content")).toBeNull();
+  });
+});
+
 describe("MessageBodyView — quoted history collapse", () => {
   afterEach(() => {
     cleanup();

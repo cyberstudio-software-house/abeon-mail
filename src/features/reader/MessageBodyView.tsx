@@ -37,7 +37,7 @@ export function MessageBodyView({ messageId }: { messageId: number }) {
   }, [messageId]);
 
   const htmlSplit = useMemo(
-    () => (rendered?.html != null ? splitHtmlHistory(rendered.html) : null),
+    () => (rendered?.html != null && rendered.html.trim() !== "" ? splitHtmlHistory(rendered.html) : null),
     [rendered?.html]
   );
   const textSplit = useMemo(
