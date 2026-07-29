@@ -10,6 +10,7 @@ am-mime = { path = "../am-mime" }
 am-storage = { path = "../am-storage" }
 am-sync = { path = "../am-sync" }
 font8x8 = "0.3"
+notify-rust = "4.18"
 rand.workspace = true
 reqwest.workspace = true
 base64 = "0.22"

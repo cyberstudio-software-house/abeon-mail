@@ -1,5 +1,6 @@
 pub mod commands;
 pub mod events;
+pub mod notify;
 pub mod sink;
 pub mod state;
 pub mod tray;
