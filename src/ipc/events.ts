@@ -5,7 +5,7 @@ import { isPermissionGranted } from "@tauri-apps/plugin-notification";
 import { commands, events } from "./bindings";
 import { useUiStore } from "../app/store";
 
-async function maybeNotifyNewMail(payload: { folder_id: number; count: number }) {
+async function maybeNotifyNewMail(payload: { account_id: number; folder_id: number; count: number }) {
   if (!useUiStore.getState().notificationsEnabled) return;
   if (await getCurrentWindow().isFocused()) return;
   if (!(await isPermissionGranted())) return;

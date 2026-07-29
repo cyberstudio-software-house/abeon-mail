@@ -690,7 +690,14 @@ import { isPermissionGranted } from "@tauri-apps/plugin-notification";
 Run: `npx vitest run src/ipc/events.test.tsx`
 Expected: PASS
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 6: Sprawdź typy — vitest ich NIE sprawdza**
+
+Run: `npx tsc --noEmit`
+Expected: brak błędów.
+
+Ten krok jest obowiązkowy: vitest transpiluje bez kontroli typów, więc zielone testy nie dowodzą, że projekt się zbuduje. Konkretna pułapka w tym zadaniu — sygnatura `maybeNotifyNewMail` deklaruje `{ folder_id, count }`, a po zmianie przekazujesz też `payload.account_id`; rozszerz ją na `{ account_id: number; folder_id: number; count: number }`, inaczej `tsc` wywali `TS2339` dopiero w `tauri build`.
+
+- [ ] **Step 7: Commit**
 
 ```bash
 git add src/ipc/bindings.ts src/ipc/events.ts src/ipc/events.test.tsx
