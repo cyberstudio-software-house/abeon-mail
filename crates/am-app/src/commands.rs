@@ -1494,6 +1494,55 @@ pub fn build_new_mail_notification(
 
 #[tauri::command]
 #[specta::specta]
+pub fn show_new_mail_notification(
+    state: tauri::State<'_, AppState>,
+    app: tauri::AppHandle,
+    account_id: i64,
+    folder_id: i64,
+    count: i64,
+) -> Result<(), String> {
+    let Some(content) = notifications_repo::build_new_mail_notification(&state.db, folder_id, count)
+        .map_err(|_| "Failed to build notification".to_string())?
+    else {
+        return Ok(());
+    };
+    let target = crate::events::NotificationActivated {
+        account_id: Some(account_id),
+        folder_id: Some(folder_id),
+        thread_id: content.thread_id,
+        message_id: content.message_id,
+    };
+    crate::notify::show(
+        &app,
+        crate::notify::NEW_MAIL_NOTIFICATION_ID,
+        content.title,
+        content.body,
+        target,
+    );
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn show_send_error_notification(app: tauri::AppHandle, error: String) -> Result<(), String> {
+    let target = crate::events::NotificationActivated {
+        account_id: None,
+        folder_id: None,
+        thread_id: None,
+        message_id: None,
+    };
+    crate::notify::show(
+        &app,
+        crate::notify::SEND_ERROR_NOTIFICATION_ID,
+        "Couldn't send message".to_string(),
+        error,
+        target,
+    );
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
 pub fn refresh_unread_badge(
     state: tauri::State<'_, AppState>,
     app: tauri::AppHandle,

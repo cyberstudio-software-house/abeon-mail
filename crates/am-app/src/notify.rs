@@ -1,4 +1,11 @@
-use notify_rust::NotificationResponse;
+use notify_rust::{Notification, NotificationResponse};
+use tauri::AppHandle;
+use tauri_specta::Event;
+
+use crate::events::NotificationActivated;
+
+pub const NEW_MAIL_NOTIFICATION_ID: u32 = 4711;
+pub const SEND_ERROR_NOTIFICATION_ID: u32 = 4712;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NotificationOutcome {
@@ -11,6 +18,33 @@ pub fn outcome_for(response: &NotificationResponse) -> NotificationOutcome {
         NotificationResponse::Default | NotificationResponse::Action(_) => NotificationOutcome::Activated,
         _ => NotificationOutcome::Ignored,
     }
+}
+
+pub fn show(app: &AppHandle, id: u32, title: String, body: String, target: NotificationActivated) {
+    let app = app.clone();
+    std::thread::spawn(move || {
+        let handle = Notification::new()
+            .summary(&title)
+            .body(&body)
+            .id(id)
+            .action("default", "Open")
+            .show();
+
+        let handle = match handle {
+            Ok(handle) => handle,
+            Err(err) => {
+                eprintln!("failed to show notification: {err}");
+                return;
+            }
+        };
+
+        let _ = handle.wait_for_response(move |response: &NotificationResponse| {
+            if outcome_for(response) == NotificationOutcome::Activated {
+                crate::window::focus_main_window(&app);
+                let _ = target.emit(&app);
+            }
+        });
+    });
 }
 
 #[cfg(test)]
