@@ -171,4 +171,51 @@ describe("useSyncEvents notifications", () => {
     h.sendFailedCb!({ payload: { account_id: 1, error: "boom" } });
     expect(useUiStore.getState().sendingCount).toBe(0);
   });
+
+  it("navigates to the notified message in thread mode", async () => {
+    useUiStore.setState({ selectMode: "thread" });
+    renderHook(() => useSyncEvents(), { wrapper });
+    await waitFor(() => expect(h.notificationActivatedCb).not.toBeNull());
+
+    h.notificationActivatedCb!({
+      payload: { account_id: 5, folder_id: 9, thread_id: 42, message_id: 77 },
+    });
+
+    await waitFor(() => {
+      const s = useUiStore.getState();
+      expect(s.selectedAccountId).toBe(5);
+      expect(s.selectedFolderId).toBe(9);
+      expect(s.selectedThreadId).toBe(42);
+    });
+  });
+
+  it("navigates by message id outside thread mode", async () => {
+    useUiStore.setState({ selectMode: "message" });
+    renderHook(() => useSyncEvents(), { wrapper });
+    await waitFor(() => expect(h.notificationActivatedCb).not.toBeNull());
+
+    h.notificationActivatedCb!({
+      payload: { account_id: 5, folder_id: 9, thread_id: 42, message_id: 77 },
+    });
+
+    await waitFor(() => {
+      const s = useUiStore.getState();
+      expect(s.selectedFolderId).toBe(9);
+      expect(s.selectedMessageId).toBe(77);
+    });
+  });
+
+  it("leaves navigation untouched for a focus-only activation", async () => {
+    useUiStore.setState({ selectedAccountId: 1, selectedFolderId: 2 });
+    renderHook(() => useSyncEvents(), { wrapper });
+    await waitFor(() => expect(h.notificationActivatedCb).not.toBeNull());
+
+    h.notificationActivatedCb!({
+      payload: { account_id: null, folder_id: null, thread_id: null, message_id: null },
+    });
+
+    const s = useUiStore.getState();
+    expect(s.selectedAccountId).toBe(1);
+    expect(s.selectedFolderId).toBe(2);
+  });
 });

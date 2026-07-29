@@ -12,6 +12,21 @@ async function maybeNotifyNewMail(payload: { folder_id: number; count: number })
   await commands.showNewMailNotification(payload.account_id, payload.folder_id, payload.count);
 }
 
+function navigateToNotificationTarget(payload: {
+  account_id: number | null;
+  folder_id: number | null;
+  thread_id: number | null;
+  message_id: number | null;
+}) {
+  if (payload.account_id == null || payload.folder_id == null) return;
+  const store = useUiStore.getState();
+  store.setSelectedAccountId(payload.account_id);
+  store.setSelectedFolderId(payload.folder_id);
+  const rowId = store.selectMode === "thread" ? payload.thread_id : payload.message_id;
+  if (rowId == null) return;
+  useUiStore.getState().selectRow(rowId);
+}
+
 export function useSyncEvents() {
   const queryClient = useQueryClient();
 
@@ -77,6 +92,10 @@ export function useSyncEvents() {
       useUiStore.getState().markSendSucceeded();
     });
 
+    const notificationActivatedPromise = events.notificationActivated.listen((event) => {
+      navigateToNotificationTarget(event.payload);
+    });
+
     return () => {
       progressPromise.then((unlisten) => unlisten());
       messagesPromise.then((unlisten) => unlisten());
@@ -86,6 +105,7 @@ export function useSyncEvents() {
       prefetchPromise.then((unlisten) => unlisten());
       sendFailedPromise.then((unlisten) => unlisten());
       sendSucceededPromise.then((unlisten) => unlisten());
+      notificationActivatedPromise.then((unlisten) => unlisten());
     };
   }, [queryClient]);
 }
