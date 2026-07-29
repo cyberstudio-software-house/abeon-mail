@@ -11,16 +11,29 @@ const h = vi.hoisted(() => ({
   prefetchProgressCb: null as ((e: { payload: { account_id: number; done: number; total: number } }) => void) | null,
   sendSucceededCb: null as ((e: { payload: { account_id: number } }) => void) | null,
   sendFailedCb: null as ((e: { payload: { account_id: number; error: string } }) => void) | null,
-  sendNotification: vi.fn(),
+  notificationActivatedCb: null as
+    | ((e: {
+        payload: {
+          account_id: number | null;
+          folder_id: number | null;
+          thread_id: number | null;
+          message_id: number | null;
+        };
+      }) => void)
+    | null,
   isFocused: vi.fn(),
   isPermissionGranted: vi.fn(),
   buildNewMailNotification: vi.fn(),
+  showNewMailNotification: vi.fn(),
+  showSendErrorNotification: vi.fn(),
   refreshUnreadBadge: vi.fn(),
 }));
 
 vi.mock("./bindings", () => ({
   commands: {
     buildNewMailNotification: h.buildNewMailNotification,
+    showNewMailNotification: h.showNewMailNotification,
+    showSendErrorNotification: h.showSendErrorNotification,
     refreshUnreadBadge: h.refreshUnreadBadge,
   },
   events: {
@@ -52,6 +65,12 @@ vi.mock("./bindings", () => ({
         return Promise.resolve(() => {});
       }),
     },
+    notificationActivated: {
+      listen: vi.fn((cb) => {
+        h.notificationActivatedCb = cb;
+        return Promise.resolve(() => {});
+      }),
+    },
   },
 }));
 
@@ -61,7 +80,6 @@ vi.mock("@tauri-apps/api/window", () => ({
 
 vi.mock("@tauri-apps/plugin-notification", () => ({
   isPermissionGranted: h.isPermissionGranted,
-  sendNotification: h.sendNotification,
 }));
 
 function wrapper({ children }: { children: ReactNode }) {
@@ -76,10 +94,13 @@ describe("useSyncEvents notifications", () => {
     h.prefetchProgressCb = null;
     h.sendSucceededCb = null;
     h.sendFailedCb = null;
+    h.notificationActivatedCb = null;
     useUiStore.setState({ sendingCount: 0, lastSentAt: null, sendWatchdogs: [] });
     h.isFocused.mockResolvedValue(false);
     h.isPermissionGranted.mockResolvedValue(true);
     h.buildNewMailNotification.mockResolvedValue({ status: "ok", data: { title: "Alice", body: "Hi" } });
+    h.showNewMailNotification.mockResolvedValue({ status: "ok", data: null });
+    h.showSendErrorNotification.mockResolvedValue({ status: "ok", data: null });
     h.refreshUnreadBadge.mockResolvedValue({ status: "ok", data: null });
     useUiStore.setState({ notificationsEnabled: true, badgeEnabled: true });
   });
@@ -89,8 +110,7 @@ describe("useSyncEvents notifications", () => {
     renderHook(() => useSyncEvents(), { wrapper });
     await waitFor(() => expect(h.newMessagesCb).not.toBeNull());
     h.newMessagesCb!({ payload: { account_id: 1, folder_id: 2, count: 1 } });
-    await waitFor(() => expect(h.sendNotification).toHaveBeenCalledWith({ title: "Alice", body: "Hi" }));
-    expect(h.buildNewMailNotification).toHaveBeenCalledWith(2, 1);
+    await waitFor(() => expect(h.showNewMailNotification).toHaveBeenCalledWith(1, 2, 1));
     await waitFor(() => expect(h.refreshUnreadBadge).toHaveBeenCalledWith(true));
   });
 
@@ -113,7 +133,7 @@ describe("useSyncEvents notifications", () => {
     await waitFor(() => expect(h.newMessagesCb).not.toBeNull());
     h.newMessagesCb!({ payload: { account_id: 1, folder_id: 2, count: 1 } });
     await waitFor(() => expect(h.refreshUnreadBadge).toHaveBeenCalled());
-    expect(h.sendNotification).not.toHaveBeenCalled();
+    expect(h.showNewMailNotification).not.toHaveBeenCalled();
   });
 
   it("does not notify when notifications are disabled", async () => {
@@ -122,8 +142,7 @@ describe("useSyncEvents notifications", () => {
     await waitFor(() => expect(h.newMessagesCb).not.toBeNull());
     h.newMessagesCb!({ payload: { account_id: 1, folder_id: 2, count: 1 } });
     await waitFor(() => expect(h.refreshUnreadBadge).toHaveBeenCalled());
-    expect(h.buildNewMailNotification).not.toHaveBeenCalled();
-    expect(h.sendNotification).not.toHaveBeenCalled();
+    expect(h.showNewMailNotification).not.toHaveBeenCalled();
   });
 
   it("records prefetch progress into the store", async () => {

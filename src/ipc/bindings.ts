@@ -105,7 +105,11 @@ export const commands = {
 	buildNewMailNotification: (folderId: number, count: number) => typedError<{
 	title: string,
 	body: string,
+	thread_id: number | null,
+	message_id: number | null,
 } | null, string>(__TAURI_INVOKE("build_new_mail_notification", { folderId, count })),
+	showNewMailNotification: (accountId: number, folderId: number, count: number) => typedError<null, string>(__TAURI_INVOKE("show_new_mail_notification", { accountId, folderId, count })),
+	showSendErrorNotification: (error: string) => typedError<null, string>(__TAURI_INVOKE("show_send_error_notification", { error })),
 	refreshUnreadBadge: (enabled: boolean) => typedError<null, string>(__TAURI_INVOKE("refresh_unread_badge", { enabled })),
 	setTrayEnabled: (enabled: boolean) => typedError<null, string>(__TAURI_INVOKE("set_tray_enabled", { enabled })),
 	listRules: (accountId: number) => typedError<Rule[], string>(__TAURI_INVOKE("list_rules", { accountId })),
@@ -120,6 +124,7 @@ export const events = {
 	accountAuthChanged: makeEvent<AccountAuthChanged>("account-auth-changed"),
 	mailboxChanged: makeEvent<MailboxChanged>("mailbox-changed"),
 	newMessages: makeEvent<NewMessages>("new-messages"),
+	notificationActivated: makeEvent<NotificationActivated>("notification-activated"),
 	prefetchProgress: makeEvent<PrefetchProgress>("prefetch-progress"),
 	sendFailed: makeEvent<SendFailed>("send-failed"),
 	sendSucceeded: makeEvent<SendSucceeded>("send-succeeded"),
@@ -262,9 +267,18 @@ export type NewMessages = {
 	count: number,
 };
 
+export type NotificationActivated = {
+	account_id: number | null,
+	folder_id: number | null,
+	thread_id: number | null,
+	message_id: number | null,
+};
+
 export type NotificationContent = {
 	title: string,
 	body: string,
+	thread_id: number | null,
+	message_id: number | null,
 };
 
 export type OutgoingAttachment = {

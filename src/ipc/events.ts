@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { isPermissionGranted, sendNotification } from "@tauri-apps/plugin-notification";
+import { isPermissionGranted } from "@tauri-apps/plugin-notification";
 import { commands, events } from "./bindings";
 import { useUiStore } from "../app/store";
 
@@ -9,10 +9,7 @@ async function maybeNotifyNewMail(payload: { folder_id: number; count: number })
   if (!useUiStore.getState().notificationsEnabled) return;
   if (await getCurrentWindow().isFocused()) return;
   if (!(await isPermissionGranted())) return;
-  const res = await commands.buildNewMailNotification(payload.folder_id, payload.count);
-  if (res.status === "ok" && res.data) {
-    sendNotification({ title: res.data.title, body: res.data.body });
-  }
+  await commands.showNewMailNotification(payload.account_id, payload.folder_id, payload.count);
 }
 
 export function useSyncEvents() {
@@ -72,10 +69,7 @@ export function useSyncEvents() {
       useUiStore.getState().markSendFailed();
       queryClient.invalidateQueries({ queryKey: ["sendErrors"] });
       if (await isPermissionGranted()) {
-        sendNotification({
-          title: "Couldn't send message",
-          body: event.payload.error,
-        });
+        void commands.showSendErrorNotification(event.payload.error);
       }
     });
 
