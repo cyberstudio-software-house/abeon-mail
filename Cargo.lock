@@ -10,7 +10,7 @@ checksum = "fe438c63458706e03479442743baae6c88256498e6431708f6dfc520a26515d3"
 
 [[package]]
 name = "abeonmail"
-version = "0.5.2"
+version = "0.5.3"
 dependencies = [
  "am-app",
  "am-mime",
@@ -85,7 +85,7 @@ dependencies = [
 
 [[package]]
 name = "am-app"
-version = "0.5.2"
+version = "0.5.3"
 dependencies = [
  "am-auth",
  "am-core",
@@ -111,7 +111,7 @@ dependencies = [
 
 [[package]]
 name = "am-auth"
-version = "0.5.2"
+version = "0.5.3"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -128,7 +128,7 @@ dependencies = [
 
 [[package]]
 name = "am-core"
-version = "0.5.2"
+version = "0.5.3"
 dependencies = [
  "serde",
  "serde_json",
@@ -138,7 +138,7 @@ dependencies = [
 
 [[package]]
 name = "am-mime"
-version = "0.5.2"
+version = "0.5.3"
 dependencies = [
  "am-core",
  "ammonia",
@@ -152,7 +152,7 @@ dependencies = [
 
 [[package]]
 name = "am-protocols"
-version = "0.5.2"
+version = "0.5.3"
 dependencies = [
  "am-mime",
  "async-imap",
@@ -171,7 +171,7 @@ dependencies = [
 
 [[package]]
 name = "am-storage"
-version = "0.5.2"
+version = "0.5.3"
 dependencies = [
  "am-core",
  "refinery",
@@ -182,7 +182,7 @@ dependencies = [
 
 [[package]]
 name = "am-sync"
-version = "0.5.2"
+version = "0.5.3"
 dependencies = [
  "am-auth",
  "am-core",
