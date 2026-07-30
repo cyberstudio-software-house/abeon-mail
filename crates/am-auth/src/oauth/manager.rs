@@ -127,6 +127,7 @@ mod tests {
             refresh_token: Some("REF".into()),
             id_token: None,
             expires_at: now + 3600,
+            granted_scopes: None,
         };
         mgr.seed("ref@manager.test", &tokens);
 
@@ -157,6 +158,7 @@ mod tests {
             refresh_token: None,
             id_token: None,
             expires_at: now + 100,
+            granted_scopes: None,
         };
         mgr.seed(auth_ref, &old);
 
@@ -189,6 +191,7 @@ mod tests {
             refresh_token: None,
             id_token: None,
             expires_at: now + 100,
+            granted_scopes: None,
         };
         mgr.seed(auth_ref, &old);
 

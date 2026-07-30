@@ -6,6 +6,7 @@ pub struct OAuthTokens {
     pub refresh_token: Option<String>,
     pub id_token: Option<String>,
     pub expires_at: i64,
+    pub granted_scopes: Option<String>,
 }
 
 #[async_trait::async_trait]
@@ -204,8 +205,12 @@ fn parse_token_response(status: u16, body: &str, now: i64) -> Result<OAuthTokens
     let id_token = v["id_token"].as_str().map(|s| s.to_string());
     let expires_in = v["expires_in"].as_i64().unwrap_or(3600);
     let expires_at = now + expires_in;
+    let granted_scopes = v["scope"]
+        .as_str()
+        .map(|s| s.to_string())
+        .filter(|s| !s.trim().is_empty());
 
-    Ok(OAuthTokens { access_token, refresh_token, id_token, expires_at })
+    Ok(OAuthTokens { access_token, refresh_token, id_token, expires_at, granted_scopes })
 }
 
 #[cfg(test)]
@@ -302,6 +307,32 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(tokens.id_token.as_deref(), Some("HEAD.PAYLOAD.SIG"));
+    }
+
+    #[tokio::test]
+    async fn exchange_code_captures_granted_scopes() {
+        let now = 1_700_000_000i64;
+        let body = r#"{"access_token":"ACC","scope":"openid email","expires_in":3600}"#;
+        let http = FakeHttp::new(vec![(200, body.into())]);
+        let tokens = exchange_code_with_now(
+            &http, TEST_TOKEN_URI, "client_id", None, "code", "ver", "http://r", now,
+        )
+        .await
+        .unwrap();
+        assert_eq!(tokens.granted_scopes.as_deref(), Some("openid email"));
+    }
+
+    #[tokio::test]
+    async fn exchange_code_without_scope_field_yields_none() {
+        let now = 1_700_000_000i64;
+        let body = r#"{"access_token":"ACC","expires_in":3600}"#;
+        let http = FakeHttp::new(vec![(200, body.into())]);
+        let tokens = exchange_code_with_now(
+            &http, TEST_TOKEN_URI, "client_id", None, "code", "ver", "http://r", now,
+        )
+        .await
+        .unwrap();
+        assert!(tokens.granted_scopes.is_none());
     }
 
     #[tokio::test]

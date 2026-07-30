@@ -38,6 +38,15 @@ fn should_full_scan(elapsed: Duration, interval: Duration) -> bool {
     elapsed >= interval
 }
 
+fn needs_reauth(err: &service::SyncError) -> bool {
+    matches!(err, service::SyncError::Auth | service::SyncError::NeedsReauth)
+}
+
+fn flag_reauth(db: &Database, sink: &dyn SyncEventSink, account_id: i64) {
+    let _ = accounts_repo::set_requires_reauth(db, account_id, true);
+    sink.emit(crate::events::SyncEvent::AuthChanged { account_id, requires_reauth: true });
+}
+
 pub fn run_wake_sweep_at(db: &Database, sink: &dyn SyncEventSink, now: i64) {
     match am_storage::snooze_repo::wake_due(db, now) {
         Ok(count) if count > 0 => {
@@ -102,9 +111,8 @@ impl SyncEngine {
         let creds = Arc::clone(&self.creds);
         tokio::spawn(async move {
             if let Err(e) = service::sync_all_folders(&db, account_id, creds.as_ref(), |_| {}).await {
-                if matches!(e, service::SyncError::NeedsReauth) {
-                    let _ = am_storage::accounts_repo::set_requires_reauth(&db, account_id, true);
-                    sink.emit(crate::events::SyncEvent::AuthChanged { account_id, requires_reauth: true });
+                if needs_reauth(&e) {
+                    flag_reauth(&db, sink.as_ref(), account_id);
                     return;
                 }
             }
@@ -112,9 +120,8 @@ impl SyncEngine {
             loop {
                 let now = service::now_secs();
                 if let Err(e) = service::drain_queue(&db, account_id, creds.as_ref(), now).await {
-                    if matches!(e, service::SyncError::NeedsReauth) {
-                        let _ = am_storage::accounts_repo::set_requires_reauth(&db, account_id, true);
-                        sink.emit(crate::events::SyncEvent::AuthChanged { account_id, requires_reauth: true });
+                    if needs_reauth(&e) {
+                        flag_reauth(&db, sink.as_ref(), account_id);
                         return;
                     }
                 }
@@ -138,9 +145,8 @@ impl SyncEngine {
                         .await {
                             Ok(count) => new_mail += count,
                             Err(e) => {
-                                if matches!(e, service::SyncError::NeedsReauth) {
-                                    let _ = am_storage::accounts_repo::set_requires_reauth(&db, account_id, true);
-                                    sink.emit(crate::events::SyncEvent::AuthChanged { account_id, requires_reauth: true });
+                                if needs_reauth(&e) {
+                                    flag_reauth(&db, sink.as_ref(), account_id);
                                     return;
                                 }
                             }
@@ -160,9 +166,8 @@ impl SyncEngine {
                                 .await {
                                     Ok(count) => new_mail += count,
                                     Err(e) => {
-                                        if matches!(e, service::SyncError::NeedsReauth) {
-                                            let _ = am_storage::accounts_repo::set_requires_reauth(&db, account_id, true);
-                                            sink.emit(crate::events::SyncEvent::AuthChanged { account_id, requires_reauth: true });
+                                        if needs_reauth(&e) {
+                                            flag_reauth(&db, sink.as_ref(), account_id);
                                             return;
                                         }
                                     }
@@ -395,6 +400,41 @@ mod tests {
         let sink = RecordingSink::new();
         run_wake_sweep_at(&db, &sink, 5000);
         assert_eq!(sink.events.lock().unwrap().len(), 0);
+    }
+
+    #[test]
+    fn rejected_credentials_flag_reauth() {
+        assert!(needs_reauth(&service::SyncError::Auth));
+        assert!(needs_reauth(&service::SyncError::NeedsReauth));
+    }
+
+    #[test]
+    fn recoverable_errors_do_not_flag_reauth() {
+        assert!(!needs_reauth(&service::SyncError::Protocol("connection lost".into())));
+        assert!(!needs_reauth(&service::SyncError::InvalidSettings));
+        assert!(!needs_reauth(&service::SyncError::Keychain));
+        assert!(!needs_reauth(&service::SyncError::CredentialMissing));
+    }
+
+    #[test]
+    fn flag_reauth_persists_flag_and_emits_event() {
+        let db = Database::open_in_memory().unwrap();
+        let account = accounts_repo::insert_account(&db, &NewAccount {
+            email: "scope@e.com".into(), display_name: "S".into(),
+            provider_type: ProviderType::GoogleOauth, color: None,
+        }).unwrap();
+        let sink = RecordingSink::new();
+
+        flag_reauth(&db, &sink, account.id);
+
+        let stored = accounts_repo::get_account(&db, account.id).unwrap();
+        assert!(stored.requires_reauth);
+        let events = sink.events.lock().unwrap();
+        assert_eq!(events.len(), 1);
+        assert!(matches!(
+            events[0],
+            crate::events::SyncEvent::AuthChanged { account_id, requires_reauth: true } if account_id == account.id
+        ));
     }
 
     struct FakeCreds;

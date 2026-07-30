@@ -1621,6 +1621,10 @@ pub fn delete_rule(state: tauri::State<'_, AppState>, rule_id: i64) -> Result<()
     am_storage::rules_repo::delete_rule(&state.db, rule_id).map_err(|e| e.to_string())
 }
 
+const MISSING_MAIL_SCOPE_ERROR: &str = "Sign-in succeeded but mailbox access was not granted. \
+     Start again and leave every requested permission checked — without access to your mail \
+     AbeonMail cannot receive or send messages for this account.";
+
 async fn accept_redirect(
     provider: &am_auth::oauth::OAuthProvider,
     listener: TcpListener,
@@ -1678,6 +1682,13 @@ async fn accept_redirect(
     )
     .await
     .map_err(|_| "Token exchange failed".to_string())?;
+
+    if !am_auth::oauth::mail_scope_granted(
+        tokens.granted_scopes.as_deref(),
+        provider.required_mail_scope,
+    ) {
+        return Err(MISSING_MAIL_SCOPE_ERROR.to_string());
+    }
 
     let email = am_auth::oauth::descriptor::resolve_email(&http, provider, &tokens)
         .await

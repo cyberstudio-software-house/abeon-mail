@@ -3,6 +3,7 @@ use crate::oauth::OAuthError;
 pub const GOOGLE_AUTH_URI: &str = "https://accounts.google.com/o/oauth2/v2/auth";
 pub const GOOGLE_TOKEN_URI: &str = "https://oauth2.googleapis.com/token";
 pub const GOOGLE_USERINFO_URI: &str = "https://www.googleapis.com/oauth2/v3/userinfo";
+pub const GOOGLE_MAIL_SCOPE: &str = "https://mail.google.com/";
 pub const GOOGLE_SCOPES: &str = "https://mail.google.com/ openid email";
 
 const BAKED_CLIENT_ID: Option<&str> = option_env!("ABEONMAIL_GOOGLE_CLIENT_ID");

@@ -5,7 +5,7 @@ pub mod manager;
 pub mod microsoft;
 pub mod pkce;
 
-pub use descriptor::{EmailSource, OAuthProvider};
+pub use descriptor::{mail_scope_granted, EmailSource, OAuthProvider};
 
 pub use client::{OAuthTokens, TokenHttp};
 

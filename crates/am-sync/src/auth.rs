@@ -99,11 +99,11 @@ impl CredentialSource for KeychainCredentialSource {
                 let client_id = self
                     .client_id
                     .as_deref()
-                    .ok_or(SyncError::Auth)?;
+                    .ok_or(SyncError::InvalidSettings)?;
                 let client_secret = self
                     .client_secret
                     .as_deref()
-                    .ok_or(SyncError::Auth)?;
+                    .ok_or(SyncError::InvalidSettings)?;
                 let now = crate::service::now_secs();
                 let token = self
                     .token_manager
@@ -122,7 +122,7 @@ impl CredentialSource for KeychainCredentialSource {
                 })
             }
             ProviderType::MicrosoftOauth => {
-                let client_id = self.microsoft_client_id.as_deref().ok_or(SyncError::Auth)?;
+                let client_id = self.microsoft_client_id.as_deref().ok_or(SyncError::InvalidSettings)?;
                 let provider = am_auth::oauth::OAuthProvider::microsoft();
                 let now = crate::service::now_secs();
                 let token = self
@@ -214,6 +214,7 @@ mod tests {
                 refresh_token: None,
                 id_token: None,
                 expires_at: now + 3600,
+                granted_scopes: None,
             },
         );
         mgr
@@ -240,7 +241,7 @@ mod tests {
         let src = KeychainCredentialSource::for_test(mgr, None);
         let account = fake_account(ProviderType::MicrosoftOauth);
         let result = src.auth_for(&account).await;
-        assert!(matches!(result, Err(SyncError::Auth)));
+        assert!(matches!(result, Err(SyncError::InvalidSettings)));
     }
 
     #[tokio::test]
