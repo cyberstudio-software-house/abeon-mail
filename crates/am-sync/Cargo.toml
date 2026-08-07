@@ -19,6 +19,7 @@ async-trait.workspace = true
 [dev-dependencies]
 testcontainers.workspace = true
 async-imap.workspace = true
+async-trait.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread", "net", "macros", "io-util", "time"] }
 
 [target.'cfg(target_os = "linux")'.dev-dependencies]

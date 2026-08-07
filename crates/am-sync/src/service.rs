@@ -43,6 +43,7 @@ const INITIAL_SYNC_LIMIT: u32 = 200;
 const BACKFILL_BATCH: usize = 200;
 const BODY_BATCH: i64 = 20;
 const INBOX_PATH: &str = "INBOX";
+const MAX_SCAN_RECONNECTS: u32 = 3;
 
 pub fn now_secs() -> i64 {
     std::time::SystemTime::now()
@@ -352,16 +353,24 @@ pub async fn sync_folder(
     creds: &dyn CredentialSource,
     progress: impl Fn(SyncProgress),
 ) -> Result<usize, SyncError> {
-    let account = accounts_repo::get_account(db, account_id)?;
-    let endpoints = load_endpoints(db, account_id)?;
-    let folder = folders_repo::get_folder(db, folder_id)?;
+    let mut session = open_account_session(db, account_id, creds).await?;
+    let result = sync_folder_with_session(db, account_id, folder_id, &mut session, progress).await;
+    tokio::spawn(async move {
+        let _ = session.logout().await;
+    });
+    result
+}
 
-    let auth = creds.auth_for(&account).await?;
-    let config = imap_config(&endpoints, &account.email);
-    let mut session = ImapSession::connect(&config, &auth.to_imap()).await?;
+pub async fn sync_folder_with_session(
+    db: &Database,
+    account_id: i64,
+    folder_id: i64,
+    session: &mut ImapSession,
+    progress: impl Fn(SyncProgress),
+) -> Result<usize, SyncError> {
+    let folder = folders_repo::get_folder(db, folder_id)?;
     let state = session.select(&folder.remote_path).await?;
     let fetched = session.fetch_recent_headers(INITIAL_SYNC_LIMIT).await?;
-    session.logout().await?;
 
     let inserted = ingest_headers(db, &folder, &fetched)?;
     assign_threads(db, account_id)?;
@@ -398,13 +407,20 @@ pub async fn discover_folders(
     account_id: i64,
     creds: &dyn CredentialSource,
 ) -> Result<(), SyncError> {
-    let account = accounts_repo::get_account(db, account_id)?;
-    let endpoints = load_endpoints(db, account_id)?;
-    let auth = creds.auth_for(&account).await?;
-    let config = imap_config(&endpoints, &account.email);
-    let mut session = ImapSession::connect(&config, &auth.to_imap()).await?;
+    let mut session = open_account_session(db, account_id, creds).await?;
+    let result = discover_folders_with_session(db, account_id, &mut session).await;
+    tokio::spawn(async move {
+        let _ = session.logout().await;
+    });
+    result
+}
+
+pub async fn discover_folders_with_session(
+    db: &Database,
+    account_id: i64,
+    session: &mut ImapSession,
+) -> Result<(), SyncError> {
     let folders = session.list_folders().await?;
-    session.logout().await?;
     upsert_remote_folders(db, account_id, &folders)?;
 
     let server_paths: std::collections::HashSet<&str> =
@@ -491,30 +507,90 @@ pub async fn sync_all_folders(
     creds: &dyn CredentialSource,
     progress: impl Fn(SyncProgress) + Copy,
 ) -> Result<usize, SyncError> {
-    discover_folders(db, account_id, creds).await?;
+    let mut session = open_account_session(db, account_id, creds).await?;
+    discover_folders_with_session(db, account_id, &mut session).await?;
     let folders = folders_repo::list_folders(db, account_id)?;
     let mut total = 0usize;
+    let mut reconnects = 0u32;
+
     for folder in folders {
-        match sync_folder(db, account_id, folder.id, creds, progress).await {
+        match sync_folder_with_session(db, account_id, folder.id, &mut session, progress).await {
             Ok(synced) => total += synced,
             Err(SyncError::NeedsReauth) => return Err(SyncError::NeedsReauth),
-            Err(_) => continue,
+            Err(_) => {
+                if reconnects >= MAX_SCAN_RECONNECTS {
+                    break;
+                }
+                reconnects += 1;
+                match open_account_session(db, account_id, creds).await {
+                    Ok(fresh) => session = fresh,
+                    Err(SyncError::NeedsReauth) => return Err(SyncError::NeedsReauth),
+                    Err(_) => break,
+                }
+            }
         }
     }
+
+    tokio::spawn(async move {
+        let _ = session.logout().await;
+    });
     Ok(total)
 }
 
-pub async fn get_or_fetch_body(db: &Database, message_id: i64, creds: &dyn CredentialSource) -> Result<MessageBody, SyncError> {
-    let cached = messages_repo::get_body(db, message_id)?;
-    if let Some(body) = &cached {
-        if !am_storage::attachments_repo::needs_refresh(db, message_id)? {
-            return Ok(body.clone());
+type BodyFetchGates = std::sync::Mutex<std::collections::HashMap<i64, std::sync::Arc<tokio::sync::Mutex<()>>>>;
+
+fn body_fetch_gates() -> &'static BodyFetchGates {
+    static GATES: std::sync::OnceLock<BodyFetchGates> = std::sync::OnceLock::new();
+    GATES.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
+}
+
+fn acquire_body_fetch_gate(message_id: i64) -> std::sync::Arc<tokio::sync::Mutex<()>> {
+    let mut gates = body_fetch_gates().lock().expect("body fetch gates poisoned");
+    std::sync::Arc::clone(
+        gates
+            .entry(message_id)
+            .or_insert_with(|| std::sync::Arc::new(tokio::sync::Mutex::new(()))),
+    )
+}
+
+struct BodyFetchGateCleanup {
+    message_id: i64,
+    gate: std::sync::Arc<tokio::sync::Mutex<()>>,
+}
+
+impl Drop for BodyFetchGateCleanup {
+    fn drop(&mut self) {
+        let mut gates = body_fetch_gates().lock().expect("body fetch gates poisoned");
+        if std::sync::Arc::strong_count(&self.gate) == 2 {
+            gates.remove(&self.message_id);
         }
     }
+}
 
+fn fresh_cached_body(db: &Database, message_id: i64) -> Result<Option<MessageBody>, SyncError> {
+    match messages_repo::get_body(db, message_id)? {
+        Some(body) if !am_storage::attachments_repo::needs_refresh(db, message_id)? => Ok(Some(body)),
+        _ => Ok(None),
+    }
+}
+
+pub async fn get_or_fetch_body(db: &Database, message_id: i64, creds: &dyn CredentialSource) -> Result<MessageBody, SyncError> {
+    if let Some(body) = fresh_cached_body(db, message_id)? {
+        return Ok(body);
+    }
+
+    let gate = acquire_body_fetch_gate(message_id);
+    let _cleanup = BodyFetchGateCleanup { message_id, gate: std::sync::Arc::clone(&gate) };
+    let _permit = gate.lock_owned().await;
+
+    if let Some(body) = fresh_cached_body(db, message_id)? {
+        return Ok(body);
+    }
+
+    let stale = messages_repo::get_body(db, message_id)?;
     match fetch_and_store_body(db, message_id, creds).await {
         Ok(body) => Ok(body),
-        Err(err) => match cached {
+        Err(err) => match stale {
             Some(body) => Ok(body),
             None => Err(err),
         },
@@ -539,15 +615,13 @@ pub(crate) fn persist_body(db: &Database, message_id: i64, raw: &[u8]) -> Result
 async fn fetch_and_store_body(db: &Database, message_id: i64, creds: &dyn CredentialSource) -> Result<MessageBody, SyncError> {
     let (folder_id, uid) = messages_repo::message_uid(db, message_id)?;
     let folder = folders_repo::get_folder(db, folder_id)?;
-    let account = accounts_repo::get_account(db, folder.account_id)?;
-    let endpoints = load_endpoints(db, folder.account_id)?;
 
-    let auth = creds.auth_for(&account).await?;
-    let config = imap_config(&endpoints, &account.email);
-    let mut session = ImapSession::connect(&config, &auth.to_imap()).await?;
+    let mut session = open_account_session(db, folder.account_id, creds).await?;
     session.select(&folder.remote_path).await?;
     let raw = session.fetch_body(uid).await?;
-    session.logout().await?;
+    tokio::spawn(async move {
+        let _ = session.logout().await;
+    });
 
     persist_body(db, message_id, &raw)
 }
@@ -569,6 +643,62 @@ pub async fn get_or_fetch_recipients(db: &Database, message_id: i64, creds: &dyn
     Ok((parsed.to, parsed.cc))
 }
 
+pub async fn open_account_session(
+    db: &Database,
+    account_id: i64,
+    creds: &dyn CredentialSource,
+) -> Result<ImapSession, SyncError> {
+    let account = accounts_repo::get_account(db, account_id)?;
+    let endpoints = load_endpoints(db, account_id)?;
+    let auth = creds.auth_for(&account).await?;
+    let config = imap_config(&endpoints, &account.email);
+    Ok(ImapSession::connect(&config, &auth.to_imap()).await?)
+}
+
+pub async fn full_scan_account(
+    db: &Database,
+    account_id: i64,
+    creds: &dyn CredentialSource,
+    sink: &dyn SyncEventSink,
+) -> Result<i64, SyncError> {
+    let folders = folders_repo::list_folders(db, account_id)?;
+    let pending: Vec<i64> = folders
+        .iter()
+        .filter(|f| !f.remote_path.eq_ignore_ascii_case(INBOX_PATH))
+        .map(|f| f.id)
+        .collect();
+    if pending.is_empty() {
+        return Ok(0);
+    }
+
+    let mut session = open_account_session(db, account_id, creds).await?;
+    let mut new_mail = 0i64;
+    let mut reconnects = 0u32;
+
+    for folder_id in pending {
+        match incremental_sync_folder_with_session(db, account_id, folder_id, &mut session, sink).await {
+            Ok(count) => new_mail += count,
+            Err(SyncError::NeedsReauth) => return Err(SyncError::NeedsReauth),
+            Err(_) => {
+                if reconnects >= MAX_SCAN_RECONNECTS {
+                    break;
+                }
+                reconnects += 1;
+                match open_account_session(db, account_id, creds).await {
+                    Ok(fresh) => session = fresh,
+                    Err(SyncError::NeedsReauth) => return Err(SyncError::NeedsReauth),
+                    Err(_) => break,
+                }
+            }
+        }
+    }
+
+    tokio::spawn(async move {
+        let _ = session.logout().await;
+    });
+    Ok(new_mail)
+}
+
 pub async fn incremental_sync_folder(
     db: &Database,
     account_id: i64,
@@ -576,13 +706,22 @@ pub async fn incremental_sync_folder(
     creds: &dyn CredentialSource,
     sink: &dyn SyncEventSink,
 ) -> Result<i64, SyncError> {
-    let account = accounts_repo::get_account(db, account_id)?;
-    let endpoints = load_endpoints(db, account_id)?;
-    let folder = folders_repo::get_folder(db, folder_id)?;
+    let mut session = open_account_session(db, account_id, creds).await?;
+    let result = incremental_sync_folder_with_session(db, account_id, folder_id, &mut session, sink).await;
+    tokio::spawn(async move {
+        let _ = session.logout().await;
+    });
+    result
+}
 
-    let auth = creds.auth_for(&account).await?;
-    let config = imap_config(&endpoints, &account.email);
-    let mut session = ImapSession::connect(&config, &auth.to_imap()).await?;
+pub async fn incremental_sync_folder_with_session(
+    db: &Database,
+    account_id: i64,
+    folder_id: i64,
+    session: &mut ImapSession,
+    sink: &dyn SyncEventSink,
+) -> Result<i64, SyncError> {
+    let folder = folders_repo::get_folder(db, folder_id)?;
     let state = session.select(&folder.remote_path).await?;
     let markers = folders_repo::get_sync_markers(db, folder_id)?;
 
@@ -590,7 +729,6 @@ pub async fn incremental_sync_folder(
         messages_repo::delete_by_folder(db, folder_id)?;
         folders_repo::set_backfill_complete(db, folder_id, false)?;
         let fetched = session.fetch_recent_headers(INITIAL_SYNC_LIMIT).await?;
-        session.logout().await?;
         ingest_headers(db, &folder, &fetched)?;
         assign_threads(db, account_id)?;
         folders_repo::set_sync_markers(db, folder_id, state.uidvalidity, state.uidnext, state.highestmodseq, now_secs())?;
@@ -632,8 +770,6 @@ pub async fn incremental_sync_folder(
             messages_repo::delete_by_uids(db, folder_id, &vanished)?;
         }
     }
-
-    session.logout().await?;
 
     folders_repo::set_sync_markers(db, folder_id, state.uidvalidity, state.uidnext, state.highestmodseq, now_secs())?;
     let unread = folders_repo::recount_unread(db, folder_id)?;

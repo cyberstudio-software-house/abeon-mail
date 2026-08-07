@@ -115,16 +115,24 @@ fn raw_message(subject: &str, body: &str) -> String {
     )
 }
 
+async fn open_seed_session(port: u16) -> async_imap::Session<TcpStream> {
+    for attempt in 0..20 {
+        if attempt > 0 {
+            tokio::time::sleep(Duration::from_millis(300)).await;
+        }
+        let tcp = match TcpStream::connect(("127.0.0.1", port)).await {
+            Ok(tcp) => tcp,
+            Err(_) => continue,
+        };
+        if let Ok(session) = Client::new(tcp).login(USER, PASSWORD).await.map_err(|(e, _)| e) {
+            return session;
+        }
+    }
+    panic!("seed login failed after retries");
+}
+
 async fn seed_messages(port: u16) {
-    let tcp = TcpStream::connect(("127.0.0.1", port))
-        .await
-        .expect("connect for seeding failed");
-    let client = Client::new(tcp);
-    let mut session = client
-        .login(USER, PASSWORD)
-        .await
-        .map_err(|(e, _)| e)
-        .expect("seed login failed");
+    let mut session = open_seed_session(port).await;
 
     for (subject, body) in [
         (SUBJECT_ONE, BODY_ONE),
@@ -257,15 +265,7 @@ async fn add_account_syncs_inbox_and_fetches_body() {
 }
 
 async fn seed_inbox_only(port: u16) {
-    let tcp = TcpStream::connect(("127.0.0.1", port))
-        .await
-        .expect("connect for seeding failed");
-    let client = Client::new(tcp);
-    let mut session = client
-        .login(USER, PASSWORD)
-        .await
-        .map_err(|(e, _)| e)
-        .expect("seed login failed");
+    let mut session = open_seed_session(port).await;
 
     for (subject, body) in [
         (SUBJECT_ONE, BODY_ONE),
@@ -454,4 +454,245 @@ async fn prefetch_downloads_bodies_without_marking_seen() {
 
     am_storage::settings_repo::set_setting(&db, &format!("prefetch.bodies.{}", account.id), "false").unwrap();
     assert!(!service::run_prefetch_batch(&db, account.id, creds.as_ref(), &sink).await.unwrap());
+}
+
+async fn seed_many_folders(port: u16) {
+    let mut session = open_seed_session(port).await;
+
+    session
+        .append("INBOX", None, None, raw_message(SUBJECT_ONE, BODY_ONE).as_bytes())
+        .await
+        .expect("append to inbox failed");
+
+    for name in ["Projects", "Invoices", "Newsletters", "Travel"] {
+        session.create(name).await.ok();
+        session
+            .append(name, None, None, raw_message(name, "folder seed marker").as_bytes())
+            .await
+            .unwrap_or_else(|_| panic!("append to {name} failed"));
+    }
+
+    session.logout().await.expect("seed logout failed");
+}
+
+struct CountingCreds {
+    inner: std::sync::Arc<am_sync::auth::KeychainCredentialSource>,
+    fetches: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+}
+
+#[async_trait::async_trait]
+impl am_sync::auth::CredentialSource for CountingCreds {
+    async fn auth_for(
+        &self,
+        account: &am_core::account::Account,
+    ) -> Result<am_sync::auth::AccountAuth, service::SyncError> {
+        self.fetches.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        self.inner.auth_for(account).await
+    }
+}
+
+#[tokio::test]
+async fn concurrent_body_requests_hit_the_server_once() {
+    if !docker_available() {
+        eprintln!("docker is not available; skipping greenmail concurrency integration test");
+        return;
+    }
+
+    install_in_mem_builder();
+
+    let image = GenericImage::new("greenmail/standalone", "latest")
+        .with_wait_for(WaitFor::message_on_stdout("Starting GreenMail standalone"))
+        .with_exposed_port(ContainerPort::Tcp(IMAP_PORT))
+        .with_env_var(
+            "GREENMAIL_OPTS",
+            "-Dgreenmail.setup.test.all -Dgreenmail.auth.disabled -Dgreenmail.verbose -Dgreenmail.hostname=0.0.0.0",
+        );
+
+    let container = image.start().await.expect("failed to start greenmail container");
+    let mapped_port = container
+        .get_host_port_ipv4(ContainerPort::Tcp(IMAP_PORT))
+        .await
+        .expect("failed to get mapped imap port");
+
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    seed_inbox_only(mapped_port).await;
+
+    let endpoints = Endpoints {
+        imap_host: "127.0.0.1".to_string(),
+        imap_port: mapped_port,
+        imap_tls: false,
+        smtp_host: "127.0.0.1".to_string(),
+        smtp_port: 0,
+        smtp_tls: false,
+    };
+    let db = std::sync::Arc::new(Database::open_in_memory().expect("db open failed"));
+    let account = service::add_account(&db, AddAccountInput {
+        email: USER.to_string(),
+        display_name: "Sync User".to_string(),
+        password: PASSWORD.to_string(),
+        endpoints,
+    }).await.expect("add_account failed");
+
+    let inbox = folders_repo::find_by_type(&db, account.id, FolderType::Inbox)
+        .unwrap()
+        .expect("inbox folder missing");
+    let headers = messages_repo::list_by_folder(&db, inbox.id, 50, 0, i64::MAX).unwrap();
+    let target = headers[0].id;
+
+    let fetches = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let creds: std::sync::Arc<dyn am_sync::auth::CredentialSource> = std::sync::Arc::new(CountingCreds {
+        inner: am_sync::auth::KeychainCredentialSource::new(),
+        fetches: std::sync::Arc::clone(&fetches),
+    });
+
+    let mut tasks = Vec::new();
+    for _ in 0..3 {
+        let db = std::sync::Arc::clone(&db);
+        let creds = std::sync::Arc::clone(&creds);
+        tasks.push(tokio::spawn(async move {
+            service::get_or_fetch_body(&db, target, creds.as_ref()).await
+        }));
+    }
+
+    let mut bodies = Vec::new();
+    for task in tasks {
+        bodies.push(task.await.expect("task panicked").expect("get_or_fetch_body failed"));
+    }
+
+    assert!(bodies[0].text_plain.is_some(), "body should have been fetched");
+    assert!(bodies.iter().all(|b| *b == bodies[0]), "all callers must observe the same body");
+    assert_eq!(
+        fetches.load(std::sync::atomic::Ordering::SeqCst),
+        1,
+        "concurrent requests for one message must perform a single network fetch"
+    );
+}
+
+#[tokio::test]
+async fn full_scan_reuses_one_session_for_all_folders() {
+    if !docker_available() {
+        eprintln!("docker is not available; skipping greenmail full scan integration test");
+        return;
+    }
+
+    install_in_mem_builder();
+
+    let image = GenericImage::new("greenmail/standalone", "latest")
+        .with_wait_for(WaitFor::message_on_stdout("Starting GreenMail standalone"))
+        .with_exposed_port(ContainerPort::Tcp(IMAP_PORT))
+        .with_env_var(
+            "GREENMAIL_OPTS",
+            "-Dgreenmail.setup.test.all -Dgreenmail.auth.disabled -Dgreenmail.verbose -Dgreenmail.hostname=0.0.0.0",
+        );
+
+    let container = image.start().await.expect("failed to start greenmail container");
+    let mapped_port = container
+        .get_host_port_ipv4(ContainerPort::Tcp(IMAP_PORT))
+        .await
+        .expect("failed to get mapped imap port");
+
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    seed_many_folders(mapped_port).await;
+
+    let endpoints = Endpoints {
+        imap_host: "127.0.0.1".to_string(),
+        imap_port: mapped_port,
+        imap_tls: false,
+        smtp_host: "127.0.0.1".to_string(),
+        smtp_port: 0,
+        smtp_tls: false,
+    };
+    let db = Database::open_in_memory().expect("db open failed");
+    let account = service::add_account(&db, AddAccountInput {
+        email: USER.to_string(),
+        display_name: "Sync User".to_string(),
+        password: PASSWORD.to_string(),
+        endpoints,
+    }).await.expect("add_account failed");
+
+    let folders = folders_repo::list_folders(&db, account.id).expect("list_folders failed");
+    let non_inbox = folders
+        .iter()
+        .filter(|f| !f.remote_path.eq_ignore_ascii_case("INBOX"))
+        .count();
+    assert!(non_inbox >= 4, "expected at least 4 non-inbox folders, got {non_inbox}");
+
+    let fetches = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let creds = CountingCreds {
+        inner: am_sync::auth::KeychainCredentialSource::new(),
+        fetches: std::sync::Arc::clone(&fetches),
+    };
+    let sink = am_sync::events::NoopSink;
+
+    service::full_scan_account(&db, account.id, &creds, &sink)
+        .await
+        .expect("full_scan_account failed");
+
+    assert_eq!(
+        fetches.load(std::sync::atomic::Ordering::SeqCst),
+        1,
+        "a full scan must authenticate once, not once per folder"
+    );
+}
+
+#[tokio::test]
+async fn initial_sync_authenticates_once_for_all_folders() {
+    if !docker_available() {
+        eprintln!("docker is not available; skipping greenmail initial sync integration test");
+        return;
+    }
+
+    install_in_mem_builder();
+
+    let image = GenericImage::new("greenmail/standalone", "latest")
+        .with_wait_for(WaitFor::message_on_stdout("Starting GreenMail standalone"))
+        .with_exposed_port(ContainerPort::Tcp(IMAP_PORT))
+        .with_env_var(
+            "GREENMAIL_OPTS",
+            "-Dgreenmail.setup.test.all -Dgreenmail.auth.disabled -Dgreenmail.verbose -Dgreenmail.hostname=0.0.0.0",
+        );
+
+    let container = image.start().await.expect("failed to start greenmail container");
+    let mapped_port = container
+        .get_host_port_ipv4(ContainerPort::Tcp(IMAP_PORT))
+        .await
+        .expect("failed to get mapped imap port");
+
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    seed_many_folders(mapped_port).await;
+
+    let endpoints = Endpoints {
+        imap_host: "127.0.0.1".to_string(),
+        imap_port: mapped_port,
+        imap_tls: false,
+        smtp_host: "127.0.0.1".to_string(),
+        smtp_port: 0,
+        smtp_tls: false,
+    };
+    let db = Database::open_in_memory().expect("db open failed");
+    let account = service::add_account(&db, AddAccountInput {
+        email: USER.to_string(),
+        display_name: "Sync User".to_string(),
+        password: PASSWORD.to_string(),
+        endpoints,
+    }).await.expect("add_account failed");
+
+    let folder_count = folders_repo::list_folders(&db, account.id).expect("list_folders failed").len();
+    assert!(folder_count >= 5, "expected at least 5 folders, got {folder_count}");
+
+    let fetches = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let creds = CountingCreds {
+        inner: am_sync::auth::KeychainCredentialSource::new(),
+        fetches: std::sync::Arc::clone(&fetches),
+    };
+
+    service::sync_all_folders(&db, account.id, &creds, |_| {})
+        .await
+        .expect("sync_all_folders failed");
+
+    let logins = fetches.load(std::sync::atomic::Ordering::SeqCst);
+    assert!(
+        logins <= 2,
+        "syncing {folder_count} folders must not authenticate once per folder, got {logins} logins"
+    );
 }

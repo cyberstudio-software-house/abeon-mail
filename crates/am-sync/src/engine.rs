@@ -154,23 +154,12 @@ impl SyncEngine {
                     }
 
                     if should_full_scan(last_full_scan.elapsed(), FULL_SCAN_INTERVAL) {
-                        for folder in &folders {
-                            if !folder.remote_path.eq_ignore_ascii_case(INBOX_PATH) {
-                                match service::incremental_sync_folder(
-                                    &db,
-                                    account_id,
-                                    folder.id,
-                                    creds.as_ref(),
-                                    sink.as_ref(),
-                                )
-                                .await {
-                                    Ok(count) => new_mail += count,
-                                    Err(e) => {
-                                        if needs_reauth(&e) {
-                                            flag_reauth(&db, sink.as_ref(), account_id);
-                                            return;
-                                        }
-                                    }
+                        match service::full_scan_account(&db, account_id, creds.as_ref(), sink.as_ref()).await {
+                            Ok(count) => new_mail += count,
+                            Err(e) => {
+                                if needs_reauth(&e) {
+                                    flag_reauth(&db, sink.as_ref(), account_id);
+                                    return;
                                 }
                             }
                         }
