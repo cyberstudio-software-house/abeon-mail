@@ -696,3 +696,90 @@ async fn initial_sync_authenticates_once_for_all_folders() {
         "syncing {folder_count} folders must not authenticate once per folder, got {logins} logins"
     );
 }
+
+#[tokio::test]
+async fn idle_returns_changed_immediately_for_mail_arrived_before_idle() {
+    if !docker_available() {
+        eprintln!("docker is not available; skipping greenmail idle-skip integration test");
+        return;
+    }
+
+    install_in_mem_builder();
+
+    let image = GenericImage::new("greenmail/standalone", "latest")
+        .with_wait_for(WaitFor::message_on_stdout("Starting GreenMail standalone"))
+        .with_exposed_port(ContainerPort::Tcp(IMAP_PORT))
+        .with_env_var(
+            "GREENMAIL_OPTS",
+            "-Dgreenmail.setup.test.all -Dgreenmail.auth.disabled -Dgreenmail.verbose -Dgreenmail.hostname=0.0.0.0",
+        );
+
+    let container = image
+        .start()
+        .await
+        .expect("failed to start greenmail container");
+
+    let mapped_port = container
+        .get_host_port_ipv4(ContainerPort::Tcp(IMAP_PORT))
+        .await
+        .expect("failed to get mapped imap port");
+
+    tokio::time::sleep(Duration::from_millis(500)).await;
+
+    seed_inbox_only(mapped_port).await;
+
+    let endpoints = Endpoints {
+        imap_host: "127.0.0.1".to_string(),
+        imap_port: mapped_port,
+        imap_tls: false,
+        smtp_host: "127.0.0.1".to_string(),
+        smtp_port: 0,
+        smtp_tls: false,
+    };
+
+    let db = Database::open_in_memory().expect("db open failed");
+
+    let account = service::add_account(&db, AddAccountInput {
+        email: USER.to_string(),
+        display_name: "Sync User".to_string(),
+        password: PASSWORD.to_string(),
+        endpoints,
+    }).await.expect("add_account failed");
+
+    let inbox = folders_repo::find_by_type(&db, account.id, FolderType::Inbox)
+        .unwrap()
+        .expect("inbox folder missing");
+
+    let mut session = open_seed_session(mapped_port).await;
+    session
+        .append("INBOX", None, None, raw_message("Late Arrival", "late marker OMEGA").as_bytes())
+        .await
+        .expect("append of late message failed");
+    session.logout().await.ok();
+
+    let creds = am_sync::auth::KeychainCredentialSource::new();
+    let token = tokio_util::sync::CancellationToken::new();
+    let notify = std::sync::Arc::new(tokio::sync::Notify::new());
+
+    let outcome = tokio::time::timeout(
+        Duration::from_secs(20),
+        am_sync::engine::idle_inbox(
+            &db,
+            account.id,
+            inbox.id,
+            "INBOX",
+            creds.as_ref(),
+            true,
+            Duration::from_secs(120),
+            token,
+            notify,
+        ),
+    )
+    .await
+    .expect("idle_inbox must return promptly when mail already arrived before idle started");
+
+    assert!(
+        matches!(outcome, Ok(am_sync::engine::IdleOutcomeKind::Changed)),
+        "expected Changed for mail that arrived before idle, got {outcome:?}"
+    );
+}

@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use am_protocols::imap::{IdleOutcome, ImapSession};
+use am_protocols::imap::{IdleOutcome, ImapSession, MailboxState};
 use am_storage::{accounts_repo, folders_repo, Database};
 use tokio::sync::Notify;
 use tokio_util::sync::CancellationToken;
@@ -18,6 +18,10 @@ pub const WAKE_SWEEP_INTERVAL: Duration = Duration::from_secs(60);
 pub const PREFETCH_IDLE_INTERVAL: Duration = Duration::from_secs(60);
 pub const PREFETCH_WORK_PAUSE: Duration = Duration::from_secs(2);
 pub const FULL_SCAN_INTERVAL: Duration = Duration::from_secs(300);
+pub const SYNC_PHASE_DEADLINE: Duration = Duration::from_secs(180);
+pub const DRAIN_PHASE_DEADLINE: Duration = Duration::from_secs(600);
+pub const STARTUP_SYNC_DEADLINE: Duration = Duration::from_secs(600);
+pub const IDLE_DONE_GRACE: Duration = Duration::from_secs(30);
 const INBOX_PATH: &str = "INBOX";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -36,6 +40,31 @@ fn should_resync_after_idle(outcome: &Result<IdleOutcomeKind, ()>) -> bool {
 
 fn should_full_scan(elapsed: Duration, interval: Duration) -> bool {
     elapsed >= interval
+}
+
+fn mailbox_changed_before_idle(markers: &folders_repo::SyncMarkers, state: &MailboxState) -> bool {
+    if markers.uidvalidity != Some(state.uidvalidity) {
+        return true;
+    }
+    markers.uidnext.is_some_and(|marker| state.uidnext > marker)
+}
+
+fn capped_idle_timeout(idle_refresh: Duration, scan_interval: Duration, since_scan: Duration) -> Duration {
+    idle_refresh.min(scan_interval.saturating_sub(since_scan))
+}
+
+fn idle_hard_deadline(timeout: Duration) -> Duration {
+    timeout + IDLE_DONE_GRACE
+}
+
+async fn with_deadline<T>(
+    limit: Duration,
+    fut: impl std::future::Future<Output = Result<T, service::SyncError>>,
+) -> Result<T, service::SyncError> {
+    match tokio::time::timeout(limit, fut).await {
+        Ok(result) => result,
+        Err(_) => Err(service::SyncError::Protocol("sync phase deadline exceeded".into())),
+    }
 }
 
 fn needs_reauth(err: &service::SyncError) -> bool {
@@ -110,7 +139,7 @@ impl SyncEngine {
         let sink = Arc::clone(&self.sink);
         let creds = Arc::clone(&self.creds);
         tokio::spawn(async move {
-            if let Err(e) = service::sync_all_folders(&db, account_id, creds.as_ref(), |_| {}).await {
+            if let Err(e) = with_deadline(STARTUP_SYNC_DEADLINE, service::sync_all_folders(&db, account_id, creds.as_ref(), |_| {})).await {
                 if needs_reauth(&e) {
                     flag_reauth(&db, sink.as_ref(), account_id);
                     return;
@@ -119,31 +148,35 @@ impl SyncEngine {
             let mut last_full_scan = std::time::Instant::now();
             loop {
                 let now = service::now_secs();
-                if let Err(e) = service::drain_queue(&db, account_id, creds.as_ref(), now).await {
+                if let Err(e) = with_deadline(DRAIN_PHASE_DEADLINE, service::drain_queue(&db, account_id, creds.as_ref(), now)).await {
                     if needs_reauth(&e) {
                         flag_reauth(&db, sink.as_ref(), account_id);
                         return;
                     }
                 }
-                let _ = crate::send::drain_outbox(&db, account_id, creds.as_ref(), sink.as_ref(), now).await;
-                let _ = crate::send::drain_invite_replies(&db, account_id, creds.as_ref(), sink.as_ref(), now).await;
-                let _ = crate::send::drain_draft_sync(&db, account_id, creds.as_ref(), now).await;
+                let _ = with_deadline(DRAIN_PHASE_DEADLINE, crate::send::drain_outbox(&db, account_id, creds.as_ref(), sink.as_ref(), now)).await;
+                let _ = with_deadline(DRAIN_PHASE_DEADLINE, crate::send::drain_invite_replies(&db, account_id, creds.as_ref(), sink.as_ref(), now)).await;
+                let _ = with_deadline(DRAIN_PHASE_DEADLINE, crate::send::drain_draft_sync(&db, account_id, creds.as_ref(), now)).await;
                 let mut backoff = POLL_INTERVAL;
                 let mut new_mail = 0i64;
+                let mut inbox_synced = false;
                 if let Ok(folders) = folders_repo::list_folders(&db, account_id) {
                     let inbox = folders
                         .iter()
                         .find(|f| f.remote_path.eq_ignore_ascii_case(INBOX_PATH));
                     if let Some(inbox) = inbox {
-                        match service::incremental_sync_folder(
+                        match with_deadline(SYNC_PHASE_DEADLINE, service::incremental_sync_folder(
                             &db,
                             account_id,
                             inbox.id,
                             creds.as_ref(),
                             sink.as_ref(),
-                        )
+                        ))
                         .await {
-                            Ok(count) => new_mail += count,
+                            Ok(count) => {
+                                new_mail += count;
+                                inbox_synced = true;
+                            }
                             Err(e) => {
                                 if needs_reauth(&e) {
                                     flag_reauth(&db, sink.as_ref(), account_id);
@@ -154,7 +187,7 @@ impl SyncEngine {
                     }
 
                     if should_full_scan(last_full_scan.elapsed(), FULL_SCAN_INTERVAL) {
-                        match service::full_scan_account(&db, account_id, creds.as_ref(), sink.as_ref()).await {
+                        match with_deadline(DRAIN_PHASE_DEADLINE, service::full_scan_account(&db, account_id, creds.as_ref(), sink.as_ref())).await {
                             Ok(count) => new_mail += count,
                             Err(e) => {
                                 if needs_reauth(&e) {
@@ -171,7 +204,22 @@ impl SyncEngine {
                     }
 
                     if let Some(inbox) = inbox {
-                        let idled = idle_inbox(&db, account_id, &inbox.remote_path, creds.as_ref(), token.clone(), Arc::clone(&notify)).await;
+                        let idle_for = capped_idle_timeout(IDLE_REFRESH, FULL_SCAN_INTERVAL, last_full_scan.elapsed());
+                        if idle_for.is_zero() {
+                            continue;
+                        }
+                        let idled = idle_inbox(
+                            &db,
+                            account_id,
+                            inbox.id,
+                            &inbox.remote_path,
+                            creds.as_ref(),
+                            inbox_synced,
+                            idle_for,
+                            token.clone(),
+                            Arc::clone(&notify),
+                        )
+                        .await;
                         if should_resync_after_idle(&idled) {
                             continue;
                         }
@@ -274,11 +322,14 @@ impl SyncEngine {
     }
 }
 
-async fn idle_inbox(
+pub async fn idle_inbox(
     db: &Database,
     account_id: i64,
+    folder_id: i64,
     remote_path: &str,
     creds: &dyn CredentialSource,
+    allow_uidnext_skip: bool,
+    timeout: Duration,
     token: CancellationToken,
     notify: Arc<Notify>,
 ) -> Result<IdleOutcomeKind, ()> {
@@ -292,18 +343,30 @@ async fn idle_inbox(
         let _ = session.logout().await;
         return Ok(IdleOutcomeKind::Unsupported);
     }
-    session.select(remote_path).await.map_err(|_| ())?;
-    let idle_fut = session.idle_wait(IDLE_REFRESH);
+    let state = session.select(remote_path).await.map_err(|_| ())?;
+    if allow_uidnext_skip {
+        let markers = folders_repo::get_sync_markers(db, folder_id).map_err(|_| ())?;
+        if mailbox_changed_before_idle(&markers, &state) {
+            tokio::spawn(async move {
+                let _ = session.logout().await;
+            });
+            return Ok(IdleOutcomeKind::Changed);
+        }
+    }
+    let idle_fut = tokio::time::timeout(idle_hard_deadline(timeout), session.idle_wait(timeout));
     tokio::select! {
         result = idle_fut => {
             match result {
-                Ok((session_after, outcome)) => {
-                    let _ = session_after.logout().await;
+                Ok(Ok((session_after, outcome))) => {
+                    tokio::spawn(async move {
+                        let _ = session_after.logout().await;
+                    });
                     match outcome {
                         IdleOutcome::Changed => Ok(IdleOutcomeKind::Changed),
                         IdleOutcome::TimedOut => Ok(IdleOutcomeKind::Refreshed),
                     }
                 }
+                Ok(Err(_)) => Err(()),
                 Err(_) => Err(()),
             }
         }
@@ -350,6 +413,82 @@ mod tests {
         let msgs = am_storage::messages_repo::list_by_folder(db, folder.id, 10, 0, 0).unwrap();
         let id = msgs[0].id;
         snooze_repo::snooze_messages(db, &[id], 1000).unwrap();
+    }
+
+    fn markers(uidvalidity: Option<i64>, uidnext: Option<i64>) -> folders_repo::SyncMarkers {
+        folders_repo::SyncMarkers { uidvalidity, uidnext, highestmodseq: None }
+    }
+
+    fn state(uidvalidity: i64, uidnext: i64) -> MailboxState {
+        MailboxState { uidvalidity, uidnext, exists: 0, highestmodseq: None }
+    }
+
+    #[test]
+    fn mail_arriving_before_idle_is_detected_from_select_uidnext() {
+        assert!(mailbox_changed_before_idle(&markers(Some(1), Some(100)), &state(1, 101)));
+        assert!(mailbox_changed_before_idle(&markers(Some(1), Some(100)), &state(1, 150)));
+    }
+
+    #[test]
+    fn unchanged_uidnext_enters_idle_normally() {
+        assert!(!mailbox_changed_before_idle(&markers(Some(1), Some(100)), &state(1, 100)));
+        assert!(!mailbox_changed_before_idle(&markers(Some(1), Some(100)), &state(1, 99)));
+    }
+
+    #[test]
+    fn missing_uidnext_marker_enters_idle_normally() {
+        assert!(!mailbox_changed_before_idle(&markers(Some(1), None), &state(1, 5)));
+    }
+
+    #[test]
+    fn uidvalidity_change_forces_resync_instead_of_idle() {
+        assert!(mailbox_changed_before_idle(&markers(Some(1), Some(100)), &state(2, 100)));
+        assert!(mailbox_changed_before_idle(&markers(None, Some(100)), &state(1, 100)));
+    }
+
+    #[test]
+    fn idle_timeout_uses_full_refresh_right_after_scan() {
+        assert_eq!(
+            capped_idle_timeout(IDLE_REFRESH, FULL_SCAN_INTERVAL, Duration::from_secs(0)),
+            IDLE_REFRESH
+        );
+    }
+
+    #[test]
+    fn idle_timeout_shrinks_to_next_scan_deadline() {
+        assert_eq!(
+            capped_idle_timeout(IDLE_REFRESH, FULL_SCAN_INTERVAL, Duration::from_secs(120)),
+            Duration::from_secs(180)
+        );
+    }
+
+    #[test]
+    fn idle_timeout_zero_when_scan_overdue() {
+        assert_eq!(
+            capped_idle_timeout(IDLE_REFRESH, FULL_SCAN_INTERVAL, Duration::from_secs(400)),
+            Duration::ZERO
+        );
+    }
+
+    #[test]
+    fn idle_hard_deadline_extends_timeout_by_grace() {
+        assert_eq!(idle_hard_deadline(IDLE_REFRESH), IDLE_REFRESH + IDLE_DONE_GRACE);
+    }
+
+    #[tokio::test]
+    async fn with_deadline_converts_hang_into_protocol_error() {
+        let result = with_deadline(
+            Duration::from_millis(10),
+            std::future::pending::<Result<(), service::SyncError>>(),
+        )
+        .await;
+        assert!(matches!(result, Err(service::SyncError::Protocol(_))));
+    }
+
+    #[tokio::test]
+    async fn with_deadline_passes_through_completed_result() {
+        let result = with_deadline(Duration::from_secs(5), async { Ok::<i64, service::SyncError>(7) }).await;
+        assert_eq!(result.unwrap(), 7);
     }
 
     #[test]
