@@ -136,7 +136,7 @@ fn sanitize_internal(
 
             Some(value.into())
         })
-        .clean(raw_html)
+        .clean(&crate::surrogates::repair_html_entities(raw_html))
         .to_string();
 
     let blocked_remote_content = *blocked.lock().unwrap();
@@ -672,5 +672,23 @@ mod tests {
             "Report",
         );
         assert_eq!(out, "<div><img src=\"data:image/png;base64,AA\"/><p>b</p></div>");
+    }
+
+    #[test]
+    fn outlook_surrogate_pair_entities_render_as_emoji() {
+        let out = sanitize_html("<p>dzwo&#324; &#55357;&#56898;</p>");
+        assert_eq!(out.html, "<p>dzwoń \u{1F642}</p>");
+    }
+
+    #[test]
+    fn hex_surrogate_pair_entities_render_as_emoji() {
+        let out = sanitize_html("<p>&#xD83D;&#xDE0A;</p>");
+        assert_eq!(out.html, "<p>\u{1F60A}</p>");
+    }
+
+    #[test]
+    fn regular_numeric_entities_are_untouched() {
+        let out = sanitize_html("<p>&#324;&#128578;&amp;&#38;</p>");
+        assert_eq!(out.html, "<p>ń\u{1F642}&amp;&amp;</p>");
     }
 }

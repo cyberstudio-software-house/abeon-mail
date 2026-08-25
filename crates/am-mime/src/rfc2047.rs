@@ -1,6 +1,8 @@
 use base64::Engine;
 use encoding_rs::Encoding;
 
+use crate::surrogates::repair_cesu8;
+
 pub fn decode(input: &str) -> String {
     let mut out = String::with_capacity(input.len());
     let mut rest = input;
@@ -9,8 +11,8 @@ pub fn decode(input: &str) -> String {
 
     while let Some(start) = rest.find("=?") {
         let (before, tail) = rest.split_at(start);
-        let between_is_whitespace = before.trim().is_empty() && !before.is_empty();
-        let suppress_before = last_was_encoded_word && between_is_whitespace;
+        let before_is_blank = before.trim().is_empty();
+        let suppress_before = last_was_encoded_word && before_is_blank;
 
         match parse_encoded_word(tail) {
             Some((enc, bytes, consumed)) => {
@@ -50,6 +52,11 @@ pub fn decode(input: &str) -> String {
 
 fn flush(pending: &mut Option<(&'static Encoding, Vec<u8>)>, out: &mut String) {
     if let Some((enc, bytes)) = pending.take() {
+        let bytes = if std::ptr::eq(enc, encoding_rs::UTF_8) {
+            repair_cesu8(&bytes)
+        } else {
+            std::borrow::Cow::Borrowed(&bytes[..])
+        };
         let (decoded, _, _) = enc.decode(&bytes);
         out.push_str(&decoded);
     }
@@ -178,5 +185,33 @@ mod tests {
     #[test]
     fn multibyte_char_split_across_quoted_printable_words() {
         assert_eq!(decode("=?UTF-8?Q?=c5?= =?UTF-8?Q?=82=c4=85ka?="), "łąka");
+    }
+
+    #[test]
+    fn emoji_split_across_adjacent_words_without_separator() {
+        assert_eq!(decode("=?UTF-8?B?8J+k?==?UTF-8?B?lg==?="), "\u{1F916}");
+    }
+
+    #[test]
+    fn emoji_split_across_words_with_separator() {
+        assert_eq!(decode("=?UTF-8?B?8J+k?= =?UTF-8?B?lg==?="), "\u{1F916}");
+    }
+
+    #[test]
+    fn subject_keeps_text_around_split_emoji() {
+        assert_eq!(
+            decode("New course: =?UTF-8?B?8J+k?==?UTF-8?B?lg==?= today"),
+            "New course: \u{1F916} today"
+        );
+    }
+
+    #[test]
+    fn cesu8_encoded_emoji_in_subject_is_repaired() {
+        assert_eq!(decode("=?UTF-8?B?7aC97bmC?="), "\u{1F642}");
+    }
+
+    #[test]
+    fn cesu8_repair_does_not_touch_non_utf8_charsets() {
+        assert_eq!(decode("=?ISO-8859-1?Q?caf=E9?="), "café");
     }
 }
