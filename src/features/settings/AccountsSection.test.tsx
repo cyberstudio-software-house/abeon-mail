@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor, cleanup } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
-const { endpoints, jan, gmail } = vi.hoisted(() => ({
+const { endpoints, jan, gmail, outlook, brokenImap } = vi.hoisted(() => ({
   endpoints: {
     imap_host: "mail.x",
     imap_port: 993,
@@ -29,11 +29,31 @@ const { endpoints, jan, gmail } = vi.hoisted(() => ({
     requires_reauth: true,
     provider_type: "google_oauth",
   },
+  outlook: {
+    id: 3,
+    email: "o@outlook.com",
+    display_name: "Outlook",
+    color: null,
+    position: 2,
+    requires_reauth: true,
+    provider_type: "microsoft_oauth",
+  },
+  brokenImap: {
+    id: 4,
+    email: "stale@firma.pl",
+    display_name: "Stale",
+    color: null,
+    position: 3,
+    requires_reauth: true,
+    provider_type: "imap_password",
+  },
 }));
 
 vi.mock("../../ipc/bindings", () => ({
   commands: {
-    listAccounts: vi.fn().mockResolvedValue({ status: "ok", data: [jan, gmail] }),
+    listAccounts: vi
+      .fn()
+      .mockResolvedValue({ status: "ok", data: [jan, gmail, outlook, brokenImap] }),
     getAccountEndpoints: vi.fn().mockResolvedValue({ status: "ok", data: endpoints }),
     updateAccount: vi.fn().mockResolvedValue({ status: "ok", data: jan }),
     removeAccount: vi.fn().mockResolvedValue({ status: "ok", data: null }),
@@ -73,7 +93,7 @@ describe("AccountsSection", () => {
   it("moves an account down via reorder", async () => {
     const { findByLabelText } = wrap();
     fireEvent.click(await findByLabelText("Move Jan down"));
-    await waitFor(() => expect(commands.reorderAccounts).toHaveBeenCalledWith([2, 1]));
+    await waitFor(() => expect(commands.reorderAccounts).toHaveBeenCalledWith([2, 1, 3, 4]));
   });
 
   it("edits an IMAP account: name + server settings", async () => {
@@ -105,9 +125,47 @@ describe("AccountsSection", () => {
   });
 
   it("reconnects a Google account that requires reauth", async () => {
-    const { findByText } = wrap();
-    fireEvent.click(await findByText("⚠ Reconnect"));
+    const { findByLabelText } = wrap();
+    fireEvent.click(await findByLabelText("Reconnect Gmail"));
     await waitFor(() => expect(commands.beginReauth).toHaveBeenCalledWith(2));
+  });
+
+  it("reconnects a Microsoft account that requires reauth", async () => {
+    const { findByLabelText } = wrap();
+    fireEvent.click(await findByLabelText("Reconnect Outlook"));
+    await waitFor(() => expect(commands.beginReauth).toHaveBeenCalledWith(3));
+  });
+
+  it("offers a password fix instead of OAuth for a stale IMAP account", async () => {
+    const { findByLabelText, queryByLabelText, getByLabelText } = wrap();
+    expect(queryByLabelText("Reconnect Stale")).toBeNull();
+    fireEvent.click(await findByLabelText("Fix password for Stale"));
+    await waitFor(() => expect(getByLabelText("IMAP host")).toBeTruthy());
+    expect(commands.beginReauth).not.toHaveBeenCalled();
+  });
+
+  it("shows no reconnect action for a healthy account", async () => {
+    const { findByLabelText, queryByLabelText } = wrap();
+    await findByLabelText("Edit Jan");
+    expect(queryByLabelText("Reconnect Jan")).toBeNull();
+    expect(queryByLabelText("Fix password for Jan")).toBeNull();
+  });
+
+  it("surfaces a failed reauth next to the account that failed", async () => {
+    (commands.beginReauth as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      status: "error",
+      error: "Sign-in succeeded but mailbox access was not granted.",
+    });
+    const { findByLabelText, findAllByRole, queryAllByRole } = wrap();
+    fireEvent.click(await findByLabelText("Reconnect Outlook"));
+    const alerts = await findAllByRole("alert");
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0].textContent).toContain("mailbox access was not granted");
+    expect(
+      queryAllByRole("alert").some((el) =>
+        el.closest("li")?.textContent?.includes("g@gmail.com")
+      )
+    ).toBe(false);
   });
 
   it("renders the offline-prefetch master switch", async () => {
@@ -115,7 +173,7 @@ describe("AccountsSection", () => {
     const switches = await findAllByRole("switch", {
       name: /Download message bodies for offline/i,
     });
-    expect(switches.length).toBe(2);
+    expect(switches.length).toBe([jan, gmail, outlook, brokenImap].length);
   });
 
   it("opens a folder modal with decoded names and toggles a selection", async () => {

@@ -432,6 +432,14 @@
 .accounts-settings__reconnect {
   color: var(--color-amber-500, #f59e0b) !important;
   font-size: 12px;
+  white-space: nowrap;
+}
+
+.accounts-settings__reconnect-error {
+  margin: 6px 0 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--color-red-500, #ef4444);
 }
 
 .accounts-settings__edit,

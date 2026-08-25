@@ -1270,6 +1270,24 @@ pub async fn update_account(
     Ok(account)
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ReauthFlow {
+    Google,
+    Microsoft,
+}
+
+pub(crate) fn reauth_flow_for(
+    provider_type: am_core::account::ProviderType,
+) -> Result<ReauthFlow, String> {
+    match provider_type {
+        am_core::account::ProviderType::GoogleOauth => Ok(ReauthFlow::Google),
+        am_core::account::ProviderType::MicrosoftOauth => Ok(ReauthFlow::Microsoft),
+        am_core::account::ProviderType::ImapPassword => {
+            Err("This account signs in with a password, not OAuth. Update its password in account settings.".to_string())
+        }
+    }
+}
+
 #[tauri::command]
 #[specta::specta]
 pub async fn begin_reauth(
@@ -1280,16 +1298,22 @@ pub async fn begin_reauth(
     let account = accounts_repo::get_account(&state.db, account_id)
         .map_err(|e| e.to_string())?;
 
-    let (new_tokens, email) = run_google_oauth_flow(&app).await?;
+    let (new_tokens, email) = match reauth_flow_for(account.provider_type)? {
+        ReauthFlow::Google => run_google_oauth_flow(&app).await?,
+        ReauthFlow::Microsoft => run_microsoft_oauth_flow(&app).await?,
+    };
 
     if email != account.email {
-        return Err("Signed-in Google account does not match this account".to_string());
+        return Err(format!(
+            "Signed in as {email}, but this account is {}. Pick the matching account.",
+            account.email
+        ));
     }
 
     let refresh_token = new_tokens
         .refresh_token
         .clone()
-        .ok_or_else(|| "No refresh token in Google response".to_string())?;
+        .ok_or_else(|| "Sign-in returned no refresh token".to_string())?;
     am_auth::credentials::store_password(&account.email, &refresh_token)
         .map_err(|_| "Keychain unavailable".to_string())?;
 
@@ -1704,6 +1728,24 @@ mod tests {
     use am_core::message::{MessageBody, NewMessageHeader};
     use am_storage::{accounts_repo, folders_repo, messages_repo, Database};
     use am_auth::credentials::store_password;
+
+    #[test]
+    fn reauth_flow_follows_the_account_provider() {
+        assert!(matches!(
+            super::reauth_flow_for(ProviderType::GoogleOauth),
+            Ok(super::ReauthFlow::Google)
+        ));
+        assert!(matches!(
+            super::reauth_flow_for(ProviderType::MicrosoftOauth),
+            Ok(super::ReauthFlow::Microsoft)
+        ));
+    }
+
+    #[test]
+    fn reauth_is_rejected_for_password_accounts() {
+        let err = super::reauth_flow_for(ProviderType::ImapPassword).unwrap_err();
+        assert!(err.to_lowercase().contains("password"));
+    }
 
     #[test]
     fn unique_path_disambiguates_collisions() {

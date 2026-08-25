@@ -23,8 +23,12 @@ import { Avatar } from "../../shared/appearance/Avatar";
 import { AddAccountWizard } from "../accounts/AddAccountWizard";
 import type { Account, Endpoints, Folder } from "../../ipc/bindings";
 
+function isImapPassword(account: Account) {
+  return account.provider_type === "imap_password";
+}
+
 function AccountEditForm({ account, onClose }: { account: Account; onClose: () => void }) {
-  const isImap = account.provider_type === "imap_password";
+  const isImap = isImapPassword(account);
   const { data: endpoints } = useAccountEndpoints(isImap ? account.id : null);
   const updateAccount = useUpdateAccount();
 
@@ -398,15 +402,26 @@ export function AccountsSection() {
                 </span>
                 <span className="accounts-settings__email">{account.email}</span>
               </div>
-              {account.requires_reauth && account.provider_type === "google_oauth" && (
-                <button
-                  type="button"
-                  className="accounts-settings__reconnect"
-                  onClick={() => beginReauth.mutate(account.id)}
-                >
-                  ⚠ Reconnect
-                </button>
-              )}
+              {account.requires_reauth &&
+                (isImapPassword(account) ? (
+                  <button
+                    type="button"
+                    className="accounts-settings__reconnect"
+                    aria-label={`Fix password for ${account.display_name || account.email}`}
+                    onClick={() => setEditingId(account.id)}
+                  >
+                    ⚠ Fix password
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="accounts-settings__reconnect"
+                    aria-label={`Reconnect ${account.display_name || account.email}`}
+                    onClick={() => beginReauth.mutate(account.id)}
+                  >
+                    ⚠ Reconnect
+                  </button>
+                ))}
               <button
                 type="button"
                 aria-label={`Edit ${account.display_name || account.email}`}
@@ -422,6 +437,12 @@ export function AccountsSection() {
                 <Trash2 size={15} />
               </button>
             </div>
+
+            {beginReauth.isError && beginReauth.variables === account.id && (
+              <p className="accounts-settings__reconnect-error" role="alert">
+                {String(beginReauth.error)}
+              </p>
+            )}
 
             <AccountImageToggle accountId={account.id} email={account.email} />
             <AccountPrefetchControls accountId={account.id} email={account.email} />
