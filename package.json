@@ -1,7 +1,7 @@
 {
   "name": "abeonmail",
   "private": true,
-  "version": "0.5.6",
+  "version": "0.5.7",
   "license": "MIT",
   "author": "Cyberstudio",
   "type": "module",
