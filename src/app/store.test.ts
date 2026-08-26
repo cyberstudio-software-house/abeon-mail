@@ -15,7 +15,7 @@ beforeEach(() => {
     density: "comfortable",
     showPreview: true,
     showAvatars: true,
-    composer: { open: false, draftId: null, prefill: null },
+    composer: { open: false, draftId: null, prefill: null, accountId: null },
     visibleMessageIds: [],
     selectMode: "thread",
     replyTargetId: null,

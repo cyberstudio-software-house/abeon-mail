@@ -72,7 +72,7 @@ export function DraftsList({ accountId }: { accountId: number | null }) {
   async function handleOpen(id: number) {
     const result = await commands.getDraft(id);
     if (result.status === "ok") {
-      openComposer(id, result.data);
+      openComposer(id, result.data.message, result.data.account_id);
     }
   }
 

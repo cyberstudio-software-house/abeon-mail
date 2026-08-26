@@ -41,7 +41,7 @@ function renderProvider(children: React.ReactNode) {
 
 beforeEach(() => {
   useUiStore.setState({
-    composer: { open: false, draftId: null, prefill: null },
+    composer: { open: false, draftId: null, prefill: null, accountId: null },
     selectedThreadId: null,
     selectedSmartFolder: null,
     visibleMessageIds: [],

@@ -24,7 +24,12 @@ function htmlToText(html: string): string {
   return el.textContent ?? "";
 }
 
-function resolveInitialFromAccount(isBlankCompose: boolean, activeAccountId: number | null): number | null {
+function resolveInitialFromAccount(
+  sourceAccountId: number | null,
+  isBlankCompose: boolean,
+  activeAccountId: number | null,
+): number | null {
+  if (sourceAccountId != null) return sourceAccountId;
   return isBlankCompose ? activeAccountId : null;
 }
 
@@ -43,7 +48,9 @@ export function Composer() {
   const prefill = composer.prefill;
   const isBlankCompose = composer.draftId == null && prefill == null;
 
-  const [fromAccountId, setFromAccountId] = useState<number | null>(() => resolveInitialFromAccount(isBlankCompose, selectedAccountId));
+  const [fromAccountId, setFromAccountId] = useState<number | null>(() =>
+    resolveInitialFromAccount(composer.accountId, isBlankCompose, selectedAccountId),
+  );
   const [to, setTo] = useState<string[]>(prefill?.to ?? []);
   const [cc, setCc] = useState<string[]>(prefill?.cc ?? []);
   const [bcc, setBcc] = useState<string[]>(prefill?.bcc ?? []);

@@ -74,14 +74,14 @@ function Wrapper({ children }: { children: React.ReactNode }) {
 
 describe("Composer", () => {
   beforeEach(() => {
-    useUiStore.setState({ composer: { open: true, draftId: null, prefill: null } });
+    useUiStore.setState({ composer: { open: true, draftId: null, prefill: null, accountId: null } });
   });
 
   afterEach(() => {
     cleanup();
     vi.clearAllMocks();
     useUiStore.setState({
-      composer: { open: false, draftId: null, prefill: null },
+      composer: { open: false, draftId: null, prefill: null, accountId: null },
       selectedAccountId: null,
     });
     mockHtmlContent = "<p>Hello world</p>";
@@ -143,7 +143,7 @@ describe("Composer", () => {
   });
 
   it("does not render when composer is closed", async () => {
-    useUiStore.setState({ composer: { open: false, draftId: null, prefill: null } });
+    useUiStore.setState({ composer: { open: false, draftId: null, prefill: null, accountId: null } });
 
     render(<Composer />, { wrapper: Wrapper });
     expect(screen.queryByRole("dialog")).toBeNull();
@@ -248,6 +248,7 @@ describe("Composer", () => {
         open: true,
         draftId: null,
         prefill: { ...emptyPrefill, html_body: "<blockquote>QUOTED</blockquote>" },
+        accountId: null,
       },
     });
 
@@ -275,6 +276,7 @@ describe("Composer", () => {
         open: true,
         draftId: 42,
         prefill: { ...emptyPrefill, html_body: "<p>existing draft body</p>" },
+        accountId: null,
       },
     });
 
@@ -449,7 +451,7 @@ describe("Composer", () => {
     const { commands } = await import("../../ipc/bindings");
     (commands.listAccounts as ReturnType<typeof vi.fn>).mockResolvedValue({ status: "ok", data: twoAccounts });
     useUiStore.setState({
-      composer: { open: true, draftId: null, prefill: null },
+      composer: { open: true, draftId: null, prefill: null, accountId: null },
       selectedAccountId: 9,
     });
 
@@ -466,7 +468,7 @@ describe("Composer", () => {
     const { commands } = await import("../../ipc/bindings");
     (commands.listAccounts as ReturnType<typeof vi.fn>).mockResolvedValue({ status: "ok", data: twoAccounts });
     useUiStore.setState({
-      composer: { open: true, draftId: null, prefill: null },
+      composer: { open: true, draftId: null, prefill: null, accountId: null },
       selectedAccountId: null,
     });
 
@@ -476,6 +478,49 @@ describe("Composer", () => {
     const fromSelect = (await screen.findByLabelText("From account")) as HTMLSelectElement;
     await waitFor(() => {
       expect(fromSelect.value).toBe("7");
+    });
+  });
+  it("uses the account that received the message as From when replying", async () => {
+    const { commands } = await import("../../ipc/bindings");
+    (commands.listAccounts as ReturnType<typeof vi.fn>).mockResolvedValue({ status: "ok", data: twoAccounts });
+    useUiStore.setState({
+      composer: {
+        open: true,
+        draftId: null,
+        prefill: { ...emptyPrefill, subject: "Re: Hello" },
+        accountId: 9,
+      },
+      selectedAccountId: 7,
+    });
+
+    render(<Composer />, { wrapper: Wrapper });
+    await screen.findByRole("dialog");
+
+    const fromSelect = (await screen.findByLabelText("From account")) as HTMLSelectElement;
+    await waitFor(() => {
+      expect(fromSelect.value).toBe("9");
+    });
+  });
+
+  it("uses the owning account as From when reopening a draft", async () => {
+    const { commands } = await import("../../ipc/bindings");
+    (commands.listAccounts as ReturnType<typeof vi.fn>).mockResolvedValue({ status: "ok", data: twoAccounts });
+    useUiStore.setState({
+      composer: {
+        open: true,
+        draftId: 42,
+        prefill: { ...emptyPrefill, subject: "Unfinished" },
+        accountId: 9,
+      },
+      selectedAccountId: 7,
+    });
+
+    render(<Composer />, { wrapper: Wrapper });
+    await screen.findByRole("dialog");
+
+    const fromSelect = (await screen.findByLabelText("From account")) as HTMLSelectElement;
+    await waitFor(() => {
+      expect(fromSelect.value).toBe("9");
     });
   });
 });

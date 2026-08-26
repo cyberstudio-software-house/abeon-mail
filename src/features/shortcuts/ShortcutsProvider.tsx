@@ -87,8 +87,8 @@ export function ShortcutsProvider({ children }: { children: ReactNode }) {
     async (mode: "reply" | "reply_all" | "forward") => {
       const s = useUiStore.getState();
       if (s.replyTargetId == null) return;
-      const prefill = await startReply.mutateAsync({ messageId: s.replyTargetId, mode });
-      s.openComposer(null, prefill);
+      const { account_id, message } = await startReply.mutateAsync({ messageId: s.replyTargetId, mode });
+      s.openComposer(null, message, account_id);
     },
     [startReply]
   );

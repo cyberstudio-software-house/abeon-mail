@@ -60,17 +60,20 @@ vi.mock("../../ipc/bindings", () => ({
     startReply: vi.fn().mockResolvedValue({
       status: "ok",
       data: {
-        from_address: "me@example.com",
-        from_name: "Me",
-        to: ["a@x"],
-        cc: [],
-        bcc: [],
-        subject: "Re: Hi",
-        text_body: "",
-        html_body: "<blockquote>original</blockquote>",
-        in_reply_to: "msg-1",
-        references: [],
-        attachments: [],
+        account_id: 3,
+        message: {
+          from_address: "me@example.com",
+          from_name: "Me",
+          to: ["a@x"],
+          cc: [],
+          bcc: [],
+          subject: "Re: Hi",
+          text_body: "",
+          html_body: "<blockquote>original</blockquote>",
+          in_reply_to: "msg-1",
+          references: [],
+          attachments: [],
+        },
       },
     }),
     setMessageFlags: vi.fn().mockResolvedValue({ status: "ok", data: null }),
@@ -108,7 +111,7 @@ function Wrapper({ children }: { children: React.ReactNode }) {
 describe("ConversationView", () => {
   beforeEach(() => {
     useUiStore.setState({
-      composer: { open: false, draftId: null, prefill: null },
+      composer: { open: false, draftId: null, prefill: null, accountId: null },
       generalHydrated: true,
       markReadMode: "immediate",
       markReadDelaySeconds: 2,
@@ -120,7 +123,7 @@ describe("ConversationView", () => {
     vi.clearAllMocks();
     archiveMutate.mockReset();
     deleteMutate.mockReset();
-    useUiStore.setState({ composer: { open: false, draftId: null, prefill: null } });
+    useUiStore.setState({ composer: { open: false, draftId: null, prefill: null, accountId: null } });
   });
 
   it("renders both message senders and last item is expanded with body", async () => {
@@ -231,7 +234,7 @@ describe("ConversationView", () => {
 
     await screen.findAllByText("B");
 
-    const replyButton = await screen.findByRole("button", { name: "Reply" });
+    const [replyButton] = await screen.findAllByRole("button", { name: "Reply" });
     fireEvent.click(replyButton);
 
     await waitFor(() => {
@@ -245,6 +248,7 @@ describe("ConversationView", () => {
     const prefill = useUiStore.getState().composer.prefill;
     expect(prefill).not.toBeNull();
     expect(prefill?.html_body).toContain("blockquote");
+    expect(useUiStore.getState().composer.accountId).toBe(3);
   });
 
   it("clicking Reply all calls startReply with mode reply_all", async () => {
@@ -253,7 +257,7 @@ describe("ConversationView", () => {
 
     await screen.findAllByText("B");
 
-    const replyAllButton = await screen.findByRole("button", { name: "Reply all" });
+    const [replyAllButton] = await screen.findAllByRole("button", { name: "Reply all" });
     fireEvent.click(replyAllButton);
 
     await waitFor(() => {
@@ -267,7 +271,7 @@ describe("ConversationView", () => {
 
     await screen.findAllByText("B");
 
-    const forwardButton = await screen.findByRole("button", { name: "Forward" });
+    const [forwardButton] = await screen.findAllByRole("button", { name: "Forward" });
     fireEvent.click(forwardButton);
 
     await waitFor(() => {

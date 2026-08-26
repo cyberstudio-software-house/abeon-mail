@@ -10,7 +10,7 @@ use am_core::{
     label::Label,
     message::{MessageBody, MessageFlag, MessageHeader},
     notification::NotificationContent,
-    outgoing::{DraftSummary, OutgoingAttachment, OutgoingMessage, SendError},
+    outgoing::{ComposerPrefill, DraftSummary, OutgoingAttachment, OutgoingMessage, SendError},
     rule::{Rule, RuleInput},
     signature::Signature,
     smart::{SmartFolderKind, SmartMessageRow},
@@ -871,7 +871,7 @@ pub async fn start_reply(
     state: tauri::State<'_, AppState>,
     message_id: i64,
     mode: String,
-) -> Result<OutgoingMessage, String> {
+) -> Result<ComposerPrefill, String> {
     let reply_mode = match mode.as_str() {
         "reply" => am_sync::compose::ReplyMode::Reply,
         "reply_all" => am_sync::compose::ReplyMode::ReplyAll,
@@ -880,10 +880,10 @@ pub async fn start_reply(
     };
     let db: Arc<am_storage::Database> = Arc::clone(&state.db);
     let creds = Arc::clone(&state.creds);
-    let (_account_id, msg) = am_sync::compose::build_prefill(&db, message_id, reply_mode, creds.as_ref())
+    let (account_id, message) = am_sync::compose::build_prefill(&db, message_id, reply_mode, creds.as_ref())
         .await
         .map_err(|_| "Failed to build reply".to_string())?;
-    Ok(msg)
+    Ok(ComposerPrefill { account_id, message })
 }
 
 #[tauri::command]
@@ -905,9 +905,9 @@ pub fn save_draft(
 pub fn get_draft(
     state: tauri::State<'_, AppState>,
     draft_id: i64,
-) -> Result<OutgoingMessage, String> {
+) -> Result<ComposerPrefill, String> {
     drafts_repo::get_draft(&state.db, draft_id)
-        .map(|(_account_id, msg)| msg)
+        .map(|(account_id, message)| ComposerPrefill { account_id, message })
         .map_err(|_| "Failed to get draft".to_string())
 }
 

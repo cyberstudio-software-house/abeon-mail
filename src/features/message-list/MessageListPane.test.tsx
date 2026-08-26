@@ -194,7 +194,7 @@ function setupStore(
       markSendStarted: vi.fn(),
       markSendSucceeded: vi.fn(),
       markSendFailed: vi.fn(),
-      composer: { open: false, draftId: null, prefill: null },
+      composer: { open: false, draftId: null, prefill: null, accountId: null },
       setSelectedAccountId: vi.fn(),
       setSelectedFolderId: vi.fn(),
       setSelectedMessageId: mockSetSelectedMessageId,

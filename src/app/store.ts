@@ -33,6 +33,7 @@ type ComposerState = {
   open: boolean;
   draftId: number | null;
   prefill: OutgoingMessage | null;
+  accountId: number | null;
 };
 
 export type UiState = {
@@ -145,7 +146,7 @@ export type UiState = {
   hydrateSnooze: (partial: Partial<SnoozeConfig>) => void;
   openSettings: () => void;
   closeSettings: () => void;
-  openComposer: (draftId: number | null, prefill?: OutgoingMessage | null) => void;
+  openComposer: (draftId: number | null, prefill?: OutgoingMessage | null, accountId?: number | null) => void;
   closeComposer: () => void;
   setListContext: (ids: number[], mode: "thread" | "message", accounts?: Record<number, number>) => void;
   setReplyTargetId: (id: number | null) => void;
@@ -209,7 +210,7 @@ export const useUiStore = create<UiState>((set, get) => ({
   snoozeWeekendDay: DEFAULT_SNOOZE_CONFIG.weekendDay,
   snoozeWeekStartDay: DEFAULT_SNOOZE_CONFIG.weekStartDay,
   settingsOpen: false,
-  composer: { open: false, draftId: null, prefill: null },
+  composer: { open: false, draftId: null, prefill: null, accountId: null },
   visibleMessageIds: [],
   selectMode: "thread",
   replyTargetId: null,
@@ -332,10 +333,10 @@ export const useUiStore = create<UiState>((set, get) => ({
     })),
   openSettings: () => set({ settingsOpen: true }),
   closeSettings: () => set({ settingsOpen: false }),
-  openComposer: (draftId, prefill = null) =>
-    set({ composer: { open: true, draftId, prefill } }),
+  openComposer: (draftId, prefill = null, accountId = null) =>
+    set({ composer: { open: true, draftId, prefill, accountId } }),
   closeComposer: () =>
-    set({ composer: { open: false, draftId: null, prefill: null } }),
+    set({ composer: { open: false, draftId: null, prefill: null, accountId: null } }),
   setListContext: (ids, mode, accounts = {}) =>
     set({ visibleMessageIds: ids, selectMode: mode, rowAccounts: accounts }),
   setReplyTargetId: (id) => set({ replyTargetId: id }),

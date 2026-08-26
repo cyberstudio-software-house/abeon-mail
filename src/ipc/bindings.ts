@@ -74,9 +74,9 @@ export const commands = {
 	listSendErrors: () => typedError<SendError[], string>(__TAURI_INVOKE("list_send_errors")),
 	retrySend: (id: number) => typedError<null, string>(__TAURI_INVOKE("retry_send", { id })),
 	dismissSendError: (id: number) => typedError<null, string>(__TAURI_INVOKE("dismiss_send_error", { id })),
-	startReply: (messageId: number, mode: string) => typedError<OutgoingMessage, string>(__TAURI_INVOKE("start_reply", { messageId, mode })),
+	startReply: (messageId: number, mode: string) => typedError<ComposerPrefill, string>(__TAURI_INVOKE("start_reply", { messageId, mode })),
 	saveDraft: (accountId: number, draftId: number | null, message: OutgoingMessage) => typedError<number, string>(__TAURI_INVOKE("save_draft", { accountId, draftId, message })),
-	getDraft: (draftId: number) => typedError<OutgoingMessage, string>(__TAURI_INVOKE("get_draft", { draftId })),
+	getDraft: (draftId: number) => typedError<ComposerPrefill, string>(__TAURI_INVOKE("get_draft", { draftId })),
 	listDrafts: (accountId: number) => typedError<number[], string>(__TAURI_INVOKE("list_drafts", { accountId })),
 	listDraftSummaries: (accountId: number) => typedError<DraftSummary[], string>(__TAURI_INVOKE("list_draft_summaries", { accountId })),
 	discardDraft: (draftId: number) => typedError<null, string>(__TAURI_INVOKE("discard_draft", { draftId })),
@@ -153,6 +153,11 @@ export type Attachment = {
 	filename: string,
 	mime_type: string,
 	size: number,
+};
+
+export type ComposerPrefill = {
+	account_id: number,
+	message: OutgoingMessage,
 };
 
 export type ConditionField = "from" | "subject" | "recipient" | "has_attachment";

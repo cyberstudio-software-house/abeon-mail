@@ -75,14 +75,14 @@ describe("DraftsList", () => {
       references: [],
       attachments: [],
     };
-    mockGetDraft.mockResolvedValue({ status: "ok", data: loaded });
+    mockGetDraft.mockResolvedValue({ status: "ok", data: { account_id: 4, message: loaded } });
 
     render(<DraftsList accountId={1} />);
     fireEvent.click(screen.getByText("Test po aktualizacji"));
 
     await waitFor(() => {
       expect(mockGetDraft).toHaveBeenCalledWith(11637);
-      expect(mockOpenComposer).toHaveBeenCalledWith(11637, loaded);
+      expect(mockOpenComposer).toHaveBeenCalledWith(11637, loaded, 4);
     });
   });
 

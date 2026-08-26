@@ -54,14 +54,14 @@ function renderProvider(threadId: number) {
 
 describe("ShortcutsProvider mark read/unread", () => {
   it("Shift+I marks unread messages in the open conversation read", async () => {
-    useUiStore.setState({ selectedThreadId: 5, composer: { open: false, draftId: null, prefill: null } });
+    useUiStore.setState({ selectedThreadId: 5, composer: { open: false, draftId: null, prefill: null, accountId: null } });
     renderProvider(5);
     window.dispatchEvent(new KeyboardEvent("keydown", { key: "I", shiftKey: true }));
     await waitFor(() => expect(setSeenMutate).toHaveBeenCalledWith({ ids: [2], value: true }));
   });
 
   it("Shift+U marks all messages in the open conversation unread", async () => {
-    useUiStore.setState({ selectedThreadId: 5, composer: { open: false, draftId: null, prefill: null } });
+    useUiStore.setState({ selectedThreadId: 5, composer: { open: false, draftId: null, prefill: null, accountId: null } });
     renderProvider(5);
     window.dispatchEvent(new KeyboardEvent("keydown", { key: "U", shiftKey: true }));
     await waitFor(() => expect(setSeenMutate).toHaveBeenCalledWith({ ids: [1, 2], value: false }));

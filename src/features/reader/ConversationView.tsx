@@ -215,8 +215,8 @@ export function ConversationView({ threadId }: { threadId: number }) {
   }
 
   async function handleReply(messageId: number, mode: ReplyMode) {
-    const prefill = await startReplyMutation.mutateAsync({ messageId, mode });
-    openComposer(null, prefill);
+    const { account_id, message } = await startReplyMutation.mutateAsync({ messageId, mode });
+    openComposer(null, message, account_id);
   }
 
   const moreActions: { label: string; onClick: () => void }[] = [

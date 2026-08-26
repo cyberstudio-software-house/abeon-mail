@@ -31,6 +31,12 @@ pub struct DraftSummary {
 }
 
 #[derive(Serialize, Deserialize, specta::Type, Clone, Debug, PartialEq)]
+pub struct ComposerPrefill {
+    pub account_id: i64,
+    pub message: OutgoingMessage,
+}
+
+#[derive(Serialize, Deserialize, specta::Type, Clone, Debug, PartialEq)]
 pub struct OutgoingMessage {
     pub from_address: String,
     pub from_name: Option<String>,
