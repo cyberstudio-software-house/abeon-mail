@@ -1,4 +1,4 @@
-import { useRef, useMemo, useEffect, type MouseEvent as ReactMouseEvent } from "react";
+import { useRef, useMemo, useEffect, useLayoutEffect, type MouseEvent as ReactMouseEvent } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { PencilLine, Reply } from "lucide-react";
 import { useThreads, useFolders, useSmartFolder, useSearch, useLabelsForMessages, useMessagesByLabel, useLabels } from "../../ipc/queries";
@@ -337,6 +337,15 @@ export function MessageListPane() {
     estimateSize: (i) => (entries[i]?.kind === "header" ? HEADER_HEIGHT : rowHeight),
     overscan: 5,
   });
+
+  const layoutSignature = useMemo(
+    () => `${rowHeight}:${entries.map((e) => (e.kind === "header" ? "h" : "i")).join("")}`,
+    [entries, rowHeight]
+  );
+
+  useLayoutEffect(() => {
+    virtualizer.measure();
+  }, [layoutSignature, virtualizer]);
 
   const virtualItems = virtualizer.getVirtualItems();
 

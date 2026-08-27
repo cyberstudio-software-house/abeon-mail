@@ -742,4 +742,60 @@ describe("MessageListPane", () => {
 
     expect(screen.queryByTitle("Odpowiedziano")).toBeNull();
   });
+
+  it("keeps virtual row wrappers as tall as their rows after the group layout shifts", () => {
+    setupStore(10);
+    const makeThread = (id: number, last_date: number): ThreadSummary => ({
+      thread_id: id,
+      account_id: 1,
+      subject: `Subject ${id}`,
+      last_date,
+      message_count: 1,
+      unread_count: 0,
+      participants: [`Sender ${id}`],
+      snippet: "snippet",
+      has_attachments: false,
+      flagged: false,
+      answered: false,
+    });
+    const before = [
+      makeThread(1, todaySeconds),
+      makeThread(2, todaySeconds),
+      makeThread(3, yesterdaySeconds),
+      makeThread(4, yesterdaySeconds),
+    ];
+    const after = [
+      makeThread(1, todaySeconds),
+      makeThread(2, todaySeconds),
+      makeThread(3, todaySeconds),
+      makeThread(4, yesterdaySeconds),
+    ];
+    mockUseSmartFolder.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isError: false,
+      error: null,
+    } as unknown as ReturnType<typeof useSmartFolder>);
+    mockUseThreads.mockReturnValue({
+      data: before,
+      isLoading: false,
+      isError: false,
+      error: null,
+    } as unknown as ReturnType<typeof useThreads>);
+
+    const { rerender } = render(<MessageListPane />);
+
+    mockUseThreads.mockReturnValue({
+      data: after,
+      isLoading: false,
+      isError: false,
+      error: null,
+    } as unknown as ReturnType<typeof useThreads>);
+    rerender(<MessageListPane />);
+
+    const wrapperHeights = Array.from(document.querySelectorAll(".message-row")).map(
+      (row) => (row.parentElement as HTMLElement).style.height
+    );
+    expect(wrapperHeights).toEqual(["72px", "72px", "72px", "72px"]);
+  });
 });
