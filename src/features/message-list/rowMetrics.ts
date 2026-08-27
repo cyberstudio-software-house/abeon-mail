@@ -6,4 +6,4 @@ export const ROW_HEIGHT: Record<Density, number> = {
   dense: 36,
 };
 
-export const HEADER_HEIGHT = 28;
+export const HEADER_HEIGHT = 32;
